@@ -505,7 +505,7 @@ class _Lowerer:
 
     def call(self, node: c_ast.FuncCall, name: str) -> ir.Expr:
         args = node.args.exprs if node.args else []
-        if name in HARDWARE and _in_header_name(name, self.sigs):
+        if name in HARDWARE and _builtin(name, self.sigs):
             if args:
                 raise _err(node, f"{name}() takes no arguments")
             return ir.Hw(name)
@@ -533,7 +533,7 @@ class _Lowerer:
         return ir.Call(sig, tuple(self.expr(a) for a in args))
 
 
-def _in_header_name(name: str, sigs: dict[str, ir.Signature]) -> bool:
+def _builtin(name: str, sigs: dict[str, ir.Signature]) -> bool:
     """A hardware builtin is pdp1.h's, unless the program defines a function of that name."""
     return name not in sigs
 
