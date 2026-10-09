@@ -30,3 +30,9 @@ name = "sincos"
 lines = "190-254"
 c = "lift/sincos.c"
 prefix = "zc"
+
+[[region]]
+name = "tunables"
+lines = "67-116"
+c = "lift/tunables.c"
+prefix = "zt"
