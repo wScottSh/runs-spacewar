@@ -111,18 +111,42 @@ Phase F steps 1-4 (synthesis.md) are implemented for the sqt subset. This sectio
 
 **TRACK.** Lowering is a pure function of (statement, AC/IO state). A `for (;;)` body is lowered again until the state at its head is a fixpoint. A read of an AC local whose value is no longer in AC is a compile error that asks for a static.
 
-**Labels.** Generated labels use a per-region prefix from `lift.toml` (`zs` for sqt), not a region letter. A file-scope C name longer than 6 characters is a compile error, because macro1 keeps 6 and `SYM` is not implemented. Two labels that land on one word are merged.
+**Labels.** Generated labels use a per-region prefix from `lift.toml` (`zs` for sqt), not a region letter. Two labels that land on one word are merged.
 
 **Splice build.** The interface check reads the source text. A label defined inside the region and named outside it must still be defined by the compiled text. It does not use the oracle xref. On a mismatch, `build` reports whether the `variables` base moved, then the first differing address with the expected word, the actual word and the rule id. There is no per-region cache.
 
 **Gates.**
-- G1 runs for sqt only. `tools/check-sqt-reference.py` compares the native build of `lift/sqt.c` with SIMH running sqt in the oracle `.rim`, over 0..0177777 in one SIMH session.
+- G1 runs as `tools/check-*-reference.py`, one per lifted routine group. Each compares the native build of the lifted C with SIMH running the routine in the oracle `.rim`, in one SIMH session. sqt covers 0..0177777.
 - G2 (`pdp1cc gate`) compares the AC result and every placed word after every call.
 - G3 is `tools/check-g3.py`.
 - G4 is structural: `Word.rule` is required and checked against the registry.
 - G5, G6, G7 and the row checker are not built.
 
-**Not implemented yet.** POOL, HOMED, ENTRY_CELL, JSP, XCT, BLOCK, inline JDA parameters, while/do/switch/goto, IO to AC moves, `dio`, `sas`/`sad`, and the hints.
+**Not implemented yet.** POOL, HOMED, JSP, XCT, INLINE parameters, while/do/switch, `sas`/`sad`, and the hints.
+
+### M1 math (sin/cos, imp/mpy, idv/dvd)
+
+Regions 190-254, 257-301 and 346-396 compile from `lift/sincos.c`, `lift/multiply.c` and `lift/divide.c`. The `mult` macro definition (195-198) is inside the sin/cos region. Its only users were the six calls in sin, which are now C calls. `tools/check-{multiply,divide,sincos}-reference.py` compare each routine with the oracle in SIMH.
+
+New rules, each used by at least two corpus programs (`clamp`, `longdiv`, `polyeval`, `scaledmul`):
+- `GOTO`. C labels and `goto`. A label can sit on any statement, including the body of an `if` (`if (a < 0) reduce: a += TWO_PI;`). TRACK takes the meet over every jump into a label and lowers the function again until the label states are a fixpoint.
+- `JDA-CALL`, `JDA-BYNAME-ARG`, `BYNAME-READ`, `RET-INDIRECT`, `ARGS`. These cover calls and BYNAME parameters. The first read of a BYNAME parameter is the cell R (`R, xct`), and later reads are `xct R`. Returns are `jmp i R`. `inline.py` places `idx R` before the first top-level statement where three things hold. All by-name reads come before it. No jump crosses it. AC is dead there.
+- `TAIL-CALL`, `LAY-FALLTHROUGH`, `LAY-ADOPT`. A JDA function whose returns all tail-call one BLOCK patches that block's exit. Its jump is elided when the block comes next in the layout. A BLOCK can take a `register` parameter and BYNAME parameters. Its callers pass their own, unchanged.
+- `EX-STEP` (`mus`, `dis`), `EX-MOVE`, `EX-CONST-IO` (`cli`), `EX-STORE-IO` (`dio`), `LOOP-UNROLL`, `ST-ENTRY-CELL`, `SKIP-RETURN`.
+- `EX-ROT` now also covers `ral`/`rar` on AC, `ril`/`rir` on IO, and `rcr`/`scl`/`scr` on the pair.
+- `via`. Some rules shape a word but emit no word of their own: `LOOP-UNROLL`, `LAY-FALLTHROUGH`, `LAY-ADOPT` and `ST-ENTRY-CELL`. `Word.via` records them, and rule coverage counts them.
+
+Deviations from the design, and why:
+- **AC/IO moves are `rcr 9s` twice, not `rcl 9s` twice.** `register word m = h;` (AC to IO) and reading a register local into AC both lower to `EX-MOVE`. A half turn of the 36-bit pair is the same exchange in either direction. All three M1 moves use `rcr`. The design's default was the `swap` macro (`rcl`), which no M1 site uses. Pure moves written with `swap` (for example `lat` / `swap` at source line 838) will need a counted hint. A swap where both halves are live is written `rcl(h, l, 18)` and needs no hint.
+- **mpy no longer reads an uninitialized register.** Candidate 3 wrote `rcr(h, m, 18)` with `m` uninitialized. The lift writes `register word m = h;`. After the move, TRACK records that AC holds nothing, so any later read of `h` is a compile error. The unrolled loop is `i < 021`, which C reads as 17.
+- **`skip_return()` is new.** dvd and idv return to call+3, or to call+2 when the quotient overflows (|high dividend| >= |divisor|). `skip_return()` is `idx R`. In the reference build it counts how far past its inline words the call returns. Callers (`jda idv / lac \t1 / opr` in M6) have no C form yet. That is an open question for M6.
+- **A JDA `register` parameter is IO at entry.** dvd takes its low dividend this way. idv's `scr 9s; scr 8s` shifts the caller's IO sign into the low dividend's last bit, so `integer_divide` also takes `register word lo`. In 200,000 native samples, flipping that bit changed no result. The C keeps the parameter because the machine reads IO.
+- **ENTRY_CELL may give one cell several names.** In sin/cos, cos's entry word is `x_squared` and later `result`. In divide, idv's entry word is `quotient`, which holds |divisor| on the overflow path. Assigning between two names of one cell emits nothing. That generalizes "assigning a param to its own ENTRY_CELL alias".
+- **Symbols.** `SYM("x")` pins a symbol. A file-scope name of up to 6 characters is its own symbol, and a longer one gets a generated symbol (region prefix and counter). C labels always get generated symbols.
+- **ARGS placement uses statement boundaries, not word-level dominators.** It runs on the IR, not on words. It covers mpy, imp and dvd, and corpus `longdiv` places the skip early. `ARGS_DONE()` is still unimplemented because nothing needs it.
+- **SIMH runs without the multiply/divide option** (`set cpu nomdv`). SIMH enables the option by default, which turns `mus` and `dis` into full multiply and divide. Spacewar 3.1 assumes a machine without it.
+- **Harness.** A corpus entry or reference check can take AC, IO and one by-name word. Each call compares AC, IO (for `dword` results) and the return point. The oracle helper lives in `tools/oracle_check.py`, outside the compiler tree that G3 lints.
+- **Lifted coverage.** `pdp1cc build` reports how many words of the final image come from compiled C, out of all words placed. The constants pool counts as unlifted because the unlifted `constants` directive places it.
 
 ## Open questions and risks
 
