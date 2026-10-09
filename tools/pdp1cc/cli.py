@@ -43,13 +43,17 @@ def main(argv: list[str] | None = None) -> int:
     from . import splice
     if args.cmd == "build":
         return splice.build(args.toml)
-    from .gate import corpus, reject
+    from .gate import corpus, hints, reject
     _, regions = splice.load(args.lift.resolve())
     print("G2 corpus: SIMH against the native reference build")
     failed = corpus.gate(args.corpus, [r.c for r in regions], args.simh.resolve(),
                          args.macro1.resolve(), args.work.resolve())
     print("rejects: programs the dialect must refuse")
     failed |= reject.gate(args.reject)
+    lifted = [r.c for r in regions]
+    corpus_files = sorted(args.corpus.glob("*.c"))
+    print("G5 hints: deleting any hint must change the output")
+    failed |= hints.gate(lifted + corpus_files)
     print("gate " + ("FAILED" if failed else "ok"))
     return failed
 
