@@ -16,6 +16,17 @@
  * `a + b` is `lac a / add b`. Comparisons are only against 0 and test the
  * sign bit and zero exactly as the skip group does (so -0 < 0 holds and
  * -0 == 0 does not). A negative C constant -n is the ones' complement of n.
+ *
+ * Calling conventions. JDA: the first plain parameter arrives in AC and is
+ * stored in the entry word, which is its storage. A `register` parameter
+ * arrives in IO. A BYNAME parameter is the word after the call (`lac x`),
+ * which the callee fetches with `xct` each time it reads the parameter, and
+ * the callee returns past it. BLOCK: no entry word and no prologue; entered
+ * by a jump with its plain parameter in AC. A JDA function whose returns all
+ * tail-call one BLOCK shares that block's exit. skip_return() makes the
+ * current call return one word further, skipping the caller's next word.
+ * ENTRY_CELL(f) names f's entry word; several names may share it.
+ * SYM("x") gives a C name the Macro symbol x.
  */
 #ifndef PDP1_H
 #define PDP1_H
@@ -23,8 +34,23 @@
 #if defined(__PDP1CC__)
 
 typedef int word;
+typedef struct dword { word hi, lo; } dword;
 #define JDA __attribute__((pdp1_jda))
+#define BLOCK __attribute__((pdp1_block))
+#define BYNAME __attribute__((pdp1_byname))
+#define SYM(s) __attribute__((pdp1_sym(s)))
+#define ENTRY_CELL(f) __attribute__((pdp1_entry_cell(f)))
 void rcl(word hi, word lo, int n);
+void rcr(word hi, word lo, int n);
+void scl(word hi, word lo, int n);
+void scr(word hi, word lo, int n);
+void mus(word hi, word lo, word m);
+void dis(word hi, word lo, word m);
+word ral(word a, int n);
+word rar(word a, int n);
+word ril(word io, int n);
+word rir(word io, int n);
+void skip_return(void);
 
 #elif defined(__cplusplus)
 
@@ -32,6 +58,10 @@ void rcl(word hi, word lo, int n);
 #include <cstdlib>
 
 #define JDA
+#define BLOCK
+#define BYNAME
+#define SYM(s)
+#define ENTRY_CELL(f)
 
 typedef std::uint32_t pdp1_bits;
 static const pdp1_bits PDP1_MASK = (1u << 18) - 1;
@@ -76,6 +106,8 @@ struct word {
     friend bool operator>(word a, int z)  { return !(a <= z); }
     friend bool operator==(word a, word b) { return a.v == b.v; }                            /* sza, sas */
     friend bool operator!=(word a, word b) { return a.v != b.v; }
+    word &operator+=(word b) { return *this = *this + b; }
+    word &operator-=(word b) { return *this = *this - b; }
     word &operator++() {                                 /* idx, isp */
         v = v + 1;
         if (v >= PDP1_MASK) v = (v + 1) & PDP1_MASK;
@@ -83,14 +115,74 @@ struct word {
     }
 };
 
-/* rcl ns: rotate the 36-bit AC:IO pair left (h is AC, l is IO). */
-static inline void rcl(word &h, word &l, int n) {
+/* The AC:IO pair: hi is AC, lo is IO. */
+struct dword { word hi, lo; };
+
+/* Single-register rotates: ral/rar on AC, ril/rir on IO. */
+static inline word ral(word a, int n) {
+    while (n--) a.v = ((a.v << 1) | (a.v >> 17)) & PDP1_MASK;
+    return a;
+}
+static inline word rar(word a, int n) {
+    while (n--) a.v = ((a.v >> 1) | ((a.v & 1) << 17)) & PDP1_MASK;
+    return a;
+}
+static inline word ril(word io, int n) { return ral(io, n); }
+static inline word rir(word io, int n) { return rar(io, n); }
+
+/* Pair operations on the 36-bit AC:IO register (h is AC, l is IO). */
+static inline void rcl(word &h, word &l, int n) {        /* rcl ns */
     while (n--) {
         pdp1_bits c = (h.v >> 17) & 1;
         h.v = ((h.v << 1) | ((l.v >> 17) & 1)) & PDP1_MASK;
         l.v = ((l.v << 1) | c) & PDP1_MASK;
     }
 }
+static inline void rcr(word &h, word &l, int n) {        /* rcr ns */
+    while (n--) {
+        pdp1_bits c = l.v & 1;
+        l.v = ((l.v >> 1) | ((h.v & 1) << 17)) & PDP1_MASK;
+        h.v = ((h.v >> 1) | (c << 17)) & PDP1_MASK;
+    }
+}
+static inline void scl(word &h, word &l, int n) {        /* scl ns: sign of h kept */
+    while (n--) {
+        pdp1_bits s = h.v & PDP1_SIGN;
+        h.v = s | ((h.v << 1) & (PDP1_MASK >> 1)) | ((l.v >> 17) & 1);
+        l.v = ((l.v << 1) | (s ? 1 : 0)) & PDP1_MASK;
+    }
+}
+static inline void scr(word &h, word &l, int n) {        /* scr ns: sign of h kept */
+    while (n--) {
+        l.v = ((l.v >> 1) | ((h.v & 1) << 17)) & PDP1_MASK;
+        h.v = (h.v & PDP1_SIGN) | (h.v >> 1);
+    }
+}
+/* Multiply step `mus m` on a machine without the multiply/divide option. */
+static inline void mus(word &h, word &l, word m) {
+    pdp1_bits ac = h.v;
+    if (l.v & 1) {
+        ac += m.v;
+        if (ac > PDP1_MASK) ac = (ac + 1) & PDP1_MASK;
+    }
+    l.v = (l.v >> 1) | ((ac & 1) << 17);
+    h.v = ac >> 1;
+}
+/* Divide step `dis m` on a machine without the multiply/divide option. */
+static inline void dis(word &h, word &l, word m) {
+    pdp1_bits t = h.v >> 17;
+    pdp1_bits ac = ((h.v << 1) | (l.v >> 17)) & PDP1_MASK;
+    l.v = ((l.v << 1) | (t ^ 1)) & PDP1_MASK;
+    ac = (l.v & 1) ? ac + (m.v ^ PDP1_MASK) : ac + m.v + 1;
+    if (ac > PDP1_MASK) ac = (ac + 1) & PDP1_MASK;
+    if (ac == PDP1_MASK) ac = 0;
+    h.v = ac;
+}
+
+/* Words the current call returns past beyond its inline parameters. The
+ * reference driver clears it before a call and reads it after. */
+static int pdp1_skips;
+static inline void skip_return() { ++pdp1_skips; }
 
 #else
 #error "pdp1.h: compile with g++ (executable reference) or pdp1cc"

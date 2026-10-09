@@ -64,7 +64,7 @@ def lower_all(tree: Path, files: list[Path]) -> dict[str, str]:
 
 
 def isolation() -> list[str]:
-    files = [Path("lift/sqt.c")] + sorted(p.relative_to(ROOT) for p in (ROOT / "tests/corpus").glob("*.c"))
+    files = sorted(p.relative_to(ROOT) for p in [*(ROOT / "lift").glob("*.c"), *(ROOT / "tests/corpus").glob("*.c")])
     want = lower_all(ROOT, files)
     with tempfile.TemporaryDirectory() as tmp:
         tree = Path(tmp)

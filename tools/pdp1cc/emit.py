@@ -34,6 +34,6 @@ def emit(words: list[ir.Word], trace: bool = True) -> str:
         label = f"{w.labels[0]}," if w.labels else ""
         line = f"{label}\t{word_text(w)}"
         if trace:
-            line += f"\t/ {w.rule}" + (f" {w.note}" if w.note else "")
+            line += f"\t/ {w.rule}" + "".join(f" +{v}" for v in w.via) + (f" {w.note}" if w.note else "")
         lines.append(line)
     return "\n".join(lines) + "\n"

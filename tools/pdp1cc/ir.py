@@ -33,11 +33,17 @@ class Extern:       # declared here, defined by other text (unlifted Macro)
 
 
 @dataclass(frozen=True)
-class Entry:        # JDA first parameter: the function's entry word
+class Entry:        # JDA first parameter, or an ENTRY_CELL name: a function's entry word
     sym: str
+    alias: bool = False
 
 
-Storage = Union[Acc, Io, Placed, Extern, Entry]
+@dataclass(frozen=True)
+class ByName:       # BYNAME parameter: the caller's inline word, fetched with xct
+    name: str
+
+
+Storage = Union[Acc, Io, Placed, Extern, Entry, ByName]
 Memory = (Placed, Extern, Entry)
 
 
@@ -84,14 +90,60 @@ class Shift:            # x << n, x >> n with n a compile-time int
 
 
 @dataclass(frozen=True)
-class PairOp:           # rcl(h, l, n) etc: h in AC, l in IO, both updated
+class Rot:              # ral/rar(ac, n), ril/rir(io, n): one register rotated
     op: str
-    hi: Var
-    lo: Var
+    operand: Var
     count: int
 
 
-Expr = Union[Const, Var, PreInc, Neg, Binary, Shift, PairOp]
+@dataclass(frozen=True)
+class PairOp:           # rcl(h, l, n) / mus(h, l, m) etc: h in AC, l in IO, both updated
+    op: str
+    hi: Var
+    lo: Var
+    count: int | None = None        # shift count, or
+    operand: Expr | None = None     # memory operand of a multiply/divide step
+
+
+@dataclass(frozen=True)
+class Param:
+    name: str
+    kind: str           # "ac": entry word / AC, "io": register, "byname": inline word
+
+
+@dataclass(frozen=True)
+class Signature:
+    name: str           # C name
+    sym: str            # Macro symbol of the entry
+    conv: str           # "jda" | "block"
+    params: tuple[Param, ...]
+    returns: str        # "word" | "dword" | "void"
+    exit_sym: str       # the cell returns go through: exit `jmp .` or the by-name `xct`
+
+    @property
+    def inline_count(self) -> int:
+        return sum(p.kind == "byname" for p in self.params)
+
+
+@dataclass(frozen=True)
+class Call:             # f(args): a JDA call, or a tail call of a BLOCK
+    sig: Signature
+    args: tuple[Expr, ...]
+
+
+@dataclass(frozen=True)
+class Half:             # call.hi / call.lo of a dword result
+    call: Call
+    which: str
+
+
+@dataclass(frozen=True)
+class Pair:             # (dword){ hi, lo }
+    hi: Expr
+    lo: Expr
+
+
+Expr = Union[Const, Var, PreInc, Neg, Binary, Shift, Rot, PairOp, Call, Half, Pair]
 
 
 @dataclass(frozen=True)
@@ -109,8 +161,42 @@ class Assign:
 
 
 @dataclass(frozen=True)
+class AssignPair:       # dword p = f(...): p.hi in AC, p.lo in IO
+    hi: Var
+    lo: Var
+    value: Expr
+
+
+@dataclass(frozen=True)
 class Eval:             # expression statement for its effect
     expr: Expr
+
+
+@dataclass(frozen=True)
+class Goto:
+    label: str
+
+
+@dataclass(frozen=True)
+class Labeled:
+    label: str
+    stmt: Stmt
+
+
+@dataclass(frozen=True)
+class Unroll:           # for (int i = 0; i < n; i++) S with i unused: S n times
+    count: int
+    body: Stmt
+
+
+@dataclass(frozen=True)
+class SkipReturn:       # skip_return(): return one word further
+    pass
+
+
+@dataclass(frozen=True)
+class ArgsDone:         # the inline-parameter skip, placed by inline.place_args
+    pass
 
 
 @dataclass(frozen=True)
@@ -140,24 +226,28 @@ class Block:
     stmts: tuple[Stmt, ...]
 
 
-Stmt = Union[Assign, Eval, If, Forever, Continue, Return, Block]
+Stmt = Union[Assign, AssignPair, Eval, If, Forever, Continue, Return, Block, Goto, Labeled,
+             Unroll, SkipReturn, ArgsDone]
 
 
 # ----------------------------------------------------------- unit structure
 
 @dataclass(frozen=True)
 class Function:
-    sym: str
-    conv: str                   # "jda"
-    param: Var | None
+    sig: Signature
+    params: tuple[Var, ...]
     body: Block
-    returns_value: bool
+
+    @property
+    def sym(self) -> str:
+        return self.sig.sym
 
 
 @dataclass(frozen=True)
 class Datum:
     sym: str
     value: int
+    name: str           # C name
 
 
 TopItem = Union[Function, Datum]
@@ -166,6 +256,8 @@ TopItem = Union[Function, Datum]
 @dataclass(frozen=True)
 class Unit:
     items: tuple[TopItem, ...]
+    signatures: dict[str, Signature]
+    next_label: int     # generated symbols already used: layout continues from here
 
 
 # ------------------------------------------------------------------ output
@@ -209,6 +301,7 @@ class Word:
     i: bool = False
     labels: tuple[str, ...] = ()
     note: str = ""      # trace detail, e.g. the skip-table row
+    via: tuple[str, ...] = ()   # rules that shaped this word without emitting their own
 
 
 @dataclass(frozen=True)

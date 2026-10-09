@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .cli import compile_file
+from .rules import RULES
 
 LABEL_DEF = re.compile(r"^([a-z0-9]+),", re.M)
 LISTING_WORD = re.compile(r"^\s*\d*\s+([0-7]{5}) ([0-7]{6})(?:\s+(.*))?$")
@@ -62,6 +63,16 @@ def listing(path: Path) -> tuple[dict[int, tuple[str, str]], int | None]:
         elif m := LISTING_WORD.match(line):
             words.setdefault(int(m.group(1), 8), (m.group(2), m.group(3) or ""))
     return words, variables
+
+
+def lifted_coverage(lst: Path) -> tuple[int, int]:
+    """(words emitted by compiled C, all words placed) in an assembled listing.
+    A compiled word's listing line carries its rule id; the constants pool
+    is placed by unlifted text and counts as not lifted."""
+    words, _ = listing(lst)
+    compiled = sum(1 for _, text in words.values()
+                   if (m := re.search(r"/\s*([A-Z][A-Z0-9-]+)", text)) and m.group(1) in RULES)
+    return compiled, len(words)
 
 
 def diagnose(got_lst: Path, want_lst: Path) -> list[str]:
@@ -117,6 +128,8 @@ def build(toml_path: Path) -> int:
         return 1
     got = hashlib.sha256((work / "spliced.rim").read_bytes()).hexdigest()
     want = cfg["oracle_sha256"]
+    compiled, total = lifted_coverage(work / "spliced.lst")
+    print(f"  lifted coverage: {compiled}/{total} words ({100 * compiled / total:.1f}%) from compiled C")
     if got == want:
         print(f"  rim {got}  MATCH")
         return 0

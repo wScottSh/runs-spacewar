@@ -20,6 +20,17 @@ def ac_skip_when(op: str) -> str:
     return AC_SKIP[op]
 
 
+# IO compared with 0: the skip group tests only IO's sign.
+IO_SKIP: dict[str, str] = {
+    "<": "spi i",
+    ">=": "spi",
+}
+
+
+def io_skip_when(op: str) -> str | None:
+    return IO_SKIP.get(op)
+
+
 def isp_skip_when(op: str) -> str | None:
     """`++m >= 0` is `isp m`. `++m < 0` has no skip: callers use IF-MULTI."""
     return "isp" if op == ">=" else None

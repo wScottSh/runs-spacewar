@@ -9,7 +9,7 @@ from . import dialect, emit, front, layout
 
 
 def compile_file(path: Path, label_prefix: str = "z", trace: bool = True) -> str:
-    unit = dialect.lower_unit(front.parse(path))
+    unit = dialect.lower_unit(front.parse(path), label_prefix)
     return emit.emit(layout.place(unit, label_prefix), trace)
 
 
