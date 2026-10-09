@@ -27,6 +27,12 @@
  * current call return one word further, skipping the caller's next word.
  * ENTRY_CELL(f) names f's entry word; several names may share it.
  * SYM("x") gives a C name the Macro symbol x.
+ *
+ * Under g++ the macros below are empty. The reference build
+ * (tools/pdp1cc/gate/reference.py) binds the two storage facts a macro
+ * cannot spell: a JDA function's first parameter and every ENTRY_CELL name
+ * of it become one cell, which the call fills; a BYNAME parameter becomes a
+ * `const word &` to the caller's word, read again at every use.
  */
 #ifndef PDP1_H
 #define PDP1_H

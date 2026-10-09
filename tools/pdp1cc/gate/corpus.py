@@ -1,7 +1,7 @@
 """G2: compile each non-Spacewar corpus program with pdp1cc, assemble it with
 macro1, run each entry in SIMH, and compare every call's AC, IO (for dword
 results), return point and every placed word with the native reference
-build. Then check rule coverage: every registered rule must be exercised by
+build. Every entry word of a JDA function is compared too. Then check rule coverage: every registered rule must be exercised by
 at least two corpus programs, as the rule of a word or as a rule that shaped
 one (`via`)."""
 from __future__ import annotations
@@ -48,6 +48,7 @@ class Program:
     calls: list[simh.Inputs]
     words: list[ir.Word]
     placed: list[ir.Datum]
+    functions: list[ir.Function]
 
 
 def lower(path: Path, prefix: str = "zz") -> tuple[ir.Unit, list[ir.Word]]:
@@ -63,7 +64,8 @@ def load(path: Path) -> Program:
     unit, words = lower(path)
     entries = [unit.signatures[name] for name in m.group(1).split(",")]
     placed = [t for t in unit.items if isinstance(t, ir.Datum)]
-    return Program(path, entries, calls_for(ac), words, placed)
+    functions = [t for t in unit.items if isinstance(t, ir.Function)]
+    return Program(path, entries, calls_for(ac), words, placed, functions)
 
 
 def assemble(prog: Program, macro1: Path, work: Path) -> tuple[Path, dict[str, int]]:
@@ -99,17 +101,27 @@ def compare(calls: list[simh.Inputs], machine: list[simh.Outcome], native: list[
     return diffs
 
 
+def watched(prog: Program) -> list[tuple[str, str, str]]:
+    """(label, Macro symbol, native expression) of every word compared after
+    each call: the placed words and the entry words of defined JDA functions."""
+    out = [(d.name, d.sym, d.name) for d in prog.placed]
+    out += [(f"entry word of {f.sig.name}", f.sig.sym, reference.cell(f.sig.name))
+            for f in prog.functions if reference.entry_param(f.sig)]
+    return out
+
+
 def run_program(prog: Program, simh_bin: Path, macro1: Path, work: Path) -> list[str]:
     rim, symbols = assemble(prog, macro1, work)
+    watch = watched(prog)
     diffs = []
     for sig in prog.entries:
         machine = simh.run_jda(simh_bin, rim, symbols[sig.sym], prog.calls, bool(sig.inline_count),
-                               [symbols[d.sym] for d in prog.placed])
+                               [symbols[sym] for _, sym, _ in watch])
         binary = reference.build([prog.path], sig, work / f"{prog.path.stem}-{sig.name}",
-                                 [d.name for d in prog.placed])
+                                 [expr for _, _, expr in watch])
         native = reference.run(binary, prog.calls)
         diffs += [f"{sig.name} {d}" for d in
-                  compare(prog.calls, machine, native, sig, [d.name for d in prog.placed])]
+                  compare(prog.calls, machine, native, sig, [label for label, _, _ in watch])]
     return diffs
 
 

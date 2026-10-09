@@ -42,13 +42,17 @@ def signature(c_file: Path, name: str) -> ir.Signature:
 
 
 def check(label: str, lift_files: list[str], entry: str, calls: list[Inputs], domain: str) -> int:
+    """Also compares, after every call, the entry word of each JDA function
+    the lifted files define."""
     files = [ROOT / f for f in lift_files]
     sig = signature(files[-1], entry)
-    native = reference.build(files, sig, ROOT / "build/ref" / entry)
+    cells = [s for s in reference.signatures(files).values() if reference.entry_param(s)]
+    native = reference.build(files, sig, ROOT / "build/ref" / entry,
+                             [reference.cell(s.name) for s in cells])
     want = simh.run_jda(ROOT / "build/pdp1", ROOT / "build/oracle.rim", oracle_symbol(sig.sym),
-                        calls, bool(sig.inline_count))
+                        calls, bool(sig.inline_count), [oracle_symbol(s.sym) for s in cells])
     got = reference.run(native, calls)
-    diffs = corpus.compare(calls, want, got, sig, [])
+    diffs = corpus.compare(calls, want, got, sig, [f"entry word {s.sym}" for s in cells])
     returns = Counter(o.returned_past for o in want)
     print(f"{label}: {len(calls)} calls ({domain}), {len(calls) - len(diffs)} match, "
           f"{len(diffs)} differ; oracle returned past call+1 by {dict(sorted(returns.items()))}")
