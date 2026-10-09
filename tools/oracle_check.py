@@ -1,14 +1,20 @@
 """G1 reference checks: a native g++ build of lifted C against SIMH running
 the same routine in the ORACLE binary (build/oracle.rim), call by call.
-Shared by tools/check-*-reference.py."""
+Shared by tools/check-*-reference.py.
+
+Addresses come from the listing of the last `pdp1cc build`, which names
+every lifted routine by the symbol the compiler gave it, pinned or
+generated. That build matched the oracle, so its addresses are the
+oracle's. Run `uv run pdp1cc build lift.toml` first."""
 from __future__ import annotations
 
+import hashlib
 import random
 import re
 from collections import Counter
 from pathlib import Path
 
-from pdp1cc import dialect, front, ir
+from pdp1cc import dialect, front, ir, splice
 from pdp1cc.gate import corpus, reference, simh
 from pdp1cc.gate.simh import Inputs
 
@@ -32,28 +38,44 @@ def seeded(seed: int, n: int) -> list[int]:
     return [rng.randrange(1 << ir.WORD_BITS) for _ in range(n)]
 
 
-def oracle_symbol(name: str) -> int:
-    lst = (ROOT / "build/oracle.lst").read_text(errors="replace")
-    return int(re.search(rf"^ {name}\s+([0-7]{{6}})$", lst, re.M).group(1), 8)
+def built_symbols() -> dict[str, int]:
+    """The symbol table of the last build, which must match the oracle and be
+    newer than every lifted file."""
+    toml = ROOT / "lift.toml"
+    cfg, regions = splice.load(toml)
+    rim, lst = ROOT / "build/lift/spliced.rim", ROOT / "build/lift/spliced.lst"
+    if not lst.exists() or hashlib.sha256(rim.read_bytes()).hexdigest() != cfg["oracle_sha256"]:
+        raise SystemExit("build/lift does not hold a build matching the oracle: "
+                         "run `uv run pdp1cc build lift.toml`")
+    if any(f.stat().st_mtime > lst.stat().st_mtime for f in [toml, *(r.c for r in regions)]):
+        raise SystemExit("build/lift is older than the lifted C: run `uv run pdp1cc build lift.toml`")
+    text = lst.read_text(errors="replace")
+    return {s: int(v, 8) for s, v in re.findall(r"^ (\w+)\s+([0-7]{6})$", text, re.M)}
 
 
-def signature(c_file: Path, name: str) -> ir.Signature:
-    return dialect.lower_unit(front.parse(c_file)).signatures[name]
+def lifted_signatures(c_files: list[Path]) -> dict[str, ir.Signature]:
+    """Each file lowered with its region's label prefix, as the build lowers it."""
+    _, regions = splice.load(ROOT / "lift.toml")
+    prefix = {r.c.resolve(): r.prefix for r in regions}
+    return {name: s for f in c_files
+            for name, s in dialect.lower_unit(front.parse(f), prefix[f.resolve()]).signatures.items()}
 
 
 def check(label: str, lift_files: list[str], entry: str, calls: list[Inputs], domain: str) -> int:
     """Also compares, after every call, the entry word of each JDA function
     the lifted files define."""
     files = [ROOT / f for f in lift_files]
-    sig = signature(files[-1], entry)
-    cells = [s for s in reference.signatures(files).values() if reference.entry_param(s)]
+    sigs = lifted_signatures(files)
+    sig = sigs[entry]
+    cells = [s for s in sigs.values() if reference.entry_param(s)]
     native = reference.build(files, sig, ROOT / "build/ref" / entry,
                              [reference.cell(s.name) for s in cells])
-    want = simh.run_jda(ROOT / "build/pdp1", ROOT / "build/oracle.rim", oracle_symbol(sig.sym),
-                        calls, bool(sig.inline_count), [oracle_symbol(s.sym) for s in cells],
+    address = built_symbols()
+    want = simh.run_jda(ROOT / "build/pdp1", ROOT / "build/oracle.rim", address[sig.sym],
+                        calls, bool(sig.inline_count), [address[s.sym] for s in cells],
                         op="xct" if sig.conv == "xct" else "jda")
     got = reference.run(native, calls)
-    diffs = corpus.compare(calls, want, got, sig, [f"entry word {s.sym}" for s in cells])
+    diffs = corpus.compare(calls, want, got, sig, [f"entry word of {s.name}" for s in cells])
     returns = Counter(o.returned_past for o in want)
     print(f"{label}: {len(calls)} calls ({domain}), {len(calls) - len(diffs)} match, "
           f"{len(diffs)} differ; oracle returned past call+1 by {dict(sorted(returns.items()))}")
