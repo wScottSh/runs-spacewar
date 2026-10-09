@@ -1,4 +1,4 @@
-/* corpus: entry=addchk,subchk */
+/* corpus: entry=addchk,subchk mirrors=idv */
 /* Checked add (a + b) and subtract (b - a) of a word passed by name. The
  * result is in AC; IO holds 0, or the wrapped result when the operation
  * overflowed. Without overflow the call skips the word after b. */

@@ -32,7 +32,7 @@ RULES: dict[str, str] = {
     "ARGS": "skip the inline parameters: idx R, placed where AC is dead after the last read",
     "SKIP-RETURN": "skip_return(): idx R, the call returns one word further",
     "TAIL-CALL": "return blk(...) for a BLOCK blk: arguments, jmp blk",
-    "LAY-FALLTHROUGH": "a tail call of the BLOCK laid out next emits no jump",
+    "LAY-FALLTHROUGH": "a tail call of the BLOCK laid out next emits no jump; tags that block's first word",
     "LAY-ADOPT": "a function whose returns all tail-call one BLOCK patches that block's exit",
     "LOOP-UNROLL": "for (int i = 0; i < N; i++) S: S emitted N times (N read as C reads it)",
     "ST-ENTRY-CELL": "ENTRY_CELL(f) object: f's entry word under another name",

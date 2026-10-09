@@ -91,7 +91,7 @@ class FunctionLowerer:
     label_prev: dict[str, State] = field(default_factory=dict)
     label_out: dict[str, State | None] = field(default_factory=dict)
     byname_cell_done: bool = False
-    fallthrough_pending: bool = False
+    fell_through: bool = False      # a tail call elided its jump to the next item
 
     def label(self) -> str:
         return self.namer.fresh()
@@ -125,12 +125,13 @@ class FunctionLowerer:
             body = ir.Block(body.stmts + (ir.Return(None),))
         plain = [r for r in _returns(body) if r not in tails]
         self.last_return = plain[-1] if plain else None    # owns the exit cell
+        self.final = _final_stmt(body)      # only a tail call here may fall through
         self.body = body
 
         start = self.namer.counter
         for _ in range(MAX_PASSES):
             self.namer.counter = start
-            self.label_out, self.byname_cell_done, self.fallthrough_pending = {}, False, False
+            self.label_out, self.byname_cell_done, self.fell_through = {}, False, False
             items = self.header()
             body_items, end = self.stmt(body, self.entry_state())
             if end is not None:
@@ -141,8 +142,6 @@ class FunctionLowerer:
             self.label_prev = dict(self.label_out)
         else:
             raise SelectError(f"{fn.sig.name}: label states did not converge")
-        if self.fallthrough_pending:
-            items = _tag_last(items, "LAY-FALLTHROUGH")
         return items
 
     def header(self) -> list[ir.Item]:
@@ -346,7 +345,7 @@ class FunctionLowerer:
 
     def return_(self, s: ir.Return, st: State):
         if isinstance(s.value, ir.Call) and s.value.sig.conv == "block":
-            return self.tail_call(s.value, st)
+            return self.tail_call(s.value, st, s is self.final)
         items: list[ir.Item] = []
         if isinstance(s.value, ir.Pair):
             items, st = self.to_ac(s.value.hi, st)
@@ -365,7 +364,7 @@ class FunctionLowerer:
             return items + [ir.LabelDef(self.sig.exit_sym), W("jmp", "LAY-EXIT", ir.Here())], None
         return items + [W("jmp", "RET", ir.Sym(self.sig.exit_sym))], None
 
-    def tail_call(self, c: ir.Call, st: State):
+    def tail_call(self, c: ir.Call, st: State, final: bool):
         items: list[ir.Item] = []
         for p, arg in zip(c.sig.params, c.args):
             if p.kind == "ac":
@@ -377,11 +376,8 @@ class FunctionLowerer:
                 self.need_io(arg, st)
             elif not (isinstance(arg, ir.Var) and isinstance(arg.storage, ir.ByName)):
                 raise SelectError(f"{c.sig.name}: a BLOCK's BYNAME parameter is the caller's own")
-        if self.next_sym == c.sig.sym:
-            if items:
-                items[-1] = replace(items[-1], via=items[-1].via + ("LAY-FALLTHROUGH",))
-            else:
-                self.fallthrough_pending = True
+        if final and self.next_sym == c.sig.sym:
+            self.fell_through = True
             return items, None
         return items + [W("jmp", "TAIL-CALL", ir.Sym(c.sig.sym))], None
 
@@ -481,12 +477,17 @@ class FunctionLowerer:
                           "name a static to hold it")
 
 
-def _tag_last(items: list[ir.Item], rule: str) -> list[ir.Item]:
-    for n in range(len(items) - 1, -1, -1):
-        if isinstance(items[n], ir.Word):
-            items[n] = replace(items[n], via=items[n].via + (check(rule),))
-            return items
-    raise SelectError("no word to carry the fallthrough")
+def _final_stmt(b: ir.Block) -> ir.Stmt | None:
+    """The statement laid out last in a function body."""
+    last: ir.Stmt | None = b
+    while isinstance(last, (ir.Labeled, ir.Block)):
+        if isinstance(last, ir.Block):
+            if not last.stmts:
+                return None
+            last = last.stmts[-1]
+        else:
+            last = last.stmt
+    return last
 
 
 def _ends_in_transfer(b: ir.Block) -> bool:

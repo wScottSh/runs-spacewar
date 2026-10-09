@@ -1,4 +1,4 @@
-/* corpus: entry=udiv,div1 */
+/* corpus: entry=udiv,div1 mirrors=dvd */
 /* Long division of the 36-bit AC:IO by a divisor passed by name, in divide
  * steps. The quotient comes back in AC, the remainder's magnitude in IO,
  * and the call skips the word after the divisor. When the quotient cannot
