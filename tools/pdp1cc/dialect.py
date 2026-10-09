@@ -8,6 +8,7 @@ from . import ir
 
 PAIR_OPS = {"rcl"}
 BIN_OPS = {"+", "-", "&", "|", "^"}
+MACRO_SYMBOL_LEN = 6
 CMP_OPS = {"<", ">=", "==", "!=", "<=", ">"}
 
 
@@ -90,6 +91,11 @@ def lower_unit(ast: c_ast.FileAST) -> ir.Unit:
                 raise _err(ext, f"{ext.name}: uninitialized file-scope object "
                                 "(pool variable) is not in the implemented dialect yet")
 
+    for ext in ast.ext:
+        name = ext.decl.name if isinstance(ext, c_ast.FuncDef) else getattr(ext, "name", None)
+        if name in globals_ or isinstance(ext, c_ast.FuncDef):
+            _check_symbol(name, ext)
+
     items: list[ir.TopItem] = []
     for ext in ast.ext:
         if isinstance(ext, c_ast.FuncDef):
@@ -99,6 +105,13 @@ def lower_unit(ast: c_ast.FileAST) -> ir.Unit:
                 raise _err(ext, f"{ext.name}: only `word` objects can be placed")
             items.append(ir.Datum(ext.name, to_word(c_int(ext.init), ext.init)))
     return ir.Unit(tuple(items))
+
+
+def _check_symbol(name: str, node: c_ast.Node) -> None:
+    """A file-scope C name is its Macro symbol; macro1 keeps 6 characters."""
+    if len(name) > MACRO_SYMBOL_LEN:
+        raise _err(node, f"{name}: a file-scope name is a Macro symbol and must be at most "
+                         f"{MACRO_SYMBOL_LEN} characters")
 
 
 def _lower_function(fn: c_ast.FuncDef, globals_: dict[str, ir.Storage]) -> ir.Function:
