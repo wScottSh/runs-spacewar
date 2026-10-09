@@ -1,9 +1,9 @@
 """G2: compile each non-Spacewar corpus program with pdp1cc, assemble it with
 macro1, run each entry in SIMH, and compare every call's AC, IO (for dword
 results), return point and every placed word with the native reference
-build. Then check rule coverage: every registered rule must be exercised by
-at least two corpus programs, as the rule of a word or as a rule that shaped
-one (`via`)."""
+build. Every entry word of a JDA function is compared too. Then check rule coverage: every registered rule must be exercised by
+at least two corpus programs that do not mirror a lifted routine, as the
+rule of a word or as a rule that chose part of that word (`via`)."""
 from __future__ import annotations
 
 import re
@@ -16,7 +16,8 @@ from .. import dialect, emit, front, ir, layout
 from ..rules import RULES
 from . import reference, simh
 
-HEADER = re.compile(r"/\* corpus: entry=([\w,]+)(?: inputs=([0-7]+)\.\.([0-7]+))? \*/")
+HEADER = re.compile(r"/\* corpus: ((?:\w+=\S+ ?)+)\*/")
+HEADER_KEYS = {"entry", "inputs", "mirrors"}
 ORIGIN = 0o100
 MIN_PROGRAMS_PER_RULE = 2
 
@@ -48,6 +49,9 @@ class Program:
     calls: list[simh.Inputs]
     words: list[ir.Word]
     placed: list[ir.Datum]
+    functions: list[ir.Function]
+    spaces: list[ir.Space]
+    mirrors: str | None = None      # the lifted routine this program copies the shape of
 
 
 def lower(path: Path, prefix: str = "zz") -> tuple[ir.Unit, list[ir.Word]]:
@@ -58,12 +62,23 @@ def lower(path: Path, prefix: str = "zz") -> tuple[ir.Unit, list[ir.Word]]:
 def load(path: Path) -> Program:
     m = HEADER.search(path.read_text())
     if not m:
-        raise SystemExit(f"{path}: missing `/* corpus: entry=NAME[,NAME] [inputs=A..B] */`")
-    ac = (list(range(int(m.group(2), 8), int(m.group(3), 8) + 1)) if m.group(2) else default_ac())
+        raise SystemExit(f"{path}: missing `/* corpus: entry=NAME[,NAME] [inputs=A..B] "
+                         "[mirrors=ROUTINE] */`")
+    fields = dict(kv.split("=", 1) for kv in m.group(1).split())
+    if fields.keys() - HEADER_KEYS or "entry" not in fields:
+        raise SystemExit(f"{path}: corpus header keys are {sorted(HEADER_KEYS)}, entry required")
+    if "inputs" in fields:
+        lo, hi = (int(x, 8) for x in fields["inputs"].split(".."))
+        ac = list(range(lo, hi + 1))
+    else:
+        ac = default_ac()
     unit, words = lower(path)
-    entries = [unit.signatures[name] for name in m.group(1).split(",")]
+    entries = [unit.signatures[name] for name in fields["entry"].split(",")]
     placed = [t for t in unit.items if isinstance(t, ir.Datum)]
-    return Program(path, entries, calls_for(ac), words, placed)
+    functions = [t for t in unit.items if isinstance(t, ir.Function)]
+    spaces = [t for t in unit.items if isinstance(t, ir.Space)]
+    return Program(path, entries, calls_for(ac), words, placed, functions, spaces,
+                   fields.get("mirrors"))
 
 
 def assemble(prog: Program, macro1: Path, work: Path) -> tuple[Path, dict[str, int]]:
@@ -99,17 +114,32 @@ def compare(calls: list[simh.Inputs], machine: list[simh.Outcome], native: list[
     return diffs
 
 
+def watched(prog: Program) -> list[tuple[str, str, int, str]]:
+    """(label, Macro symbol, offset, native expression) of every word compared
+    after each call: placed words, reserved words (not pointers, whose native
+    value is a host address), and the entry words of defined JDA functions."""
+    out = [(d.name, d.sym, 0, d.name) for d in prog.placed]
+    for s in prog.spaces:
+        if not s.pointer:
+            out += [(f"{s.name}[{k}]", s.sym, k, f"{s.name}[{k}]") if s.array else
+                    (s.name, s.sym, 0, s.name) for k in range(s.size)]
+    out += [(f"entry word of {f.sig.name}", f.sig.sym, 0, reference.cell(f.sig.name))
+            for f in prog.functions if reference.entry_param(f.sig)]
+    return out
+
+
 def run_program(prog: Program, simh_bin: Path, macro1: Path, work: Path) -> list[str]:
     rim, symbols = assemble(prog, macro1, work)
+    watch = watched(prog)
     diffs = []
     for sig in prog.entries:
         machine = simh.run_jda(simh_bin, rim, symbols[sig.sym], prog.calls, bool(sig.inline_count),
-                               [symbols[d.sym] for d in prog.placed])
+                               [symbols[sym] + k for _, sym, k, _ in watch])
         binary = reference.build([prog.path], sig, work / f"{prog.path.stem}-{sig.name}",
-                                 [d.name for d in prog.placed])
+                                 [expr for *_, expr in watch])
         native = reference.run(binary, prog.calls)
         diffs += [f"{sig.name} {d}" for d in
-                  compare(prog.calls, machine, native, sig, [d.name for d in prog.placed])]
+                  compare(prog.calls, machine, native, sig, [label for label, *_ in watch])]
     return diffs
 
 
@@ -118,16 +148,22 @@ def rules_used(words: list[ir.Word]) -> Counter:
 
 
 def coverage(programs: list[Program], lift_words: dict[str, Counter]) -> tuple[list[str], bool]:
+    """A rule needs MIN_PROGRAMS_PER_RULE users that do not mirror a lifted
+    routine. Mirrors are listed in parentheses and do not count."""
     used = {p.path.stem: rules_used(p.words) for p in programs}
-    users = {r: [name for name, c in used.items() if c[r]] for r in RULES}
-    lines = [f"{'rule':<16}{'lift words':>11}  corpus programs"]
+    mirror = {p.path.stem for p in programs if p.mirrors}
+    lines = [f"{'rule':<18}{'lift words':>11}  independent corpus programs (mirrors)"]
     ok = True
     for r in RULES:
+        users = [name for name, c in used.items() if c[r]]
+        independent = [u for u in users if u not in mirror]
+        mirrors = [u for u in users if u in mirror]
         lift = sum(c[r] for c in lift_words.values())
         flag = ""
-        if len(users[r]) < MIN_PROGRAMS_PER_RULE:
+        if len(independent) < MIN_PROGRAMS_PER_RULE:
             ok, flag = False, "  UNDER-TESTED"
-        lines.append(f"{r:<16}{lift:>11}  {len(users[r])} {','.join(users[r])}{flag}")
+        shown = ",".join(independent) + (f" ({','.join(mirrors)})" if mirrors else "")
+        lines.append(f"{r:<18}{lift:>11}  {len(independent)} {shown}{flag}")
     return lines, ok
 
 
@@ -135,7 +171,10 @@ def gate(corpus_dir: Path, lift_files: list[Path], simh_bin: Path, macro1: Path,
     programs = [load(p) for p in sorted(corpus_dir.glob("*.c"))]
     failed = False
     for prog in programs:
-        diffs = run_program(prog, simh_bin, macro1, work)
+        try:
+            diffs = run_program(prog, simh_bin, macro1, work)
+        except subprocess.CalledProcessError as e:
+            diffs = [f"{' '.join(map(str, e.cmd[:1]))} failed (exit {e.returncode})"]
         status = "ok" if not diffs else f"{len(diffs)} DIFFER"
         calls = len(prog.calls) * len(prog.entries)
         print(f"  {prog.path.name:<16} {calls:>5} calls  {len(prog.words):>3} words  {status}")

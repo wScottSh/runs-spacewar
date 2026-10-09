@@ -91,7 +91,7 @@ class FunctionLowerer:
     label_prev: dict[str, State] = field(default_factory=dict)
     label_out: dict[str, State | None] = field(default_factory=dict)
     byname_cell_done: bool = False
-    fallthrough_pending: bool = False
+    fell_through: bool = False      # a tail call elided its jump to the next item
 
     def label(self) -> str:
         return self.namer.fresh()
@@ -103,13 +103,20 @@ class FunctionLowerer:
     # ------------------------------------------------------------ function
     def lower(self) -> list[ir.Item]:
         fn = self.fn
+        if fn.sig.conv == "jsp" and (target := _forwarded(fn.body)) is not None:
+            return self.forward(target)
         tails = _tail_calls(fn.body)
-        plain = [r for r in _returns(fn.body) if r not in tails]
+        jumps = _indirect_tails(fn.body)
+        plain = [r for r in _returns(fn.body) if r not in tails and r not in jumps]
         if tails:
             targets = {t.value.sig.name for t in tails}
             if plain or len(targets) != 1:
                 raise SelectError(f"{fn.sig.name}: every return must tail-call the same BLOCK")
             self.adopted = tails[0].value.sig
+            if self.adopted.inline_count != fn.sig.inline_count:
+                raise SelectError(
+                    f"{fn.sig.name}: takes {fn.sig.inline_count} inline word(s) but tail-calls "
+                    f"{self.adopted.name}, which returns past {self.adopted.inline_count}")
         elif fn.sig.inline_count:
             if not _any_byname_read(fn.body):
                 raise SelectError(f"{fn.sig.name}: a BYNAME parameter that is never read")
@@ -119,14 +126,15 @@ class FunctionLowerer:
             if fn.sig.returns != "void":
                 raise SelectError(f"{fn.sig.name}: control reaches the end of a value-returning function")
             body = ir.Block(body.stmts + (ir.Return(None),))
-        plain = [r for r in _returns(body) if r not in tails]
+        plain = [r for r in _returns(body) if r not in tails and r not in jumps]
         self.last_return = plain[-1] if plain else None    # owns the exit cell
+        self.final = _final_stmt(body)      # only a tail call here may fall through
         self.body = body
 
         start = self.namer.counter
         for _ in range(MAX_PASSES):
             self.namer.counter = start
-            self.label_out, self.byname_cell_done, self.fallthrough_pending = {}, False, False
+            self.label_out, self.byname_cell_done, self.fell_through = {}, False, False
             items = self.header()
             body_items, end = self.stmt(body, self.entry_state())
             if end is not None:
@@ -137,9 +145,28 @@ class FunctionLowerer:
             self.label_prev = dict(self.label_out)
         else:
             raise SelectError(f"{fn.sig.name}: label states did not converge")
-        if self.fallthrough_pending:
-            items = _tag_last(items, "LAY-FALLTHROUGH")
+        if fn.sig.conv == "xct":
+            return self.xct_body(items)
         return items
+
+    def xct_body(self, items: list[ir.Item]) -> list[ir.Item]:
+        """An XCT function is executed in place by `xct f`: it is one word."""
+        words = [i for i in items if isinstance(i, ir.Word)]
+        if len(words) != 1 or any(isinstance(i, ir.LabelDef) and i.name != self.sig.sym for i in items):
+            raise SelectError(f"{self.sig.name}: an XCT function must lower to exactly one word, "
+                              f"not {len(words)}")
+        return [ir.LabelDef(self.sig.sym), replace(words[0], via=words[0].via + (check("XCT-BODY"),))]
+
+    def forward(self, target: ir.Call) -> list[ir.Item]:
+        """`return g(...)` as a JSP function's whole body: AC still holds the
+        caller's return address, so jumping to g makes g return to that caller."""
+        items: list[ir.Item] = [ir.LabelDef(self.sig.sym)]
+        st = self.entry_state()
+        for p, arg in zip(target.sig.params, target.args):
+            if not (isinstance(arg, ir.Var) and isinstance(arg.storage, ir.Io)):
+                raise SelectError(f"{self.sig.name}: forward {target.sig.name}'s {p.name} in IO")
+            self.need_io(arg, st)
+        return items + [W("jmp", "JSP-FORWARD", ir.Sym(target.sig.sym))]
 
     def header(self) -> list[ir.Item]:
         items: list[ir.Item] = [ir.LabelDef(self.sig.sym)]
@@ -148,13 +175,17 @@ class FunctionLowerer:
             items += [W(None, "JDA-ENTRY", ir.Num(0), note="entry word = parameter"),
                       W("dap", "JDA-PROLOGUE", ir.Sym(exit_sym),
                         via=("LAY-ADOPT",) if self.adopted else ())]
+        elif self.sig.conv == "jsp":
+            exit_sym = (self.adopted or self.sig).exit_sym
+            items.append(W("dap", "JSP-PROLOGUE", ir.Sym(exit_sym),
+                           via=("LAY-ADOPT",) if self.adopted else ()))
         return items
 
     def entry_state(self) -> State:
         ac = frozenset("%" + p.name for p in self.fn.params
                        if isinstance(p.storage, ir.Acc))
         io = frozenset("%" + p.name for p in self.fn.params if isinstance(p.storage, ir.Io))
-        return State(ac if self.sig.conv == "block" else frozenset(), io)
+        return State(ac if self.sig.conv in ("block", "xct") else frozenset(), io)
 
     # ----------------------------------------------------------- statements
     def stmt(self, s: ir.Stmt, st: State | None) -> tuple[list[ir.Item], State | None]:
@@ -186,6 +217,8 @@ class FunctionLowerer:
                 return self.pair_op(p, st)
             case ir.Eval(expr=ir.Call() as c):
                 return self.call(c, st)
+            case ir.Eval(expr=ir.Hw(name=name)):
+                return [W(name, "EX-HW")], hardware_after(name, st)
             case ir.If():
                 return self.if_(s, st)
             case ir.Forever():
@@ -242,6 +275,8 @@ class FunctionLowerer:
                         State(st.ac - {kt}, frozenset({kt, key(value)})))
             case ir.Const(value=0):
                 return [W("cli", "EX-CONST-IO")], State(st.ac - {kt}, frozenset({kt}))
+            case ir.Hw(name="tyi"):
+                return [W("tyi", "EX-HW")], State(st.ac - {kt}, frozenset({kt}))
             case ir.Rot(op=op, operand=v) if op in IO_ROTATES:
                 if v != t:
                     raise SelectError(f"{op} rotates IO in place: write {t.name} = {op}({t.name}, n)")
@@ -271,23 +306,25 @@ class FunctionLowerer:
         if isinstance(c.operand, ir.PreInc):
             t = c.operand.target
             pre: list[ir.Item] = []
+            table = ()
             after = State(frozenset({key(t)}), st.io - {key(t)})
             skip_c = skips.isp_skip_when(c.op)
             skip_not_c = skips.isp_skip_when(skips.NEGATE[c.op])
         elif isinstance(c.operand, ir.Var) and isinstance(c.operand.storage, ir.Io):
             self.need_io(c.operand, st)
-            pre, after = [], st
+            pre, after, table = [], st, ("SKIP-IO",)
             skip_c = skips.io_skip_when(c.op)
             skip_not_c = skips.io_skip_when(skips.NEGATE[c.op])
         else:
             pre, after = self.to_ac(c.operand, st)
+            table = ()
             skip_c = skips.ac_skip_when(c.op)
             skip_not_c = skips.ac_skip_when(skips.NEGATE[c.op])
 
         def skip_word(op: str, rule: str) -> ir.Word:
             if op == "isp":
                 return W("isp", rule, mem(t), note=f"++{t.name} {c.op} 0")
-            return W(op, rule, note=f"{c.op} 0")
+            return W(op, rule, note=f"{c.op} 0", via=table)
 
         then_items, then_end = self.stmt(s.then, after)
         single = (s.orelse is None and skip_not_c is not None
@@ -340,7 +377,9 @@ class FunctionLowerer:
 
     def return_(self, s: ir.Return, st: State):
         if isinstance(s.value, ir.Call) and s.value.sig.conv == "block":
-            return self.tail_call(s.value, st)
+            return self.tail_call(s.value, st, s is self.final)
+        if isinstance(s.value, ir.IndirectCall):
+            return self.indirect_tail_call(s.value, st)
         items: list[ir.Item] = []
         if isinstance(s.value, ir.Pair):
             items, st = self.to_ac(s.value.hi, st)
@@ -353,35 +392,46 @@ class FunctionLowerer:
                 raise SelectError("the low half of a returned dword must be a register local or memory")
         elif s.value is not None:
             items, st = self.to_ac(s.value, st)
+        if self.sig.conv == "xct":
+            return items, None
         if self.sig.inline_count:
             return items + [W("jmp", "RET-INDIRECT", self.exit_cell(), i=True)], None
         if s is self.last_return:
             return items + [ir.LabelDef(self.sig.exit_sym), W("jmp", "LAY-EXIT", ir.Here())], None
         return items + [W("jmp", "RET", ir.Sym(self.sig.exit_sym))], None
 
-    def tail_call(self, c: ir.Call, st: State):
+    def indirect_tail_call(self, c: ir.IndirectCall, st: State):
+        """return p(...): the arguments, then a jump through p."""
+        if c.sig.conv != "block":
+            raise SelectError(f"a tail call through {c.pointer.name} needs a BLOCK function type")
+        items, _ = self.block_args(c.sig, c.args, st)
+        return items + [W("jmp", "TAIL-CALL-INDIRECT", mem(c.pointer), i=True)], None
+
+    def block_args(self, sig: ir.Signature, args, st: State):
         items: list[ir.Item] = []
-        for p, arg in zip(c.sig.params, c.args):
+        for p, arg in zip(sig.params, args):
             if p.kind == "ac":
                 more, st = self.to_ac(arg, st)
                 items += more
             elif p.kind == "io":
                 if not (isinstance(arg, ir.Var) and isinstance(arg.storage, ir.Io)):
-                    raise SelectError(f"{c.sig.name}: pass a register local for {p.name}")
+                    raise SelectError(f"{sig.name}: pass a register local for {p.name}")
                 self.need_io(arg, st)
             elif not (isinstance(arg, ir.Var) and isinstance(arg.storage, ir.ByName)):
-                raise SelectError(f"{c.sig.name}: a BLOCK's BYNAME parameter is the caller's own")
-        if self.next_sym == c.sig.sym:
-            if items:
-                items[-1] = replace(items[-1], via=items[-1].via + ("LAY-FALLTHROUGH",))
-            else:
-                self.fallthrough_pending = True
+                raise SelectError(f"{sig.name}: a BLOCK's BYNAME parameter is the caller's own")
+        return items, st
+
+    def tail_call(self, c: ir.Call, st: State, final: bool):
+        items, _ = self.block_args(c.sig, c.args, st)
+        if final and self.next_sym == c.sig.sym:
+            self.fell_through = True
             return items, None
         return items + [W("jmp", "TAIL-CALL", ir.Sym(c.sig.sym))], None
 
     def call(self, c: ir.Call, st: State) -> tuple[list[ir.Item], State]:
-        """A JDA call: AC argument, `jda f`, then one inline word per BYNAME argument."""
-        if c.sig.conv != "jda":
+        """A JDA, JSP or XCT call: AC argument, the call word, then for JDA one
+        inline word per BYNAME argument."""
+        if c.sig.conv == "block":
             raise SelectError(f"{c.sig.name} is a BLOCK: only `return {c.sig.name}(...)` enters it")
         items: list[ir.Item] = []
         args = dict(zip((p.kind for p in c.sig.params), c.args))
@@ -392,7 +442,9 @@ class FunctionLowerer:
             if not (isinstance(arg, ir.Var) and isinstance(arg.storage, ir.Io)):
                 raise SelectError(f"{c.sig.name}: pass a register local as the IO argument")
             self.need_io(arg, st)
-        items.append(W("jda", "JDA-CALL", ir.Sym(c.sig.sym)))
+        op, rule = {"jda": ("jda", "JDA-CALL"), "jsp": ("jsp", "JSP-CALL"),
+                    "xct": ("xct", "XCT-CALL")}[c.sig.conv]
+        items.append(W(op, rule, ir.Sym(c.sig.sym)))
         for p, arg in zip(c.sig.params, c.args):
             if p.kind == "byname":
                 via = _via(arg) if isinstance(arg, ir.Var) else ()
@@ -443,6 +495,10 @@ class FunctionLowerer:
                 return self.call(e, st)
             case ir.Half(which="hi"):
                 return self.call(e.call, st)
+            case ir.IndirectCall(pointer=p):
+                raise SelectError(f"a call through {p.name} is a jump: write `return {p.name}(...)`")
+            case ir.CodeRef(sig=sig):
+                return [W("law", "EX-CODE", ir.Sym(sig.sym))], State(frozenset(), st.io)
         raise SelectError(f"no rule puts {e} in AC")
 
     def byname_read(self) -> list[ir.Item]:
@@ -475,12 +531,34 @@ class FunctionLowerer:
                           "name a static to hold it")
 
 
-def _tag_last(items: list[ir.Item], rule: str) -> list[ir.Item]:
-    for n in range(len(items) - 1, -1, -1):
-        if isinstance(items[n], ir.Word):
-            items[n] = replace(items[n], via=items[n].via + (check(rule),))
-            return items
-    raise SelectError("no word to carry the fallthrough")
+def _final_stmt(b: ir.Block) -> ir.Stmt | None:
+    """The statement laid out last in a function body."""
+    last: ir.Stmt | None = b
+    while isinstance(last, (ir.Labeled, ir.Block)):
+        if isinstance(last, ir.Block):
+            if not last.stmts:
+                return None
+            last = last.stmts[-1]
+        else:
+            last = last.stmt
+    return last
+
+
+def hardware_after(name: str, st: State) -> State:
+    """tyi reads the typewriter into IO; lsm leaves both registers alone."""
+    return State(st.ac, frozenset()) if name == "tyi" else st
+
+
+def _forwarded(body: ir.Block) -> ir.Call | None:
+    """g(...) when the whole body is `return g(...)` for a JSP g."""
+    if len(body.stmts) == 1 and isinstance(r := body.stmts[0], ir.Return) \
+            and isinstance(r.value, ir.Call) and r.value.sig.conv == "jsp":
+        return r.value
+    return None
+
+
+def _indirect_tails(node) -> list[ir.Return]:
+    return [r for r in _returns(node) if isinstance(r.value, ir.IndirectCall)]
 
 
 def _ends_in_transfer(b: ir.Block) -> bool:

@@ -42,6 +42,18 @@ def load(toml_path: Path) -> tuple[dict, list[Region]]:
     return cfg, regions
 
 
+MACRO_COMMENT = re.compile(r"(^|\s)/.*")
+
+
+def unlifted_text(toml_path: Path) -> str:
+    """The source lines no region covers, with Macro comments removed. A `/`
+    after whitespace starts a comment; `n/` sets the location."""
+    cfg, regions = load(toml_path)
+    lines = (toml_path.parent / cfg["source"]).read_text().split("\n")
+    return "\n".join(MACRO_COMMENT.sub("", line) for n, line in enumerate(lines, 1)
+                     if not any(r.first <= n <= r.last for r in regions))
+
+
 def interface_errors(src_lines: list[str], region: Region, compiled: str) -> list[str]:
     """Symbols the original region defines and unlifted text uses must still be defined."""
     inside = "\n".join(src_lines[region.first - 1:region.last])

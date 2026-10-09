@@ -1,4 +1,4 @@
-/* corpus: entry=poly,polyhalf */
+/* corpus: entry=poly,polyhalf mirrors=sin */
 /* Horner evaluation of C0 + u (C1 + u C2) on fractions after folding u into
  * [0, 1/2). poly evaluates at u, polyhalf at u + 1/4; both return through
  * the evaluation block's exit. A negative value comes back as 0. */

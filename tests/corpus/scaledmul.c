@@ -1,4 +1,4 @@
-/* corpus: entry=scale,square */
+/* corpus: entry=scale,square mirrors=imp */
 /* scale: the low 9 bits of |a| times |k|, k passed by name, signed like
  * a * k; the product comes back in AC:IO. square squares x through scale
  * and keeps the low half in `low`. */

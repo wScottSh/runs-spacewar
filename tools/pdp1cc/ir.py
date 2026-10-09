@@ -115,7 +115,7 @@ class Param:
 class Signature:
     name: str           # C name
     sym: str            # Macro symbol of the entry
-    conv: str           # "jda" | "block"
+    conv: str           # "jda" | "block" | "xct" | "jsp"
     params: tuple[Param, ...]
     returns: str        # "word" | "dword" | "void"
     exit_sym: str       # the cell returns go through: exit `jmp .` or the by-name `xct`
@@ -132,6 +132,23 @@ class Call:             # f(args): a JDA call, or a tail call of a BLOCK
 
 
 @dataclass(frozen=True)
+class CodeRef:          # a function's name as a value: its address
+    sig: Signature
+
+
+@dataclass(frozen=True)
+class IndirectCall:     # p(args) through a pointer-to-function object p
+    pointer: Var
+    sig: Signature      # the pointed-to function type
+    args: tuple[Expr, ...]
+
+
+@dataclass(frozen=True)
+class Hw:               # a hardware builtin with no operand: tyi(), lsm()
+    name: str
+
+
+@dataclass(frozen=True)
 class Half:             # call.hi / call.lo of a dword result
     call: Call
     which: str
@@ -143,7 +160,8 @@ class Pair:             # (dword){ hi, lo }
     lo: Expr
 
 
-Expr = Union[Const, Var, PreInc, Neg, Binary, Shift, Rot, PairOp, Call, Half, Pair]
+Expr = Union[Const, Var, PreInc, Neg, Binary, Shift, Rot, PairOp, Call, Half, Pair, CodeRef,
+             IndirectCall, Hw]
 
 
 @dataclass(frozen=True)
@@ -237,6 +255,7 @@ class Function:
     sig: Signature
     params: tuple[Var, ...]
     body: Block
+    at: int | None = None       # AT(a): laid out from address a
 
     @property
     def sym(self) -> str:
@@ -248,9 +267,20 @@ class Datum:
     sym: str
     value: int
     name: str           # C name
+    at: int | None = None
 
 
-TopItem = Union[Function, Datum]
+@dataclass(frozen=True)
+class Space:            # RESERVE object: words set aside here, not punched
+    sym: str
+    size: int
+    name: str
+    at: int | None = None
+    array: bool = False
+    pointer: bool = False
+
+
+TopItem = Union[Function, Datum, Space]
 
 
 @dataclass(frozen=True)
@@ -258,6 +288,7 @@ class Unit:
     items: tuple[TopItem, ...]
     signatures: dict[str, Signature]
     next_label: int     # generated symbols already used: layout continues from here
+    objects: dict[str, Storage]     # file-scope objects by C name
 
 
 # ------------------------------------------------------------------ output
@@ -309,4 +340,14 @@ class LabelDef:
     name: str
 
 
-Item = Union[Word, LabelDef]
+@dataclass(frozen=True)
+class Place:
+    """A location directive, not a word: `a/` (origin) or `. n/` (reserve n)."""
+    kind: str           # "origin" | "reserve"
+    n: int
+    rule: str
+    labels: tuple[str, ...] = ()
+    via: tuple[str, ...] = ()
+
+
+Item = Union[Word, LabelDef, Place]

@@ -45,8 +45,9 @@ class Outcome:
 
 
 def run_jda(simh: Path, rim: Path, entry: int, calls: list[Inputs], byname: bool = False,
-            watch: list[int] = (), timeout: int = 1800) -> list[Outcome]:
-    words = [f"lio {IO_IN:o}", f"lac {AC_IN:o}", f"jda {entry:o}"]
+            watch: list[int] = (), timeout: int = 1800, op: str = "jda") -> list[Outcome]:
+    """op is the call instruction: jda, or xct for a one-word XCT routine."""
+    words = [f"lio {IO_IN:o}", f"lac {AC_IN:o}", f"{op} {entry:o}"]
     if byname:
         words.append(f"lac {BYNAME_IN:o}")
     words += ["hlt"] * HALTS

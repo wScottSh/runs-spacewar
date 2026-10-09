@@ -28,12 +28,18 @@ def word_text(w: ir.Word) -> str:
     return " ".join(parts)
 
 
-def emit(words: list[ir.Word], trace: bool = True) -> str:
+def emit(words: list[ir.Word | ir.Place], trace: bool = True) -> str:
     lines = []
     for w in words:
         label = f"{w.labels[0]}," if w.labels else ""
-        line = f"{label}\t{word_text(w)}"
+        if isinstance(w, ir.Place) and w.kind == "origin":
+            line = f"{w.n:o}/"
+        elif isinstance(w, ir.Place):
+            line = f"{label}\t. {w.n:o}/"
+        else:
+            line = f"{label}\t{word_text(w)}"
         if trace:
-            line += f"\t/ {w.rule}" + "".join(f" +{v}" for v in w.via) + (f" {w.note}" if w.note else "")
+            note = getattr(w, "note", "")
+            line += f"\t/ {w.rule}" + "".join(f" +{v}" for v in w.via) + (f" {note}" if note else "")
         lines.append(line)
     return "\n".join(lines) + "\n"

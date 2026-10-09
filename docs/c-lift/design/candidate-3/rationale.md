@@ -116,13 +116,14 @@ Phase F steps 1-4 (synthesis.md) are implemented for the sqt subset. This sectio
 **Splice build.** The interface check reads the source text. A label defined inside the region and named outside it must still be defined by the compiled text. It does not use the oracle xref. On a mismatch, `build` reports whether the `variables` base moved, then the first differing address with the expected word, the actual word and the rule id. There is no per-region cache.
 
 **Gates.**
-- G1 runs as `tools/check-*-reference.py`, one per lifted routine group. Each compares the native build of the lifted C with SIMH running the routine in the oracle `.rim`, in one SIMH session. sqt covers 0..0177777.
-- G2 (`pdp1cc gate`) compares the AC result and every placed word after every call.
+- G1 runs as `tools/check-*-reference.py`, one per lifted routine group. Each compares the native build of the lifted C with SIMH running the routine in the oracle `.rim`, in one SIMH session, and compares every JDA entry word after every call. sqt covers 0..0177777.
+- G2 (`pdp1cc gate`) compares the AC result, every placed and reserved word, and every JDA entry word after every call. Each rule needs two corpus programs that do not mirror a lifted routine (M2 section).
 - G3 is `tools/check-g3.py`.
 - G4 is structural: `Word.rule` is required and checked against the registry.
-- G5, G6, G7 and the row checker are not built.
+- G5 and G6 run in `pdp1cc gate` (M2 section). `tests/reject/` holds programs the dialect must refuse, each with the error it expects.
+- G7 is a review rule: a new rule lands with its corpus programs. The row checker is not built.
 
-**Not implemented yet.** POOL, HOMED, JSP, XCT, INLINE parameters, while/do/switch, `sas`/`sad`, and the hints.
+**Not implemented yet.** POOL, HOMED, INLINE parameters, while/do/switch, `sas`/`sad`, indirect calls that return, and the hints `SKIPNOT`, `PLACE`, `ARGS_DONE`, `RELOAD`.
 
 ### M1 math (sin/cos, imp/mpy, idv/dvd)
 
@@ -147,6 +148,40 @@ Deviations from the design, and why:
 - **SIMH runs without the multiply/divide option** (`set cpu nomdv`). SIMH enables the option by default, which turns `mus` and `dis` into full multiply and divide. Spacewar 3.1 assumes a machine without it.
 - **Harness.** A corpus entry or reference check can take AC, IO and one by-name word. Each call compares AC, IO (for `dword` results) and the return point. The oracle helper lives in `tools/oracle_check.py`, outside the compiler tree that G3 lints.
 - **Lifted coverage.** `pdp1cc build` reports how many words of the final image come from compiled C, out of all words placed. The constants pool counts as unlifted because the unlifted `constants` directive places it.
+
+### M2 tunables (start vectors, constants table, cwr slot, sbf)
+
+Source lines 67-116 compile from `lift/tunables.c`. The words the game executes with `xct` are XCT functions, and the words it reads are placed words. `tools/check-tunables-reference.py` compares each XCT function with the oracle executed by `xct` in SIMH.
+
+Review follow-ups from M1, landed first:
+- **Shared storage in the reference build.** `pdp1.h` cannot spell two storage facts, so `gate/reference.py` binds them in a copy of each C file before g++ sees it. A JDA function's first parameter and every `ENTRY_CELL` name of it are references to one cell, `pdp1_cell_<f>`, which the call fills. A `BYNAME` parameter is a `const word &`, read again at every use, as `xct` reads it. A definition the binder cannot find is an error. Corpus `cellshare` differs from SIMH on 637 of 640 calls without the binding. The rewrites are textual and bind only `BYNAME word p` and `ENTRY_CELL(f) word x;`, so they fail closed. Outside comments, the count of each rewrite must equal the count of its attribute in the preprocessed source, or the build stops. A `/* reject-reference: */` program in `tests/reject/` is one the dialect accepts and the binder must refuse (`ENTRY_CELL(g) SYM("sen") word seen;`, `BYNAME const word b`).
+- **Tail calls.** A function and the BLOCK whose exit it adopts must skip the same number of inline words. Only a function's final statement may fall into the next BLOCK; corpus `nibble` found that M1 dropped a jump that was followed by other code.
+- **Symbols and attributes.** `SYM` text must be a Macro symbol that macro1 does not predefine (`macro.py` copies macro1's tables). A short C name that is not one gets a generated symbol. Unknown `pdp1_*` attributes are errors. All declarations of a function or object carry the same attributes, except `AT`, which belongs to the definition.
+- **SKIP-IO.** The IO skip table has a rule id (corpus `iosign`, `revbit`).
+- **Coverage.** A corpus header may say `mirrors=<routine>`. Mirrors (`longdiv`, `polyeval`, `clamp`, `scaledmul`) are listed and not counted. Interpretation of "credit a rule only where it decides an emitted word": a `via` tag sits only on a word whose content its rule chose. `LAY-FALLTHROUGH` therefore tags the first word of the block that is reached by falling through. It used to tag an unrelated word. New independent programs: `within`, `weigh`, `nibble` (the second user of `dis`).
+- **G5.** Every hint (the `pdp1.h` macros and `register`) outside comments is deleted in turn, and the copy is compiled. Unchanged Macro text fails the gate. A compile error counts as a change. `SYM` is the exception, since deleting it always renames a label and the deletion test can never flag it. A `SYM` passes only while the source lines that no `lift.toml` region covers, Macro comments removed, still name the symbol it pins. The check found `SYM("dvd")`: every use of `dvd` is inside the divide region. The pin is gone, and divide has a generated symbol. The reference checks now read routine and entry-word addresses from the listing of the last `pdp1cc build`, which names generated symbols too. They refuse a listing whose image does not match the oracle or that is older than the lifted C.
+- **G6.** Edits are derived from the C AST: swap the operands of a commutative `+ & | ^` whose operands are memory words or constants, add 1 to a value constant, or add 1 to a shift or rotate count. The gate predicts the rewrite from the rule tables, written out in `gate/predict.py`, and requires the output to equal the original with exactly that rewrite, once per unrolled copy. In an XCT function, a count edit that needs a second word is predicted to be refused. Planted defects (constant-first canonicalization, a load that drops a bit) fail it. G6 covers only those three edits: operand swap, constant + 1 and shift count + 1. It makes no control-flow, `SYM` or layout edits.
+- **G3.** `check-g3.py` subtracts the symbols macro1 predefines from the oracle's symbol table before it lints the compiler for Spacewar symbols. Spacewar redefines two of them, `clc` and `ioh` (lines 5-6), so they appear in the oracle's table. They are machine mnemonics that `macro.py` must list to refuse them as `SYM` text, not memorized Spacewar output.
+
+New rules, each with two corpus programs that mirror no lifted routine:
+- `XCT-CALL`, `XCT-BODY`. `xct f` with the arguments in AC and IO. The function is the one word its body lowers to; more is an error (`xcttable`, `settle`).
+- `JSP-CALL`, `JSP-PROLOGUE`, `JSP-FORWARD`. `jsp f` passes a register argument in IO. The prologue is `dap R`. A JSP function whose whole body is `return g(...)` for a JSP `g` is `jmp g`, because AC still holds the caller's return address. A JSP function cannot take an AC parameter (`jspfold`, `jsplog`).
+- `LAY-AT`. `AT(a)` on a definition emits `a/` before it (`xcttable`, `settle`).
+- `ST-RESERVE`. A `RESERVE` object (a word, a word array or a pointer) is `. n/`, not punched (`settle`, `route`, `toggle`).
+- `EX-CODE`. A function's name as a value is `law f` (`route`, `toggle`).
+- `TAIL-CALL-INDIRECT`. `return p(...)` through a pointer to a function type declared with `typedef ... BLOCK;` is `jmp i p` (`route`, `toggle`).
+- `EX-HW`. `tyi()` and `lsm()` (`route`, `toggle`).
+
+Deviations from the design, and why:
+- **`MINUS_ZERO` is `-(word)0`.** C reads `-0` as +0, so the design's "a negative constant -n is the ones' complement of n" gives +0 for n = 0. A cast to `word` makes the operators the machine's in both readers. `ddd` is `MINUS_ZERO`.
+- **The sequence-break save words are lifted code.** The original only sets `3/`. The C reserves words 0-2 at `AT(0)` as `break_ac`, `break_pc` and `break_io`, so `sbf`'s `lac 0`, `lio 2` and `jmp i 1` name what the hardware saved. `0/` and three reserved words set no punched word, so the tape is unchanged.
+- **The start vectors carry no `AT(3)`.** They follow the three reserved words, so `AT(3)` would be decoration, and G5 would fail it. The constants table follows at 6 without origins for the same reason.
+- **A function-type typedef takes its convention at the end** (`typedef void resume_point(word ac, register word io) BLOCK;`). pycparserext drops an attribute before a typedef's type.
+- **Indirect calls are jumps only.** `return p(...)` is implemented, and a call through a pointer that returns is an error. M6's `jsp i \cwg` needs the returning form.
+- **A jump through a pointer does not patch an exit.** The caller cannot know the target's exit cell. Each target returns through a BLOCK whose exit the caller adopts by also tail-calling it directly (corpus `route`, `toggle`), or it never returns (`sbf` resumes the interrupted program).
+- **XCT and JSP calls clobber AC and IO** in TRACK. No callee summaries yet.
+- **The reference build stubs unlifted functions.** `tunables.c` names `a40`, `a1` and `mg1`, which are still Macro. For each function the linked files declare and none defines, the build generates a definition that calls `abort()`. Any other unresolved symbol, such as an extern data word, fails the link.
+- **The prelude stays.** Every macro in lines 1-61 and 118-187 that anything uses is used by unlifted code. `senseswitch`, `initialize`, `listen`, `move` and `xincr` have no users, emit no words, and go with the prelude in M7.
 
 ## Open questions and risks
 
