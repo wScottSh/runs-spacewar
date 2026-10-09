@@ -56,8 +56,9 @@ def main(argv: list[str] | None = None) -> int:
     failed |= reject.gate(args.reject)
     lifted = [r.c for r in regions]
     corpus_files = sorted(args.corpus.glob("*.c"))
-    print("G5 hints: deleting any hint must change the output")
-    failed |= hints.gate(lifted + corpus_files)
+    print("G5 hints: deleting any hint must change the output; a SYM must pin a symbol "
+          "unlifted text names")
+    failed |= hints.gate(lifted + corpus_files, splice.unlifted_text(args.lift.resolve()))
     print("G6 prediction edits: each edit changes exactly the words the rules predict")
     failed |= predict.gate(lifted + corpus_files)
     print("gate " + ("FAILED" if failed else "ok"))

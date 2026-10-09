@@ -4,7 +4,11 @@ A hint is a dialect annotation: a pdp1.h macro (SYM, JDA, BLOCK, BYNAME,
 ENTRY_CELL, ...) or the `register` storage class. Each occurrence outside
 comments is deleted in turn and the file compiled again. If the Macro text
 does not change, the hint is decoration and the gate fails. A compile error
-counts as a change: the hint was needed."""
+counts as a change: the hint was needed.
+
+SYM is the exception: deleting it always renames a label, so that test
+cannot catch a stale one. A SYM earns its place while unlifted source text
+still names the symbol it pins; the gate fails when nothing unlifted does."""
 from __future__ import annotations
 
 import re
@@ -15,6 +19,7 @@ from pathlib import Path
 
 from ..cli import COMPILE_ERRORS, compile_file
 
+SYM = re.compile(r'SYM\s*\(\s*"(\w+)"\s*\)')
 HINT = re.compile(r"\b(?:SYM|ENTRY_CELL|AT|RESERVE)\s*\([^()]*\)|\b(?:JDA|BLOCK|BYNAME|XCT|JSP|register)\b")
 COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
 DIRECTIVE = re.compile(r"^[ \t]*#[^\n]*", re.M)
@@ -57,18 +62,33 @@ def without(h: Hint) -> str:
         return output(Path(f.name))
 
 
-def gate(files: list[Path]) -> int:
+def pinned(h: Hint) -> str | None:
+    m = SYM.fullmatch(h.text)
+    return m.group(1) if m else None
+
+
+def stale(h: Hint, unlifted: str) -> bool:
+    """unlifted: the source text no region covers, comments removed."""
+    return not re.search(rf"(?<!\w){pinned(h)}(?!\w)", unlifted)
+
+
+def gate(files: list[Path], unlifted: str) -> int:
     hints = [h for f in files for h in hints_in(f)]
+    syms = [h for h in hints if pinned(h)]
+    others = [h for h in hints if not pinned(h)]
     with ProcessPoolExecutor() as pool:
         base = dict(zip(files, pool.map(output, files)))
-        changed = list(pool.map(without, hints))
-    decorative = [h for h, out in zip(hints, changed) if out == base[h.path]]
+        changed = list(pool.map(without, others))
+    bad = {h: "deleting it leaves the output unchanged"
+           for h, out in zip(others, changed) if out == base[h.path]}
+    bad |= {h: "no unlifted source text names the symbol it pins"
+            for h in syms if stale(h, unlifted)}
     for f in files:
         mine = [h for h in hints if h.path == f]
         lines = f.read_text().count("\n") or 1
-        bad = [h for h in decorative if h.path == f]
-        status = "ok" if not bad else f"{len(bad)} DECORATIVE"
+        flagged = [h for h in mine if h in bad]
+        status = "ok" if not flagged else f"{len(flagged)} NOT EARNED"
         print(f"  {f.name:<16} {len(mine):>3} hints  {100 * len(mine) / lines:5.1f} per 100 lines  {status}")
-        for h in bad:
-            print(f"    {f.name}:{h.line}: deleting `{h.text}` leaves the output unchanged")
-    return 1 if decorative else 0
+        for h in flagged:
+            print(f"    {f.name}:{h.line}: `{h.text}`: {bad[h]}")
+    return 1 if bad else 0

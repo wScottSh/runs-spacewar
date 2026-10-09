@@ -8,7 +8,7 @@
  * |divisor| (signed like a quotient) in AC and the high dividend in IO. */
 
 JDA SYM("idv") dword integer_divide(word dividend, register word lo, BYNAME word divisor);
-JDA SYM("dvd") dword divide(word hi, register word lo, BYNAME word divisor);
+JDA dword divide(word hi, register word lo, BYNAME word divisor);
 BLOCK dword divide_steps(register word lo, BYNAME word divisor);
 
 ENTRY_CELL(divide) word dividend_hi;        /* dvd's entry word; later the remainder */
@@ -23,7 +23,7 @@ JDA SYM("idv") dword integer_divide(word dividend, register word lo, BYNAME word
     return divide_steps(lo, divisor);
 }
 
-JDA SYM("dvd") dword divide(word hi, register word lo, BYNAME word divisor)
+JDA dword divide(word hi, register word lo, BYNAME word divisor)   /* dvd */
 {
     dividend_hi = hi;               /* the same cell: no code */
     return divide_steps(lo, divisor);
