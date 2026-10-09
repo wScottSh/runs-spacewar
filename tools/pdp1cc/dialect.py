@@ -16,6 +16,8 @@ MACRO_SYMBOL_LEN = 6
 CMP_OPS = {"<", ">=", "==", "!=", "<=", ">"}
 ATTR = re.compile(r"pdp1_(\w+)(?:\((.*)\))?$")
 CONVS = {"jda", "block"}
+ATTRIBUTES = CONVS | {"byname", "sym", "entry_cell"}
+MACRO_SYMBOL = re.compile(r"[a-z][a-z0-9]{0,%d}" % (MACRO_SYMBOL_LEN - 1))
 
 
 class DialectError(Exception):
@@ -44,6 +46,8 @@ def _attrs(decl: c_ast.Decl) -> dict[str, str]:
     for text in texts:
         for part in re.split(r",\s*(?=pdp1_)", text):
             if m := ATTR.match(part.strip()):
+                if m.group(1) not in ATTRIBUTES:
+                    raise _err(decl, f"{decl.name}: unknown dialect attribute pdp1_{m.group(1)}")
                 found[m.group(1)] = (m.group(2) or "").strip()
     return found
 
@@ -114,10 +118,11 @@ def _symbol(name: str, attrs: dict[str, str], namer: Namer, node: c_ast.Node) ->
     """SYM("x") pins a symbol; a short C name is its own symbol; a long one gets a fresh one."""
     if "sym" in attrs:
         sym = attrs["sym"].strip('"')
-        if len(sym) > MACRO_SYMBOL_LEN:
-            raise _err(node, f"SYM({sym!r}) is longer than {MACRO_SYMBOL_LEN} characters")
+        if not MACRO_SYMBOL.fullmatch(sym):
+            raise _err(node, f"SYM({sym!r}) is not a Macro symbol: a lower-case letter, then "
+                             f"letters or digits, {MACRO_SYMBOL_LEN} characters at most")
         return sym
-    return name if len(name) <= MACRO_SYMBOL_LEN else namer.fresh()
+    return name if MACRO_SYMBOL.fullmatch(name) else namer.fresh()
 
 
 def _signature(decl: c_ast.Decl, namer: Namer) -> ir.Signature:
@@ -157,17 +162,23 @@ def _signature(decl: c_ast.Decl, namer: Namer) -> ir.Signature:
 def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
     namer = Namer(prefix)
     sigs: dict[str, ir.Signature] = {}
+    first: dict[str, c_ast.Decl] = {}
     for ext in ast.ext:
         decl = ext.decl if isinstance(ext, c_ast.FuncDef) else ext
         if isinstance(decl, c_ast.Decl) and _is_function(decl.type) and not _in_header(decl):
-            sig = _signature(decl, namer) if decl.name not in sigs else None
-            if sig is not None:
-                sigs[decl.name] = sig
-            elif _signature(decl, Namer("")).params != sigs[decl.name].params:
-                raise _err(decl, f"{decl.name}: declarations disagree")
+            if decl.name not in sigs:
+                sigs[decl.name], first[decl.name] = _signature(decl, namer), decl
+            elif not _same_declaration(decl, first[decl.name]):
+                raise _err(decl, f"{decl.name}: declarations disagree with the one at "
+                                 f"{first[decl.name].coord}")
 
     globals_: dict[str, ir.Storage] = {}
     objects = [e for e in ast.ext if isinstance(e, c_ast.Decl) and not _is_function(e.type)]
+    seen: dict[str, c_ast.Decl] = {}
+    for ext in objects:
+        if ext.name in seen and _attrs(ext) != _attrs(seen[ext.name]):
+            raise _err(ext, f"{ext.name}: declarations disagree with the one at {seen[ext.name].coord}")
+        seen.setdefault(ext.name, ext)
     for ext in objects:                       # definitions first: an extern may precede one
         attrs = _attrs(ext)
         if "entry_cell" in attrs:
@@ -200,6 +211,14 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
                 raise _err(ext, f"{ext.name}: defined here but declared elsewhere as {storage}")
             items.append(ir.Datum(storage.sym, to_word(c_int(ext.init), ext.init), ext.name))
     return ir.Unit(tuple(items), sigs, namer.counter)
+
+
+def _same_declaration(a: c_ast.Decl, b: c_ast.Decl) -> bool:
+    """Same parameters, return type and dialect attributes, so no single
+    declaration's attribute is decoration."""
+    sa, sb = _signature(a, Namer("q")), _signature(b, Namer("q"))
+    return ((sa.params, sa.returns, sa.conv) == (sb.params, sb.returns, sb.conv)
+            and _attrs(a) == _attrs(b))
 
 
 def _lower_function(fn: c_ast.FuncDef, sig: ir.Signature, globals_: dict[str, ir.Storage],
