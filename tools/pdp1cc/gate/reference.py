@@ -11,11 +11,16 @@ build binds them in a copy of each C file before compiling it:
   machine. It becomes `const word &`, so a write to that word between reads
   is seen, as `xct` sees it.
 
+The rewrites are textual, so they fail closed: the preprocessed source
+counts every BYNAME and ENTRY_CELL the front end sees, and a file where any
+of them was not rewritten is an error, not a silently aliased build.
+
 Nothing else in the C changes: operators keep their pdp1.h meaning."""
 from __future__ import annotations
 
 import re
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from .. import dialect, front, ir
@@ -23,14 +28,33 @@ from .simh import Inputs, Outcome
 
 HEADER = Path(__file__).parent.parent / "include" / "pdp1.h"
 DRIVER = Path(__file__).parent / "driver.cpp"
+COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
 ARG = {"ac": "word::bits(ac)", "io": "word::bits(io)", "byname": "word::bits(byname)"}
-BYNAME_PARAM = re.compile(r"\bBYNAME\s+word\s+(\w+)")
-ENTRY_CELL_DECL = re.compile(r"\bENTRY_CELL\((\w+)\)\s*word\s+(\w+)\s*;")
 
 
 def cell(fn: str) -> str:
     """The native name of a JDA function's entry word."""
     return f"pdp1_cell_{fn}"
+
+
+@dataclass(frozen=True)
+class Rewrite:
+    """One storage fact: its spelling in the C, its g++ form, and the
+    attribute the front end sees after preprocessing."""
+    hint: str
+    shape: str
+    source: re.Pattern
+    native: str
+    attribute: re.Pattern
+
+
+REWRITES = (
+    Rewrite("BYNAME", "BYNAME word p", re.compile(r"\bBYNAME\s+word\s+(\w+)"),
+            r"const word &\1", re.compile(r"\bpdp1_byname\b")),
+    Rewrite("ENTRY_CELL", "ENTRY_CELL(f) word x;",
+            re.compile(r"\bENTRY_CELL\((\w+)\)\s*word\s+(\w+)\s*;"),
+            r"word &\2 = " + cell(r"\1") + ";", re.compile(r"\bpdp1_entry_cell\b")),
+)
 
 
 def entry_param(sig: ir.Signature) -> str | None:
@@ -40,10 +64,33 @@ def entry_param(sig: ir.Signature) -> str | None:
     return next((p.name for p in sig.params if p.kind == "ac"), None)
 
 
-def bind(text: str, defined: list[ir.Signature]) -> str:
+class BindError(ValueError):
+    pass
+
+
+def rewrite_code(r: Rewrite, text: str) -> tuple[str, int]:
+    """Apply r outside comments. Returns the text and the rewrite count."""
+    done = 0
+
+    def one(m: re.Match) -> str:
+        nonlocal done
+        if m.group("comment"):
+            return m.group(0)
+        done += 1
+        return m.expand(r.native)
+    return re.sub(rf"{r.source.pattern}|(?P<comment>{COMMENT.pattern})", one, text, flags=re.S), done
+
+
+def bind(path: Path, defined: list[ir.Signature]) -> str:
     """defined: the functions this file defines."""
-    text = BYNAME_PARAM.sub(r"const word &\1", text)
-    text = ENTRY_CELL_DECL.sub(lambda m: f"word &{m.group(2)} = {cell(m.group(1))};", text)
+    text = path.read_text()
+    pre = front.preprocess(path)
+    for r in REWRITES:
+        text, done = rewrite_code(r, text)
+        want = len(r.attribute.findall(pre))
+        if done != want:
+            raise BindError(f"{path}: the reference build rewrote {done} of {want} {r.hint} "
+                            f"uses; it binds only the shape `{r.shape}`")
     for sig in defined:
         param = entry_param(sig)
         if param is None:
@@ -56,7 +103,7 @@ def bind(text: str, defined: list[ir.Signature]) -> str:
                     f"({cell(sig.name)} = pdp1_arg_{param});")
         text, n = header.subn(bind_param, text)
         if n != 1:
-            raise ValueError(f"reference: found {n} definitions of {sig.name} to bind, want 1")
+            raise BindError(f"reference: found {n} definitions of {sig.name} to bind, want 1")
     return text
 
 
@@ -86,7 +133,7 @@ def build(c_files: list[Path], sig: ir.Signature, out: Path, watch: list[str] = 
     for f, unit in parsed.items():
         defined = [fn.sig for fn in unit.items if isinstance(fn, ir.Function)]
         copy = src / f.name
-        copy.write_text(f'#line 1 "{f.resolve()}"\n' + bind(f.read_text(), defined))
+        copy.write_text(f'#line 1 "{f.resolve()}"\n' + bind(f, defined))
         bound.append(copy)
     watch_expr = "".join(f' printf(" %06o", ({w}).v);' for w in watch)
     includes = [a for f in [cells, *bound] for a in ("-include", str(f))]
