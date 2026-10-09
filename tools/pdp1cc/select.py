@@ -275,23 +275,25 @@ class FunctionLowerer:
         if isinstance(c.operand, ir.PreInc):
             t = c.operand.target
             pre: list[ir.Item] = []
+            table = ()
             after = State(frozenset({key(t)}), st.io - {key(t)})
             skip_c = skips.isp_skip_when(c.op)
             skip_not_c = skips.isp_skip_when(skips.NEGATE[c.op])
         elif isinstance(c.operand, ir.Var) and isinstance(c.operand.storage, ir.Io):
             self.need_io(c.operand, st)
-            pre, after = [], st
+            pre, after, table = [], st, ("SKIP-IO",)
             skip_c = skips.io_skip_when(c.op)
             skip_not_c = skips.io_skip_when(skips.NEGATE[c.op])
         else:
             pre, after = self.to_ac(c.operand, st)
+            table = ()
             skip_c = skips.ac_skip_when(c.op)
             skip_not_c = skips.ac_skip_when(skips.NEGATE[c.op])
 
         def skip_word(op: str, rule: str) -> ir.Word:
             if op == "isp":
                 return W("isp", rule, mem(t), note=f"++{t.name} {c.op} 0")
-            return W(op, rule, note=f"{c.op} 0")
+            return W(op, rule, note=f"{c.op} 0", via=table)
 
         then_items, then_end = self.stmt(s.then, after)
         single = (s.orelse is None and skip_not_c is not None

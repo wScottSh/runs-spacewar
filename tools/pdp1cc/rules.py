@@ -36,6 +36,7 @@ RULES: dict[str, str] = {
     "LAY-ADOPT": "a function whose returns all tail-call one BLOCK patches that block's exit",
     "LOOP-UNROLL": "for (int i = 0; i < N; i++) S: S emitted N times (N read as C reads it)",
     "ST-ENTRY-CELL": "ENTRY_CELL(f) object: f's entry word under another name",
+    "SKIP-IO": "a register (IO) local compared with 0: io < 0 skips on `spi i`, io >= 0 on `spi`",
 }
 
 
