@@ -5,7 +5,9 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import dialect, emit, front, layout
+from . import dialect, emit, front, inline, layout, select
+
+COMPILE_ERRORS = (dialect.DialectError, select.SelectError, layout.LayoutError, inline.ArgsError)
 
 
 def compile_file(path: Path, label_prefix: str = "z", trace: bool = True) -> str:
@@ -24,6 +26,7 @@ def main(argv: list[str] | None = None) -> int:
     bu.add_argument("toml", type=Path, nargs="?", default=Path("lift.toml"))
     ga = sub.add_parser("gate", help="G2: run the corpus in SIMH against the reference build")
     ga.add_argument("--corpus", type=Path, default=Path("tests/corpus"))
+    ga.add_argument("--reject", type=Path, default=Path("tests/reject"))
     ga.add_argument("--lift", type=Path, default=Path("lift.toml"))
     ga.add_argument("--simh", type=Path, default=Path("build/pdp1"))
     ga.add_argument("--macro1", type=Path, default=Path("build/macro1"))
@@ -31,15 +34,24 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     if args.cmd == "lower":
-        sys.stdout.write(compile_file(args.file, args.prefix, not args.no_trace))
+        try:
+            sys.stdout.write(compile_file(args.file, args.prefix, not args.no_trace))
+        except COMPILE_ERRORS as e:
+            print(f"{args.file}: error: {e}", file=sys.stderr)
+            return 1
         return 0
     from . import splice
     if args.cmd == "build":
         return splice.build(args.toml)
-    from .gate import corpus
+    from .gate import corpus, reject
     _, regions = splice.load(args.lift.resolve())
-    return corpus.gate(args.corpus, [r.c for r in regions], args.simh.resolve(),
-                       args.macro1.resolve(), args.work.resolve())
+    print("G2 corpus: SIMH against the native reference build")
+    failed = corpus.gate(args.corpus, [r.c for r in regions], args.simh.resolve(),
+                         args.macro1.resolve(), args.work.resolve())
+    print("rejects: programs the dialect must refuse")
+    failed |= reject.gate(args.reject)
+    print("gate " + ("FAILED" if failed else "ok"))
+    return failed
 
 
 if __name__ == "__main__":

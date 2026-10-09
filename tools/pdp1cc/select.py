@@ -110,6 +110,10 @@ class FunctionLowerer:
             if plain or len(targets) != 1:
                 raise SelectError(f"{fn.sig.name}: every return must tail-call the same BLOCK")
             self.adopted = tails[0].value.sig
+            if self.adopted.inline_count != fn.sig.inline_count:
+                raise SelectError(
+                    f"{fn.sig.name}: takes {fn.sig.inline_count} inline word(s) but tail-calls "
+                    f"{self.adopted.name}, which returns past {self.adopted.inline_count}")
         elif fn.sig.inline_count:
             if not _any_byname_read(fn.body):
                 raise SelectError(f"{fn.sig.name}: a BYNAME parameter that is never read")
