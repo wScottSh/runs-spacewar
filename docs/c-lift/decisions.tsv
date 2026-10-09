@@ -1,3 +1,6 @@
 ts	phase	decision	why	evidence	result
 2026-10-09T22:16:00Z	frame	exit predicate: hash from lift/ alone, gate green, all reference checks green	operator asked for 100% parity in C, run straight through	docs/lift-playbook.md	open
 2026-10-09T22:16:00Z	frame	milestone order M1 math to M7 main loop, one PR each, merged after independent verification	leaves first so each step builds on compiled callees; main loop last because it references everything	docs/lift-playbook.md	open
+2026-10-09T22:38:54Z	docs	added README explaining the project and verification, merged as PR 1	operator asked for it	https://github.com/wScottSh/spacewar-c/pull/1	merged; commands verified in fresh worktree
+2026-10-09T22:50:39Z	M1	merged M1 math (multiply, divide, sine-cosine), 8.2% of words from C	hash MATCH, gate green, all reference checks 0 differ on orchestrator re-run; sonnet review verdict MERGE	https://github.com/wScottSh/spacewar-c/pull/2	merged
+2026-10-09T22:50:39Z	M1	folded reviewer follow-ups into M2 as a first hardening step	the reference build must catch meaning gaps the hash cannot (ENTRY_CELL aliasing, BYNAME refetch); same compiler files as M2, so one branch avoids conflicts	PR 2 review	open
