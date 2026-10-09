@@ -258,6 +258,7 @@ class Unit:
     items: tuple[TopItem, ...]
     signatures: dict[str, Signature]
     next_label: int     # generated symbols already used: layout continues from here
+    objects: dict[str, Storage]     # file-scope objects by C name
 
 
 # ------------------------------------------------------------------ output

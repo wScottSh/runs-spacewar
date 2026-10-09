@@ -11,7 +11,11 @@ COMPILE_ERRORS = (dialect.DialectError, select.SelectError, layout.LayoutError, 
 
 
 def compile_file(path: Path, label_prefix: str = "z", trace: bool = True) -> str:
-    unit = dialect.lower_unit(front.parse(path), label_prefix)
+    return compile_ast(front.parse(path), label_prefix, trace)
+
+
+def compile_ast(ast, label_prefix: str = "z", trace: bool = True) -> str:
+    unit = dialect.lower_unit(ast, label_prefix)
     return emit.emit(layout.place(unit, label_prefix), trace)
 
 
@@ -43,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     from . import splice
     if args.cmd == "build":
         return splice.build(args.toml)
-    from .gate import corpus, hints, reject
+    from .gate import corpus, hints, predict, reject
     _, regions = splice.load(args.lift.resolve())
     print("G2 corpus: SIMH against the native reference build")
     failed = corpus.gate(args.corpus, [r.c for r in regions], args.simh.resolve(),
@@ -54,6 +58,8 @@ def main(argv: list[str] | None = None) -> int:
     corpus_files = sorted(args.corpus.glob("*.c"))
     print("G5 hints: deleting any hint must change the output")
     failed |= hints.gate(lifted + corpus_files)
+    print("G6 prediction edits: each edit changes exactly the words the rules predict")
+    failed |= predict.gate(lifted + corpus_files)
     print("gate " + ("FAILED" if failed else "ok"))
     return failed
 

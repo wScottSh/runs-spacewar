@@ -210,7 +210,7 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
             if not isinstance(storage, ir.Placed):
                 raise _err(ext, f"{ext.name}: defined here but declared elsewhere as {storage}")
             items.append(ir.Datum(storage.sym, to_word(c_int(ext.init), ext.init), ext.name))
-    return ir.Unit(tuple(items), sigs, namer.counter)
+    return ir.Unit(tuple(items), sigs, namer.counter, globals_)
 
 
 def _same_declaration(a: c_ast.Decl, b: c_ast.Decl) -> bool:
