@@ -29,6 +29,7 @@ from .simh import Inputs, Outcome
 HEADER = Path(__file__).parent.parent / "include" / "pdp1.h"
 DRIVER = Path(__file__).parent / "driver.cpp"
 COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
+NATIVE_PARAM = {"ac": "word", "io": "word", "byname": "const word &"}
 ARG = {"ac": "word::bits(ac)", "io": "word::bits(io)", "byname": "word::bits(byname)"}
 
 
@@ -115,6 +116,13 @@ def signatures(c_files: list[Path]) -> dict[str, ir.Signature]:
     return {name: s for u in units(c_files).values() for name, s in u.signatures.items()}
 
 
+def stub(sig: ir.Signature) -> str:
+    """A definition for a function the linked files declare but none defines:
+    an unlifted routine. The reference run must never reach it."""
+    params = ", ".join(NATIVE_PARAM[p.kind] for p in sig.params)
+    return f"{sig.returns} {sig.name}({params}) {{ std::abort(); }}\n"
+
+
 def call_expr(sig: ir.Signature) -> str:
     return f"{sig.name}({', '.join(ARG[p.kind] for p in sig.params)})"
 
@@ -129,22 +137,22 @@ def build(c_files: list[Path], sig: ir.Signature, out: Path, watch: list[str] = 
     src.mkdir(exist_ok=True)
     cells = src / "cells.h"
     cells.write_text("".join(f"word {cell(s.name)};\n" for s in sigs.values() if entry_param(s)))
-    bound = []
+    bound, defined = [], set()
     for f, unit in parsed.items():
-        defined = [fn.sig for fn in unit.items if isinstance(fn, ir.Function)]
+        mine = [fn.sig for fn in unit.items if isinstance(fn, ir.Function)]
+        defined |= {s.name for s in mine}
         copy = src / f.name
-        copy.write_text(f'#line 1 "{f.resolve()}"\n' + bind(f, defined))
+        copy.write_text(f'#line 1 "{f.resolve()}"\n' + bind(f, mine))
         bound.append(copy)
+    stubs = src / "stubs.h"
+    stubs.write_text("".join(stub(s) for name, s in sigs.items() if name not in defined))
     watch_expr = "".join(f' printf(" %06o", ({w}).v);' for w in watch)
-    includes = [a for f in [cells, *bound] for a in ("-include", str(f))]
+    includes = [a for f in [cells, *bound, stubs] for a in ("-include", str(f))]
     subprocess.run(
         ["g++", "-std=c++14", "-O2", "-Wall", "-Wno-register", "-Wno-unused-label", "-Werror",
          "-include", str(HEADER), *includes,
          f"-DCALL={call_expr(sig)}", f"-DINLINE={sig.inline_count}",
-         f"-DWATCH={watch_expr or ';'}", str(DRIVER), "-o", str(out),
-         # Lifted code may name routines that are still unlifted Macro; the
-         # reference run never reaches them.
-         "-Wl,--unresolved-symbols=ignore-all"],
+         f"-DWATCH={watch_expr or ';'}", str(DRIVER), "-o", str(out)],
         check=True)
     return out
 
