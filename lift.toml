@@ -1,0 +1,14 @@
+# Lifted regions of source/spacewar3.1_complete.txt. `pdp1cc build` compiles each
+# region's C, splices it over the region's lines, assembles with macro1 and
+# compares the .rim sha256 with the oracle.
+source = "source/spacewar3.1_complete.txt"
+macro1 = "build/macro1"
+macro1_src = "tools/macro1.c"
+oracle_sha256 = "8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf"
+oracle_listing = "build/oracle.lst"
+
+[[region]]
+name = "sqt"
+lines = "309-343"
+c = "lift/sqt.c"
+prefix = "zs"
