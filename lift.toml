@@ -12,3 +12,9 @@ name = "sqt"
 lines = "309-343"
 c = "lift/sqt.c"
 prefix = "zs"
+
+[[region]]
+name = "multiply"
+lines = "257-301"
+c = "lift/multiply.c"
+prefix = "zm"
