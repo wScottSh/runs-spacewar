@@ -1,0 +1,3 @@
+ts	phase	decision	why	evidence	result
+2026-10-09T22:16:00Z	frame	exit predicate: hash from lift/ alone, gate green, all reference checks green	operator asked for 100% parity in C, run straight through	docs/lift-playbook.md	open
+2026-10-09T22:16:00Z	frame	milestone order M1 math to M7 main loop, one PR each, merged after independent verification	leaves first so each step builds on compiled callees; main loop last because it references everything	docs/lift-playbook.md	open
