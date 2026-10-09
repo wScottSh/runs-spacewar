@@ -97,7 +97,32 @@ Load-bearing decisions:
 
 ## Implementation reconciliation
 
-*(empty until implementation)*
+Phase F steps 1-4 (synthesis.md) are implemented for the sqt subset. This section records where the code differs from this design and why.
+
+**Front end.** pycparserext 2026.1 (`GnuCParser`, over pycparser 3.11, pinned in `uv.lock`) keeps `__attribute__((pdp1_*))` in every position the dialect uses: before a function, on a parameter, before a declarator, and after one (`word *mdx POOL`). The `_Pragma` fallback is not needed. `front.py` runs `gcc -E -D__PDP1CC__ -include pdp1.h` and keeps line markers, so errors name the C line.
+
+**Header.** `pdp1.h` lives in `tools/pdp1cc/include/` and has two readers. pdp1cc sees typedefs and attribute spellings. g++ (`-std=c++14 -include pdp1.h`) sees candidate 1's `word` class, the executable reference. The plain-C mode and `normalize.py` are gone. A plain C compile is an `#error`. Comparisons abort unless the right side is 0, so a C comparison the skip group cannot make fails in the reference build too.
+
+**Rule ids.** The registry is `tools/pdp1cc/rules.py`. Changes from the tables above:
+- `EX-STORE-ZERO` (`dzm`) and `EX-LOAD-IO` (`lio`) are separate ids, so coverage shows each.
+- `JDA-ENTRY`, `JDA-PROLOGUE`, `LAY-EXIT`, `RET` and `CONTINUE` name the words the Calls and Control tables describe in prose.
+- The skip word carries `IF-SINGLE` or `IF-MULTI`, with the condition in the trace note. The skip table is not a rule id. The `cmpall` corpus program runs all twelve AC skip forms in SIMH.
+- `x > 0` emits `sma+sza-skip i`, not `spq`. `spq` and `szm` are defined by the Spacewar source, not by macro1, and a standalone corpus program has neither. G3 also forbids Spacewar symbols in the compiler.
+
+**TRACK.** Lowering is a pure function of (statement, AC/IO state). A `for (;;)` body is lowered again until the state at its head is a fixpoint. A read of an AC local whose value is no longer in AC is a compile error that asks for a static.
+
+**Labels.** Generated labels use a per-region prefix from `lift.toml` (`zs` for sqt), not a region letter. A file-scope C name longer than 6 characters is a compile error, because macro1 keeps 6 and `SYM` is not implemented. Two labels that land on one word are merged.
+
+**Splice build.** The interface check reads the source text. A label defined inside the region and named outside it must still be defined by the compiled text. It does not use the oracle xref. On a mismatch, `build` reports whether the `variables` base moved, then the first differing address with the expected word, the actual word and the rule id. There is no per-region cache.
+
+**Gates.**
+- G1 runs for sqt only. `tools/check-sqt-reference.py` compares the native build of `lift/sqt.c` with SIMH running sqt in the oracle `.rim`, over 0..0177777 in one SIMH session.
+- G2 (`pdp1cc gate`) compares the AC result and every placed word after every call.
+- G3 is `tools/check-g3.py`.
+- G4 is structural: `Word.rule` is required and checked against the registry.
+- G5, G6, G7 and the row checker are not built.
+
+**Not implemented yet.** POOL, HOMED, ENTRY_CELL, JSP, XCT, BLOCK, inline JDA parameters, while/do/switch/goto, IO to AC moves, `dio`, `sas`/`sad`, and the hints.
 
 ## Open questions and risks
 
