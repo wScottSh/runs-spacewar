@@ -18,3 +18,9 @@ name = "multiply"
 lines = "257-301"
 c = "lift/multiply.c"
 prefix = "zm"
+
+[[region]]
+name = "divide"
+lines = "346-396"
+c = "lift/divide.c"
+prefix = "zd"
