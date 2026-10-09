@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<title>Inside Spacewar! &mdash; Part 5: Maneuvering in Space</title>
+	<meta name="description" content="A software archeological approach to Spacewar!, the first digital video game. Part 5: Maneuvering in Space" />
+	<meta name="keywords" content="Spacewar!,Spacewar! 1962,PDP-1,spaceship routine,steve russell,software archeology,computer history" />
+	<meta name="format-detection" content="telephone=no" />
+	<link rel="stylesheet" href="insidespacewar.css" type="text/css" />
+	<link href="https://fonts.googleapis.com/css?family=Lato:300" rel="stylesheet" type="text/css" />
+	<link rel="shortcut icon" type="image/x-icon" href="../favicon-bw.ico" />
+	<script type="text/javascript" src="instructionlist.js"></script>
+	<script type="text/javascript" src="layoutselector.js"></script>
+</head>
+<body>
+
+<article id="main">
+<a href="./" title="Inside Spacewar! &mdash; Index" class="indexLink">Go to the Index</a>
+<h1>Inside Spacewar!<br />Part 5: Maneuvering in Space</h1>
+
+<div class="top_nav"><a href="insidespacewar-pt4-oc.html">Prev. <span style="font-family:sans-serif; font-size: 80%;">&#9664;</span></a>
+&mdash;
+<a href="insidespacewar-pt6-gravity.html"><span style="font-family:sans-serif; font-size: 80%;">&#9654;</span> Next</a></div>
+
+<p class="page_toc">(<a href="#main">Introduction</a> &middot; <a href="#code">The Code</a> &middot; <a href="#controls">Reading Input</a> &middot; <a href="#scanning">Scanning the Control Word</a> &middot; <a href="#thrust">Rotation and Thrust</a> &middot; <a href="#positions">Updating Positions</a> &middot; <a href="#basictrick">The Basic Trick</a> &middot; <a href="#shipsdisplay">Putting it on the Scope</a> &middot; <a href="#fire">Fire!</a> &middot; <a href="#hyperspace">Last Checks: Jumping to Hyperspace</a> &middot; <a href="#variations">Variations</a>  &middot; <a href="#controlboxes">The Original Control Boxes</a>)</p>
+
+<p class="noindent">Once again it's Spacewar! time. In this part of our journey through the internals of Spacewar! we're going to explore one of the game's object routines, namely the one for maneuvering and handling ships. So, this is about the &quot;nautical&quot; part of the game. Most of the code, we'll see here, is by Steve Russell, but some bits may be by others who were lending a helping hand, especially by Robert A. Saunders (cf. <cite>Levy, Steven, Hackers &mdash; Heroes of the Computer Revolution; 1984/2010, p. 51</cite>).</p>
+
+<figure id="spacewar_nautics" class="img borderless"><img src="images/spacewar-nautics.jpg" width="700" height="700" alt="Spaceships and maneuvering code" /><p>Spaceships and maneuvering code in Spacewar!<br />Credits: Drawing of control box by J.M. Graetz 1981; Screen-shot (emulation) and montage: N. Landsteiner 2014</p></figure>
+
+<p style="margin-bottom: 2em;">BTW: <span style="font-family:sans-serif; font-size: 80%;color: #555;">&#9654;</span> You can <a href="https://www.masswerk.at/spacewar/" target="_top" title="Play the original Spacewar! in a JS/HTML5 emulator of a PDP-1"> play here</a> the original code of Spacewar! running in an emulation.</p>
+
+<p>As usual, we'll start with a look at the code involved in its entirety, just to get a picture of it. And as usual, we won't do so, without including the standard credits first:</p>
+
+<blockquote>Spacewar! was conceived in 1961 by Martin Graetz, Stephen Russell, and Wayne Wiitanen. It was first realized on the PDP-1 in 1962 by Stephen Russell, Peter Samson, Dan Edwards, and Martin Graetz, together with Alan Kotok, Steve Piner, and Robert A Saunders. Spacewar! is in the public domain, but this credit paragraph must accompany all distributed versions of the program.</blockquote>
+
+
+<h2 id="code">The Code</h2>
+
+<pre>	/ spaceship calc
+
+ss1,	dap srt		/ first spaceship
+	jsp i \cwg
+	dio \scw
+	jmp sr0
+
+ss2,	dap srt		/ second spaceship
+	jsp i \cwg
+	rir 4s
+	dio \scw
+
+sr0,
+sc1,	lio \scw		/control word
+	clf 6 cla-opr	/update angle
+	spi
+	add maa
+	ril 1s
+	spi
+	sub maa
+mom,	add .
+	dac i mom
+	szs 10
+	jmp sr8
+	dzm i mom
+	ral 7s
+sr8,	ril 1s
+	spi
+	stf 6
+	lio i \mfu
+	spi i
+	clf 6
+
+mth,	add .
+	sma
+	sub (311040
+	spa
+	add (311040
+	dac i mth
+	jda sin
+	dac \sn
+	dzm \bx
+	dzm \by
+	szs 60
+	jmp bsg
+	lac i mx1
+	sar 9s
+	sar 2s
+	dac \t1
+	jda imp
+	lac \t1
+	dac \t2
+	lac i my1
+	sar 9s
+	sar 2s
+	dac \t1
+	jda imp
+	lac \t1
+	add \t2
+	sub str
+	sma i sza-skp
+	jmp pof
+	add str
+
+<span class="comment">//	snip, gravity code here</span>
+
+bsg,	cla
+	sad i \mfu
+	clf 6
+	lac i mth
+	jda cos
+	dac \cs
+	sar 9s
+	xct sac
+	szf i 6
+	cla
+	add \by
+	diff \mdy, my1, (sar 3s
+	lac \sn
+	sar 9s
+	xct sac
+	cma
+	szf i 6
+	cla
+	add \bx
+	diff \mdx, mx1, (sar 3s
+sp1,	scale \sn, 5s, \ssn
+sp2,	scale \cs, 5s, \scn
+	lac i mx1
+
+	sub \ssn
+	dac \sx1
+	sub \ssn
+	dac \stx
+	lac i my1
+	add \scn
+	dac \sy1
+	add \scn
+	dac \sty
+	scale \sn, 9s, \ssn
+	scale \cs, 9s, \scn
+	lac \ssn
+	dac \ssm
+	add \scn
+	dac \ssc
+	dac \ssd
+	lac \ssn
+	sub \scn
+	dac \csn
+	cma
+	dac \csm
+	lac \scn
+	dac \scm
+	cla cli-opr
+	dpy-4000
+sp5,	jmp .
+sq6,	ioh
+	ranct sar 9s, sar 4s, \src
+	lio \scw
+	ril 2s
+	spi i 		/ not blasting
+	jmp sq9		/ no tail
+sq7,	scale \sn, 8s, \ssn
+	scale \cs, 8s, \scn
+	count i \mfu, st2
+	dzm i \mfu
+	jmp sq9
+
+st2,	yincr \sx1, \sy1, sub
+	dispt i, \sy1
+	count \src,sq7
+sq9,	count i ma1, sr5	/ check if torp tube reloaded
+	dzm i ma1	/ prevent count around
+mco,	lac .		/ previous control word
+	cma
+	szs i 30
+	clc
+	and \scw	/ present control word
+	ral 3s		/ torpedo bit to bit 0
+	sma
+	jmp sr5		/ no launch
+	count i \mtr, st1	/ check if torpedos exhausted
+	dzm i \mtr		/ prevent count around
+	jmp sr5
+st1,	init sr1, mtb	/ search for unused object
+sr1,	lac .
+	sza i		/ 0 if unused
+	jmp sr2
+	index sr1, (lac mtb nob, sr1
+	hlt		/ no space for new objects
+	jmp .-1
+
+<span class="comment">//	snip, torpedo setup routine</span>
+
+sr5,	count i \mh3, st3	/ hyperbutton active?
+	dzm i \mh3
+	lac i \mh2
+	sza i
+	jmp st3
+	lac \scw
+	cma
+	ior i mco
+	and (600000
+	sza
+	jmp st3
+	lac i ml1
+	dac i \mh1
+	lac (hp1 400000
+	dac i ml1
+	xct hd1
+	dac i ma1
+	law 3
+	dac i mb1
+st3,
+srt,	jmp .</pre>
+
+<p class="noindent"><em>(Code as in version 3.1. For the basics of PDP-1 instructions and Macro assembler code, please refer to <a href="insidespacewar-pt1-ep.html#instructions">Part 1</a>. We'll repeat the semantics of the instructions as we're encountering them.)</em></p>
+
+<p>Let's see what's happening here. As we may recall from <a href="insidespacewar-pt3-objects.html">Part 3</a>, when we were exploring the main loop or &quot;object loop&quot; of the program, we would end at label <code>ss1</code> for spaceship #1 or <code>ss2</code> for spaceship #2, when this was called as at label <code>mq4</code> near the end of the main loop:</p>
+
+<pre>mq4,	lac i ml1	/ routine for calculating spaceship
+	dap . 1		/ or other object and displaying it
+	jsp .</pre>
+
+<p>As we also may remember, <code>ml1</code> contains the address of the routine handling the <em>current object</em> (for a spaceship in cruise mode <code>ss1</code> or <code>ss2</code>) and a sign-bit set to indicate the collidible state of the object. While this sign-bit was handy for the comparison loop, we must now get rid of it in order to make a regular jump to this subroutine. For this, we first load the actual address into the accumulator (mind the i- or <em>defer</em> bit used to load not the contents of <code>ml1</code>, but rather to use this for another address lookup). Then, the next instruction puts just the address part of this into the location immediately following to this, leaving the instruction part (the opcode <code>jsp</code>) as-is. Finally, this newly assembled instruction is executed and the program dispatches either to subroutine <code>ss1</code> for spaceship 1 or <code>ss2</code> for spaceship 2:</p>
+
+<pre>ss1,	dap srt		/ first spaceship  <span class="comment">// deposit return address</span>
+	jsp i \cwg	<span class="comment">// get control input</span>
+	dio \scw	<span class="comment">// store it in \scw</span>
+	jmp sr0		<span class="comment">// jump to sr0</span>
+
+ss2,	dap srt		/ second spaceship
+	jsp i \cwg	<span class="comment">// get control input</span>
+	rir 4s		<span class="comment">// rotate IO right 4 bits</span>
+	dio \scw	<span class="comment">// store it in \scw</span>
+
+sr0, ...</pre>
+
+<p class="noindent"><em>(As usual, comments starting with double slashes are mine and not in the original code.)</em></p>
+
+<p>Besides suffering a gory violation of Spacewar!'s naming conventions by storing the return address in label <code>srt</code> (instead of a label <code>srx</code> &mdash; there is no <code>srx</code> at all &mdash; rather alluding to <em>return</em> by the charcters &quot;<code>rt</code>&quot;), this is loading the current control word or user input into the IO register by calling the reading routine aliased in variable <code>\cwg</code> (as in <em>control word get(ter)</em>) and stores it in variable <code>\scw</code>.</p>
+
+<h2 id="controls">Reading Control Input</h2>
+
+<p>We've alreade seen (in <a href="insidespacewar-pt3-objects.html">Part 3</a>) how this was set up at the very start of the program, either by using the default start address of <code>4</code> for the control boxes (designed by Bob Saunders and Alan Kotok) or by starting the program at location <code>5</code> for use with the test word switches at the PDP-1's control console. So this is either executing the getter subroutine at <code>mg1</code> for the control boxes or the code at <code>mg2</code> for the test word input:</p>
+
+<pre>mg1,	dap mg3		<span class="comment">// deposit return address</span>
+	cli		<span class="comment">// clear IO</span>
+	iot 11		<span class="comment">// read control input into IO</span>
+mg3,	jmp .		<span class="comment">// return</span>
+
+mg2,	dap mg4		<span class="comment">// deposit return address</span>
+	lat		<span class="comment">// load test word into AC</span>
+	swap		<span class="comment">// exchange AC and IO (test word now in IO)</span>
+mg4,	jmp .		<span class="comment">// return</span></pre>
+
+<p>Both are first depositing the return address, are then putting the reading in the IO register and jump to the deposited return address, the important difference being the code in between:</p>
+<p>The first one is clearing the IO register (by the <code>cli</code> instruction) and is then loading the control word into it by the &quot;<code>iot 11</code>&quot; instruction. This instruction code is entirely undocumented, but we may reconstruct its working from this: The <code>iot</code> opcode is generally addressing the I/O-ports of the PDP-1 with the addressed device specidfied by the two lowest octal digits. Apparently device-code <code>11</code> is importing a reading from the flip-flops of switch-bay 1 of the PDP-1, where the control boxes would have been attached to. We may also infer from this particular code that this might have been imported by performing a logical <code>OR</code>, else there wouldn't have been the need to clear the IO register first.</p>
+
+<p>The second one is using the <code>lat</code> instruction to load the state of the test word into the accumulator. Since we would want to abstract both readings into a single form, we've to move this into the IO register, just like the reading of the control boxes. This is exactly what is achieved by the macro <code>swap</code> following immediately to this. (We have seen this one before: It exchanges the contents of the accumulator and the IO register by performing two &quot;<code>rcl 9s</code>&quot; instructions, rotating them as a joined 36-bit register by a total of 18 bits, or one word length, to the right.)</p>
+
+<p>Each of these routines is reading a 18 bit word, and we already know from a comment near the top of the source code in which format these will be:</p>
+
+<pre>/ high order 4 bits, rotate ccw, rotate cw, (both mean hyperspace)
+/    fire rocket, and fire torpedo. Low order 4 bits, same for
+/    other ship.  Routine is entered by jsp cwg.</pre>
+
+<p>In other words (or rather ASCII graphics), this looks like this:</p>
+
+<pre style="background-color: #fff;">bits:          0  1  2<span style="color:#888;">'</span> 3  4  5<span style="color:#888;">'</span> 6  7  8<span style="color:#888;">'</span> 9 10 11<span style="color:#888;">'</span>12 13 14<span style="color:#888;">'</span>15 16 17
+usage:         -PLAYER 1-                                -PLAYER 2- 
+semantics:     L  R  T  F                                L  R  T  F
+               |  |                                      |  |
+            HYPERSPACE                                HYPERSPACE</pre>
+
+<p>In order to have the readings for player 1 and player 2 and their respective spaceships in the same order, the input routine for spaceship 2 is additionally rotating the control word in the IO register 4 bits to the right by the instruction &quot;<code>rir 4s</code>&quot;. Therefore we'll have to scan just the 4 most significant bits for both of the ships. This scanning starts at label <code>sr0</code>, now the same for both of the ships:</p>
+
+<h2 id="scanning">Scanning the Control Word</h2>
+
+<pre>sr0,
+sc1,	lio \scw	/control word
+	clf 6 cla-opr	/update angle  // clear flag 6 and AC
+	spi		<span class="comment">// skip on sign (bit 0, turn ccw) not set</span>
+	add maa		<span class="comment">// add angular acceleration</span></pre>
+
+<p>The scanning is started by loading the control input from <code>\scw</code>, where it has been stored just previously. The combined instruction &quot;<code>clf 6 cla-opr</code>&quot; clears program flag 6 and the accumulator in a single cycle. (The assembler would be just adding the instruction codes. Since both are &quot;augmented instructions&quot;, as in <em>micro-programmed</em>, of the same op-group, these may be combined to form a union to be executed at once in parallel. For this, the common opcode for this group, <code>opr</code>, has to be subtracted in order to have this not doubled by the addition.)</p>
+
+<p>The actual scanning begins with instruction <code>spi</code> <em>(skip on IO positive)</em>, skipping the next instruction, if the sign-bit in the left most position would be zero. If set, &quot;<code>add maa</code>&quot; adds the angular acceleration (as defined in the constant <code>maa</code> right at the start of the source code) to the accumulator. Since we just cleared this before, this is now either zero, or contains the contents of <code>maa</code>. Since <code>maa</code> contains the positive octal value <code>10</code> and we're adding it, this will be increasing the turning angle (as in a counterclockwise rotation). We may also observe that the use of the instruction <code>add</code> is much more telling than a simple <code>lac</code> would have been, while effecting in the same result and using the same cycle count.</p>
+
+<p>Quite the same is used for bit 2, which is now rotated into the sign position, this time decreasing the value in the accumulator by the value in <code>maa</code>, effecting in a clockwise rotation:</p>
+
+<pre>	ril 1s		<span class="comment">// turn cw (right)</span>
+	spi		<span class="comment">// set?</span>
+	sub maa		<span class="comment">// yes, subtract maa</span></pre>
+
+<p>Having done the parsing of the input for left or right turns, it's time to update the angualar momentum:</p>
+
+<pre>mom,	add .		<span class="comment">// angular momentum, add it to current angular acceleration</span>
+	dac i mom	<span class="comment">// store it</span>
+	szs 10		<span class="comment">// ssw 1 zero?</span>
+	jmp sr8		<span class="comment">// no, jump to sr8 (2 instructions below)</span>
+	dzm i mom	<span class="comment">// clear property mom (no accumulation)</span>
+	ral 7s		<span class="comment">// multiply by 2^7</span></pre>
+
+<p>Let's step through these instructions, to get an idea, what's happening here: The first one is adding the value stored in the address part of this instruction. This is a pointer to an entry in the objects table, the property for the <em>angular momentum</em>. The next instruction, &quot;<code>dac i mom</code>&quot; (mind the i-bit) is storing this updated value back (not into <code>mom</code>, but the address stored in its address part, the property in the objects table). The next instruction checks the state of sense switch 1 and skips, if this would be zero. If set, the next jump to <code>sr8</code> takes us to the instruction immediately following after the instructions listed here. If zero (default mode), &quot;<code>dzm i mom</code>&quot; clears the property to which <code>mom</code> is pointing to again, and the final <code>ral 7s</code> <em>(rotate AC right 7 bits)</em> is multiplying the value in the accumulator by 2^7.</p>
+
+<p>So, there will be two modes: If sense switch 1 is set, the angular momentum will build up gradually in the property refered to by the pointer <code>mom</code>, else, we'll start at zero each time (since nothing is added to the current angular acceleration), but this time, we're increasing the amount quite dramatically by multiplying it by (decimal) 128. In other words, there is Bergenholm rotation (&quot;gyros&quot;) or, when sense switch 1 is set, inertial rotation (&quot;rocket thrusters&quot;) with the angular momentum gradually accumulating in small steps.</p>
+
+<p>But there are other things we may note in this piece of code &mdash; and these are related to the very platform this game is coded for. First, there is this use of <code>mom</code>: We've seen already in <a href="insidespacewar-pt3-objects.html">Part 3</a>, while investigating the main loop, how pointers would have been set up to refer to the individual properties of the current object. For this purpose, any location is as good as any other. Since we'll need the address part only, why not put it just in place at the instruction where this would be used most? This is exactly what is quite cleverly done here.</p>
+<p>Second, we may wonder, why this is first adding and updating a value that is cleared again by default just a few instructions below. Isn't this whole processing quite complicated and mostly a waste of time? Would they know at all, what they were doing? As stressed a few times in the previous parts, we have to keep in mind that this is about realtime computing on a machine without an accessible internal clock. A modern programmer, relying on clock-ticks, would probably go for the shortes and most economic strain of the code and branch as early as possible. But this is not an option here. Thus, in order to maintain a stable frame rate, we should have an eye on the instruction count. There might be this provision for keeping frame rates, we've seen already in <a href="insidespacewar-pt3-objects.html">Part 3</a>, but why should we fiddle with updating the estimated instruction count, by this adding extra instructions, just to spend the extra cycles in a counter loop, when we could spend the exact count on the cheap by sticking with the longest strain as long as possible? Because of this, we'll see a preference for the longest option in most of the code (with the notable exception of the code for calculating gravity, but this is an other story).</p>
+
+<p>Anyway, sticking with the code as it is listed, it's time to parse any thrusting of the main rockets:</p>
+
+<pre>sr8,	ril 1s		<span class="comment">// rotate control word bit 2 into sign bit</span>
+	spi		<span class="comment">// positive?</span>
+	stf 6		<span class="comment">// no (bit is set for thrusting), set flag 6</span>
+	lio i \mfu	<span class="comment">// load fuel</span>
+	spi i		<span class="comment">// not positive?</span>
+	clf 6		<span class="comment">// positive, clear flag 6</span></pre>
+<p>This piece of code rotates the next bit (originally in bit 2) into sign position. If it is set (as indicated by a negative value), program flag 6 is set, too. Next, the actual amount of fuel (as in the location denoted by pointer <code>\mfu</code>) is loaded into the IO register. This is a negative value (defined in the constant <code>foo</code> as <code>-2000</code>) to be used in a count-up. Therefor a positive value indicates an empty fuel tank, which is tested by the next conditional skip instruction (mind the i-bit for the negated condition). If empty, flag 6 will be cleared. A set flag 6 will thus indicate both a set control-bit for the player wanting to accelerate the spaceship and also being able to do so for a non-empty fuel tank.</p>
+
+<p>Let's see what comes next:</p>
+
+<h2 id="thrust">Applying Rotation and Thrust</h2>
+
+<pre>mth,	add .		<span class="comment">// add angular acceleration to rotation angle</span>
+	sma		<span class="comment">// limit angle to 0..311040 (2 x Pi)</span>
+	sub (311040
+	spa
+	add (311040
+	dac i mth	<span class="comment">// store updated angle</span></pre>
+
+<p>Now, we're finally doing business, updating the rotation angle <em>theta</em>, as in pointer <code>mth</code>. Again, <code>mth</code> happens to be just the location, where we would need this value, and the rotation angle of the spaceship is added to the updated angular momentum, still in the accumulator and the result of the previous addition (either being the cumulative momentum, increase or decreased by octal <code>10</code> or zero, or the current acceleration, as octal <code>+/-2000</code> or zero). This is now kept in the bounds of <code>0</code> and <code>311040</code>: Instruction <code>sma</code> skips the next subtraction, if the contents in the accumulator would be (already) negative, else we subtract the constant <code>311040</code> from it. <code>spa</code> skips, if the accumulator should be positive, else we make it so by adding the same constant <code>311040</code> to it. (Again, we may note how this is sticking with the longes strain of code.)</p>
+
+<p>We know from <a href="insidespacewar-pt3-objects.html">Part 3</a>, what this constant <code>311040</code> would be: When the spaceships were set up, one of them was rotated by 180&deg; by initilizing its angle by the value <code>144420</code>. As we found out, this is was octal notation of the binary representation of Pi with the binary point just after bit 3 and a precision of 12 bits. From this we inferred that angles would be processed in radiants. Because of this, it just makes sense to limit the angle to a single, positive rotation as in 2 Pi, or <code>311040</code> (which happens to be the double of <code>144420</code>).</p>
+
+<p>There is a whole story behind the next instruction and even a famous quote:
+
+<pre>jda sin</pre>
+
+<p>As we know from &quot;<a href="https://www.masswerk.at/spacewar/SpacewarOrigin.html">The Origin of Spacewar</a>&quot; by J. M. Graetz <cite>(Creative Computing, 1981)</cite>, Steve Russell was <em>&quot;never one to 'do something' when there was an alternative [and] begged off for one reason or another.&quot;</em> One of the execuses was the lack of a sine-cosine routine and that Russell would just not know how to do it. So, one day, Alan Kotok, on friendly terms with DEC in Maynard, came back from <em>The Mill</em> (DEC HQ) with some paper tapes and the famous quote:</p>
+
+<blockquote>All right, Russell, here's a sine-cosine routine; now what's your excuse?</blockquote>
+
+<p>According to Steve Russell, he would be looking around and wouldn't find an excuse, <em>&quot;so I had to settle down and do some figuring.&quot;</em></p>
+<p>Welcome to the results of this <em>figuring</em>: Here it is calling the routine that started it all and put an end to any further delays. And quite like Steve Russell, we're not really interested here in the details of the numerical analysis involved in this code (saving the external subroutines for a later episode). But we might at least peek at the heading comment of this routine, providing us both with the author (without him, there would not have been any Spacewar! at all), and its specifications:</p>
+
+<pre>/sine-cosine subroutine: Adams associates
+/calling sequence= number in AC, jda sin or jda cos.
+/argument is between .+2 pi, with binary point to right of bit 3.
+/answer has binary point to right of bit 0.  Time = 2.35 ms.</pre>
+
+<p>Except, there isn't exactly the name of an author. But we know where it would have originated, we know that the angle is to be supplied in the accumulator, that it's radiants, in deed, and even the format of the return value. This is, what is now called by &quot;<code>jda sin</code>&quot;:</p>
+
+<pre>	jda sin		<span class="comment">// calc sine</span>
+	dac \sn		<span class="comment">// store it in \sn</span>
+	dzm \bx		<span class="comment">// clear \bx and \by</span>
+	dzm \by
+	szs 60		<span class="comment">// sense switch 6 zero?</span>
+	jmp bsg		<span class="comment">// no, jump to bsg</span></pre>
+
+<p>With the sine stored in the variable <code>\sn</code> and the two factors <code>\bx</code> and <code>\by</code> cleared for later use, we learn about the usage of another sense switch: If there's sense switch 6 set, we jump to the code at <code>bsg</code>, if not (default) we'll execute the following code. But what is skipped here? The calculation for gravity. But, in order to keep this short <em>(this was a good one, wasn't it?)</em>, we'll stick with Steve Russell again, who <em>&quot;pleaded innocence of numerical analysis and other things&quot;</em> <cite>(Steve Russel quoted in The Origin of Spacewar)</cite> and left this to Dan Edwards. We're right at the &quot;section of fence&quot;, which also provides the excuse for saving this for the next episode.</p>
+<p>But we may note that sense switch 6 would be disabling gravity at all. And we may note as well that this time, there would be quite a speed up of the game involved, since this piece of code is doing quite some heavy number crunching, involving multiplications, divisions, square roots, and so on, while there is no compensation for this by any modification of the estimated instruction count for this routine.</p>
+<p>The reason for this may be found in the history of the game's development, as described in <cite>&quot;The Origin of Spacewar&quot;</cite>:</p>
+
+<blockquote>The addition of gravity pushed Spacewar! over the edge of flicker-free display. To get back under the limit, Dan Edwards devised an elegant fiddle to speed up the outline display routine.</blockquote>
+
+<p>Since gravity and the central &quot;heavy star&quot; are both of major importance to the gameplay and the aesthetics of Spacewar!, you probably wouldn't want to play the game without it. The only reason for the switch being there at all, would presumingly have been either a demonstration of the performance involved, or a necessity before the outline compiler (which we've already seen in <a href="insidespacewar-pt4-oc.html">Part 4</a>) was introduced, when the then flicker prown display would have been putting some eye stress on the pioneering spacewarriors late at night. (Please mind that this is just a guess and not confirmed by any sources.)</p>
+
+<p>Anyway, we fast forward here and pick up the code at label <code>bsg</code>:</p>
+
+<h2 id="positions">Updating Positions</h2>
+
+<pre>bsg,	cla		<span class="comment">// resume from gravity calculations, reset AC</span>
+	sad i \mfu	<span class="comment">// fuel not equal AC (zero)?</span>
+	clf 6		<span class="comment">// no (fuel is 0), clear flag 6 (again)</span>
+	lac i mth	<span class="comment">// load angle, get cosine and store it in \cs</span>
+	jda cos
+	dac \cs</pre>
+
+<p>After clearing the accumulator from any contents left from &quot;beyond the fence&quot;, the code is testing again for any fuel left, this time by comparing it to the value in the accumulator (reset to zero just before). If zero, program flag 6 is cleared once more. (We don't know, why this would be done here again. A left-over from a previous version? Lack of coordination in the late hours of the last fixes? At least, the code is making pretty sure that the flag would not be set, when the ship would be run out of fuel.)</p>
+<p>The next three instructions are now calculating the cosine, simliarily to how it was done for the sine before, and stores this in variable <code>\cs</code>.</p>
+
+<p>Now it's high time to actually move the ship. For this, we may want to recall the format used for the positions: These are just in the format required for the <code>dpy</code> instruction, displaying a dot on the screen, with the screen position in the range of <code>-2000 .. +2000</code> (decimal <code>-1024 .. +1024</code>) in the highest 11 bits and the lower 7 bits just ignored. (Thus, we may use the lower 7 bits like a fractional part and will have an automatic reduction to integer applied, when actually displaying some.) The sine and cosine, stored in <code>\sn</code> and <code>\cn</code> respectively, are in the range of <code>+1 .. -1</code> with the fractional point just after the sign bit. We already know from the code produced by the outline compiler that a shift by 9 bits to the right is putting the bit 1 in the 8th lowest position, so that a cosine of <code>1</code> would now effect into a deviation by a single screen location, as in (octal) <code>200</code>. This is exactly what is done here, followed by an additional scaling as defined in the setup parameter <code>sac</code> <em>(spaceship acceleration)</em>:</p>
+
+<pre>
+	sar 9s		<span class="comment">// normalize cosine to a deviation by a single screen location</span>
+	xct sac		<span class="comment">// apply additional scaling as defined in parameter sac</span>
+	szf i 6		<span class="comment">// flag 6 set (thrusting)?</span>
+	cla		<span class="comment">// no, clear AC again</span>
+	add \by		<span class="comment">// add gravity, y-factor</span>
+	diff \mdy, my1, (sar 3s</pre>
+
+<p>The instruction <code>xct</code> executes the instruction in location <code>sac</code>, defined as &quot;<code>sar 4s</code>&quot; in the constants table, another shift to the right by 4 bits. The default setup will accelerate the ship's vertical velocity by a maximum of a 16th of a screen location per frame. In case we would not be thrusting, as indicated by flag 6 not set, we clear the accumulator again, but there will be still somthing to to do, since we add the y-factor of the gravity (calculated in the part we skipped above) to it. (Again, in case no thrust would have been applied, we were spending any extra cycles just in place.)</p>
+
+<p>The positional properties are now updated by the inserting the macro <code>diff</code> with the <em>delta y</em> pointer <code>\mdy</code>, the <em>y position</em> in pointer <code>\my1</code>, and the constant expression &quot;<code>sar 3s</code>&quot; as scaling factor in the third parameter. This is, what <code>diff</code> looks like:</p>
+
+<pre>	define
+diff V,S,SF
+	add i V		<span class="comment">// add first parameter</span>
+	dac i V		<span class="comment">// store updated value</span>
+	xct SF		<span class="comment">// apply scaling factor</span>
+	add i S		<span class="comment">// add second parameter to it</span>
+	dac i S		<span class="comment">// store updated value</span>
+	term</pre>
+
+<p>This is first adding the current vertical delta in pointer <code>\mdy</code> and is storing the updated value back there again. After applying another scaling by 3 bits to the right (divide by 8), the same procedure &mdash; add, store updated value &mdash; is applied to the y-position as in pointer <code>my1</code>. By this, we've actually moved the spaceship vertically over the screen, and we may note that this is just hardly propelled for a single frame of giving thrust. (With <code>mdy</code> representing a value shifted 8 bits to the right as compared to the screen location in <code>my1</code>, only a 2048<sup style="line-height: normal;">th</sup> part of the movement vector tributes to the a spaceship's position in each frame.) But, since there are quite a number of frames per seconds, this will build up.</p>
+
+<p>Now we're ready to the same on the sine and the properties referring to the horizontal position:</p>
+
+<pre>
+	lac \sn		<span class="comment">// load sn and do same on x, dx</span>
+	sar 9s
+	xct sac
+	cma
+	szf i 6
+	cla
+	add \bx
+	diff \mdx, mx1, (sar 3s</pre>
+
+<p>As we've seen previously in <a href="insidespacewar-pt4-oc.html">Part 4</a>, we'll get toroidal space &mdash; flipping to the other side, when going off-screen at one of the extremes &mdash; on the cheap, thanks to using the screen locations for the positions. Since these are using the highest value bits, any update resulting in a potential off-screen position will just cause an overflow (which isn't cared for in any way) and the ship will pop up right on the other side. Moreover, the ship will be automatically split to both sides of the screen, when drawn right at one of the edges. For times, limited word lengths are a beautiful thing &hellip;</p>
+
+<p>Movements complete, we might actually proceed to paint the thing onto the screen, but there's somthing done before:</p>
+
+<h2 id="basictrick">The Basic Trick</h2>
+
+<pre>sp1,	scale \sn, 5s, \ssn	<span class="comment">// save scaled sine, cosine</span>
+sp2,	scale \cs, 5s, \scn
+	lac i mx1		<span class="comment">// load x</span>
+	sub \ssn		<span class="comment">// subtract scaled sine</span>
+	dac \sx1		<span class="comment">// store in \sx1   (\sx1 = x - sin / 2^5)</span>
+	sub \ssn		<span class="comment">// subtract again</span>
+	dac \stx		<span class="comment">// deposit in \stx (\stx = x - 2 * sin / 2^5)</span>
+	lac i my1		<span class="comment">// do the same with y</span>
+	add \scn
+	dac \sy1
+	add \scn
+	dac \sty</pre>
+
+<p>The macro <code>scale</code>, inserted at labels <code>sp1</code> and <code>sp2</code>, is setting up a scaled version of the sine and cosine respectively:</p>
+
+<pre>	define
+scale A,B,C
+	lac A		<span class="comment">// load first parameter</span>
+	sar B		<span class="comment">// apply scaling (divide by 2^B)</span>
+	dac C		<span class="comment">// deposit in third parameter</span>
+	term</pre>
+<p>By this we now have two derivative factors, scaled by shift by 5 bits to the right (divide by decimal <code>32</code>), in <code>\ssn</code> and <code>\scn</code>. These are now subtracted from the x and y positions. Once, to setup <code>\sx1</code> and <code>\sy1</code>, twice for <code>\stx</code> and <code>\sty</code>. While we'll see soon, what the first ones would be used for, we'll just note here &mdash; <em>spoiler alert</em> &mdash; that the &quot;<code>t</code>&quot; in <code>\stx</code> and <code>\sty</code> is denoting the use for torpedos. (Actually, <code>\stx</code> and <code>\sty</code> are a position just in front of the tip of the ship, the very spot, where a newly fired torpedo will start its life.)</p>
+
+<p>This is followed by a piece of code, we already peeked ahead to in <a href="insidespacewar-pt4-oc.html">Part 4</a>, setting up the directional matrix to be used by the display code produced by the outline compiler:</p>
+
+<pre>	scale \sn, 9s, \ssn	<span class="comment">// store scaled sine in \ssn</span>
+	scale \cs, 9s, \scn	<span class="comment">// store scaled cosine in \scn</span>
+	lac \ssn
+	dac \ssm		<span class="comment">// \ssm = \ssn</span>
+	add \scn
+	dac \ssc		<span class="comment">// \ssc = \ssn + \scn</span>
+	dac \ssd		<span class="comment">// \ssd = \ssn + \scn</span>
+	lac \ssn
+	sub \scn
+	dac \csn		<span class="comment">// \csn = \ssn - \scn</span>
+	cma			<span class="comment">// complement AC</span>
+	dac \csm		<span class="comment">// \csm = -\csn</span>
+	lac \scn
+	dac \scm		<span class="comment">// \scm = \scn</span></pre>
+
+<p>First, another scaled version of the sine and cosine is set up in <code>\ssn</code> and <code>\scn</code> again, this time applying a scaling of 9 bits to the rights, normalizing them to maximum value of an advancement by a single display location. Then the components of the directional matrix are calculated from these, by applying some basic math.</p>
+
+<p>What we've just seen here, is Steve Russell's &quot;basic trick&quot; (which also has been said to be &quot;rotating the entire grid&quot;):</p>
+
+<blockquote>And so I started work and figured out the basic trick of Spacewar! display which is that you only need to calculate a unit vector pointing in the direction of the spaceship. And you can express everything else the spaceship does, and the outline of the spaceship in terms of that unit vector, suitably scaled. So it's basically a lot of addition in the usual program upkeep.<br /><em class="cite">(Oral History of Steve Russell, interviewed by Al Kossow, rec. 9 Aug 2008, <a href="http://www.computerhistory.org/collections/catalog/102746453" target="_blank">CHM catalog no. 102746453</a>, p.12)</em></blockquote>
+
+<p>As we've seen just before, this is done by calculating the sine and cosine (the &quot;unit vector&quot;) once per spaceship and frame, and by setting up some derivative values for the benefit of the other routines by applying just some simple scaling, additions, and subtractions.</p>
+
+<h2 id="shipsdisplay">Putting it on the Scope</h2>
+
+<p>With everything thus updated nicely, we're ready to finally display the ship, by calling the display code produced by the outline compiler, which was setup in the address part of location <code>sp5</code> by the main loop before:</p>
+
+<pre>	cla cli-opr	<span class="comment">// clear AC and IO</span>
+	dpy-4000	<span class="comment">// display a dot at the origin, request completion pulse</span>
+sp5,	jmp .		<span class="comment">// jump to compiled outline code</span>
+sq6,	ioh		<span class="comment">// wait for last completion pulse</span></pre>
+
+<p>Since the outline code is using the combined <code>dpy-4000</code> and <code>ioh</code> instructions, first waiting for a completion pulse sent by the display to indicate that it has done its part, and then issuing the next display command requesting a completion pulse by the instruction <code>dpy-4000</code>, we'll have to provide this code something to wait for, or it will wait for ever. Likewise, we should fetch the last completion pulse in the sense of good house keeping. This is done by the framing <code>dpy-4000</code> and <code>ioh</code> instructions &mdash; and since both AC and IO, in which the display location is provided to the scope, are cleared before, there will be a spot in the default brightness <code>0</code> at the very center of the screen, even, if there's no gravitational star (when disabled by setting sense switch 6).</p>
+
+<p>We may recall from <a href="insidespacewar-pt4-oc.html">Part 4</a> that the outline is drawn starting at the tip, right at the position provided in <code>\sx1</code> and <code>\sy1</code>. This is also, why we would have seen these being set up to the value of the internal position and an additional offset. Since this was the sine and cosine shifted by 5 bits to the right, the offset will be in the range of <code>0..4</code> bits. For this being the equivalent of 16 screen locations and the offset being expected to move the start of the outline from the center to the tip of the ship, this makes for a standard ship-length of 32 display locations. (Actually, the <em>Needle</em> is 31 locations high and the brave <em>Wedge</em> rises to a total of 25 locations.)</p>
+
+<p>Another thing we may recall from <a href="insidespacewar-pt4-oc.html">Part 4</a> is <code>\sx1</code> and <code>\sy1</code> being updated to the very last drawing position at the end of the compiled display routine, just before the jump to label <code>sq6</code>. This is also the position, where any exhaust trail should be drawn at the aft a thrusting ship:</p>
+
+<pre>	ranct sar 9s, sar 4s, \src	<span class="comment">// put random length into \src</span>
+	lio \scw			<span class="comment">// load control word into IO</span>
+	ril 2s				<span class="comment">// check bit 2 again</span>
+	spi i 				/ not blasting
+	jmp sq9				/ no tail
+
+sq7,	scale \sn, 8s, \ssn		<span class="comment">// get a scaled offset</span>
+	scale \cs, 8s, \scn
+	count i \mfu, st2		<span class="comment">// increment \mfu, jump to st2 while negative</span>
+	dzm i \mfu			<span class="comment">// positive, clear fuel</span>
+	jmp sq9				<span class="comment">// end of blasting</span>
+
+st2,	yincr \sx1, \sy1, sub		<span class="comment">// advance the line</span>
+	dispt i, \sy1			<span class="comment">// display a dot</span>
+	count \src,sq7			<span class="comment">// repeat for \scr length</span></pre>
+
+<p>The macro <code>ranct</code> is setting up a random length in the following manner:</p>
+
+<pre>	define
+ranct S,SS,C
+	random		<span class="comment">// get random number (in ran and AC)</span>
+	S		<span class="comment">// scale by first parameter (sar 9s)</span>
+	SS		<span class="comment">// scale by second parameter (sar 4s)</span>
+	sma		<span class="comment">// skip, if already negative</span>
+	cma		<span class="comment">// make it negative</span>
+	dac C		<span class="comment">// deposit result in C</span>
+	term</pre>
+
+<p>This stores a negative random number shifted by 13 bits to right in variable <code>\scr</code>. Since there are 5 bits left in an 18 bit word and the very first bit was originally the sign bit, this will be a 4 bit value in the range of decimal <code>0..16</code>.</p>
+<p>The next instructions are bluntly ignoring all the previous efforts on setting up program flag 6, rather scanning the control word for bit 2 anew. If not set, we jump to label <code>sq8</code> below of this.  (Yet again, we did spend some cycles just in place, even, if there would not be any thrust applied.) Otherwise, we've a blasting tail to to draw, here's the code for this again:</p>
+
+<pre>sq7,	scale \sn, 8s, \ssn		<span class="comment">// get a scaled offset</span>
+	scale \cs, 8s, \scn
+	count i \mfu, st2		<span class="comment">// increment \mfu, jump to st2 while negative</span>
+	dzm i \mfu			<span class="comment">// positive, clear fuel</span>
+	jmp sq9				<span class="comment">// end of blasting</span>
+
+st2,	yincr \sx1, \sy1, sub		<span class="comment">// advance the line</span>
+	dispt i, \sy1			<span class="comment">// display a dot</span>
+	count \src,sq7			<span class="comment">// repeat for \scr length</span></pre>
+
+<p>First, we prepare a scaled version of the sine and cosine once more. Since this is scaled by a shift of 8 bits to the right, this offset will be advancing by up to 2 display locations, resulting in a dotted line. (These would probably bleed into a single line on the scope, but would effect in an appearance more dimm and flaky than the outline of the ship.) The macro <code>count</code> increments the (negative) fuel supply in <code>\mfu</code>. If still negative, we jump to label <code>st2</code> for the actual display, else we're out of fuel and are resetting the fuel supply to zero by the instruction &quot;<code>dzm i \mfu</code>&quot; and are off for label <code>sq9</code>.</p>
+
+<p>At <code>st2</code>, the macro <code>yincr</code> advances the position in <code>\sx1</code> and <code>\sy1</code> by the offsets in <code>\ssn</code> and <code>\scn</code>:</p>
+
+<pre>	define
+yincr X,Y,INS
+	lac Y		<span class="comment">// load Y into AC</span>
+	INS \scn	<span class="comment">// apply instruction INS (sub) \scn</span>
+	dac Y		<span class="comment">// update Y</span>
+	lac X		<span class="comment">// load X into AC</span>
+	-INS+add+sub \ssn	<span class="comment">// apply opposite of INS (add) \ssn</span>
+	dac X		<span class="comment">// update X</span>
+	term</pre>
+
+<p>(The expression &quot;<code>-INS+add+sub</code>&quot; adds up to the sum of the opcodes for <code>add</code> and <code>sub</code> minus the opcode in the third parameter. Should this have been <code>sub</code>, this makes the equivalent of <code>add</code>, and vice versa.)</p>
+
+<p>The macro <code>disp</code> as in &quot;<code>dispt i, \sy1</code>&quot; is displaying a dot at the default intensity (since there's no third parameter, it will be zero) without waiting for or requesting a completion pulse (&quot;<code>dpy-A+B</code>&quot; is resulting in &quot;<code>dpy-i</code>&quot;):</p>
+
+<pre>	define
+dispt A,Y,B
+	repeat 6, B=B+B	<span class="comment">// shift left 6 bits (at assembly)</span>
+	lio Y		<span class="comment">// load Y position into IO, X already in AC</span>
+	dpy-A+B		<span class="comment">// display in brightness B (A is either 0, i, or 4000)</span>
+	term</pre>
+
+<p>Since macro <code>yincr</code> left the x location in the accumulator, there's no need to load this again. &quot;<code>lio Y</code>&quot; loads the y coordinate from <code>\sy1</code> and the heading &quot;<code>repeat</code>&quot; statement would shift any intensity by 6 bits to the left in order to prepare it for the format of the <code>dpy</code> instruction. Since our intensity is <code>0</code>, this is without further interest here.</p>
+
+<p>The real interesting part is the very last statement of the blast display loop:</p>
+
+<pre>	count \src,sq7			<span class="comment">// repeat for \scr length</span></pre>
+
+<p>This is incrementing the random length in <code>\scr</code> towards zero. While negative, we would jump to <code>sq7</code>, else we'll fall through to label <code>sq9</code> following immediately below.</p>
+
+<p>Wait, not to label <code>st2</code>, where the drawing position is advanced?<br />No, right to label <code>sq7</code>, where the fuel is checked and incremented!<br />For any dot drawn, there will be also a unit of fuel being burned! &mdash; <em>That's what I would call a simulation!</em></p>
+<p>(But while admiring this sense for accuracy, we might utter some critique here, regarding label <code>sq7</code> not being placed two instructions below, just after the scaling of the offsets, thus repeating this preparation of the offsets quite reduntantly all over the loop again. Something that was fixed in version 4.)</p>
+
+<p>Another thing, we might mention here, is the scaling of these offsets: In Spacewar! 2b this was actually done by 9 bits (as in <code>9s</code>), resulting in the same ratio as used for the spacehip outlines. The blasting line would therefor be more solid and half the length. We would regard the modification in version 3.1 as some visual improvement. (Notably, this is using just the same cycle count, while doubling the visual length of the exhaust trail.)</p>
+
+<p>There's something we haven't checked yet &mdash; right, torpedos.<br />Here we go, at label <code>sq9</code>, where all the branching strains are joining again:</p>
+
+<h2 id="fire">Fire!</h2>
+
+<pre>sq9,	count i ma1, sr5	/ check if torp tube reloaded
+	dzm i ma1		/ prevent count around
+mco,	lac .			/ previous control word
+	cma
+	szs i 30
+	clc
+	and \scw		/ present control word
+	ral 3s			/ torpedo bit to bit 0
+	sma
+	jmp sr5			/ no launch
+	count i \mtr, st1	/ check if torpedos exhausted
+	dzm i \mtr
+	jmp sr5</pre>
+
+<p>The macro <code>count</code> at label <code>sq9</code> is incrementing the general purpose counter refered to by <code>ma1</code>. Whenever there's some timing to manage for a special state, like explosions, or torpedo cooling, this is stored in the property to which <code>ma1</code> is pointing to. Since we're not exploding, but rather pretty much alive and maneuvering in space, its about torpedo reload time (as helpfully pointed out by the comment). If this would be negative after the increment, the counter is active and the tubes still cooling, so we jump to the next and final task at <code>sr5</code>. Otherwise, we might be firing, and we reset the counter to zero by  &quot;<code>dzm i ma1</code>&quot; first, since we might otherwise increment until we reach a negative number again, but now for a <em>really</em> long reload time.</p>
+
+<p>At <code>mco</code> we're loading into the accumulator, what is called the <em>previous control word</em>, and complement it by the <code>cma</code> instruction. The instruction &quot;<code>szs i 30</code>&quot; skips the next one, if sense switch 3 would be set. Otherwise, we'll clear and complement the accumulator at once by the <code>clc</code> instruction (a union of <code>cla</code> and <code>cma</code>). Then we perform a logigal <code>AND</code> on this with the <em>present control word</em> and rotate bit 3 into sign position. By checking this by the instruction <code>sma</code> <em>(skip on minus AC)</em>, we'll either jump to <code>sr5</code>, for the sign bit not being set and no torpedo meant to be fired, or we're going to check, if we would have any torpedoes left. The macro <code>count</code> is incrementing pointer <code>\mtr</code> for the torpedo supply and jumps to the actual action at <code>st1</code>, if still negative. Otherwise, we reset the torpedo pointer to zero (like <code>ma1</code> above) and jump to <code>sr5</code>.</p>
+
+<p>Now, the second half, starting at &quot;<code>ral 3s</code>&quot; should be pretty clear, repeating patterns, we've encountered before. But what is this fuzz about <code>mco</code>? We know from Spacewar! 4 that sense switch 3 is about torpedo salvoes. If set, there are only single shots, if unset, there will be salvoes (continuous fire mode). So, this is meant to stop the shooting action from repeating, if in single shot mode.</p>
+
+<p>Let's see: We're loading the previous control word, complement it, and perform an <code>AND</code> with the current control word on it. So it should be firing only, if the last control input would have a zero in bit 3 and the same bit would be set in the current control word. If in salvoe mode, <code>clc</code> clears and complements the accumulator, providing a set bit 3 at any rate. Pretty much straight forward.</p>
+
+<p>An attentive reader may have noticed two things: First, the use of the phrase <em>&quot;is meant to&quot;</em>, and second, the striking density of original comments in these few lines of code. (This is, in deed, the best commented part in the whole source, besides the pretty well documented constants table right at the beginning.) And there is a reason for this: It's not working as expected, there's actually a bug somewhere in it. You may set sense switch 3 to any position in Spacewar! 3.1, it will be always in salvoes mode.</p>
+
+<p>So, where is this bug? I would guess, the density of comments is telling the story of an intensive, but fruitless hunt. And, we didn't find any flaw in the logic, too, when we were reassuring ourselves on the workings of the code about <code>mco</code>. So, there is no bug at all! &mdash; <em>Hum.</em> &mdash; Turns out, there is no single piece of code in the whole program that would ever be setting <code>mco</code> (like Spacewar! 4 does it at the end of the main loop). Therefor, we'll start with an empty property every time, resulting in the same as when executing the <code>cmc</code> instruction. This is pretty easy to find out using a modern text editor with a search facillity, but was apparently out of scope for the original hunt for the little critter. (Yes, we're standing on the shoulders of giants, but the giants themselves were standing on the floor with bare feet. At least, they had no search command.)</p>
+
+<p>Anyway, we've still a torpedo to fire. For this, we search the objects table for an empty slot, providing an unsed object for our torpedo:</p>
+
+<pre>st1,	init sr1, mtb	/ search for unused object
+sr1,	lac .
+	sza i		/ 0 if unused
+	jmp sr2		<span class="comment">// jump to torpedo setup</span>
+	index sr1, (lac mtb nob, sr1
+	hlt		/ no space for new objects
+	jmp .-1</pre>
+
+<p>The macro <code>initialize</code> stores the address of the second parameter in the address part of the location in the first one, which happens to be the next address at label <code>sr1</code>. The contents of this address is now loaded into the accumulator, and, if it would not be zero, we skip the jump to the torpedo setup routine in <code>sr2</code>. Instead, its time for our proven macro <code>index</code>, this time incrementing the address pointer in <code>sr1</code> and jumping there, as long as the contents of the incremented address would not be equal to the constant expression &quot;<code>lac mtb nob</code>&quot; (<code>nob</code> is the number of objects in the objects table, see <a href="insidespacewar-pt3-objects.html">Part 3</a>). This is, what this macro looks like:</p>
+
+<pre>	define index A,B,C
+	idx A
+	sas B
+	jmp C
+	term</pre>
+
+<p>We may notice two things: First, the pointer is iniatially set up to point to the very first object, which is no other but our first spaceship. While this loop will usually skip at least the first two objects, there's actually a chance for a broken spaceship to be reused as a torpedo, when the surviving ship would keep firing with all guns blazing. This is not going to happen with default values, but, when hacking parameters as in &quot;hydraulic Spacewar&quot;, anything could happen.</p>
+<p>But what's happening, when there's no empty slot found at all? This will actually crash the program and will freeze Spacewar! in an endless loop of halt instructions:</p>
+
+<pre>	hlt		/ no space for new objects
+	jmp .-1</pre>
+
+<p>Spacewar! 3.1 is just shrugging and calling for the operator, who was careless enough to set up such insane parameters, to bring it out of this mess. (Please note that this could only happen in an extreme form of &quot;hydraulic Spacewar&quot;, with the torpedo reload time set to near zero and the torpedo lifetime set to some <em>quite</em> high value.) Spacewar! 4 is handling this situation more gracefully, by just stopping for a singl halt and the resuming by simply ignoring the fire command by a jump to <code>sr5</code>.</p>
+
+<h2 id="hyperspace">Last Checks &mdash; Jumping to Hyperspace</h2>
+
+<p>At label <code>sr5</code> the code is finally handling any jumps to hyperspace, before executing the jump to the return address at <code>srt</code>:</p>
+
+<pre>sr5,	count i \mh3, st3	/ hyperbutton active?  <span class="comment">// check cooling</span>
+	dzm i \mh3		<span class="comment">// prevent count around</span>
+	lac i \mh2		<span class="comment">// load number of remaining hyperspace shots</span>
+	sza i			<span class="comment">// not zero?</span>
+	jmp st3			<span class="comment">// zero, jump to return</span>
+	lac \scw		<span class="comment">// load control word</span>
+	cma			<span class="comment">// complement it</span>
+	ior i mco		<span class="comment">// inclusive or with previous control word</span>
+	and (600000		<span class="comment">// extract bits 0 and 1</span>
+	sza			<span class="comment">// AC zero?</span>
+	jmp st3			<span class="comment">// no, jump to return</span>
+	lac i ml1
+	dac i \mh1		<span class="comment">// store address of current routine in \mh1</span>
+	lac (hp1 400000		<span class="comment">// hyperspace routine, non-colliding</span>
+	dac i ml1		<span class="comment">// store it as new status word</span>
+	xct hd1			<span class="comment">// set up hyperspace breakout time</span>
+	dac i ma1
+	law 3
+	dac i mb1		<span class="comment">// set up instruction count (3)</span>
+st3,
+srt,	jmp .			<span class="comment">// return</span></pre>
+
+<p>The first two lines show the usual pattern for checking the hyperspace cooling counter in \mh3. If there would be something to count up on, we jump to the return at <code>st3</code> (the same location as <code>srt</code>), the end point of the final spaceship routine. Else, we clean up <code>\mh3</code> to prevening it from counting around.</p>
+<p>The next few lines are checking another counter, <code>\mh2</code>, for the remaining jumps. This has been set to a starting value of <code>-10</code> (decimal 8) by executing the instruction &quot;<code>law i 10</code>&quot; at label <code>mhs</code> (<em>number of hyperspace shots</em>) from the constants table during the initialization phase. Inside the hyperspace routine it's incremented on each jump, until it would become zero. If zero, it blocks here and we're jumping to the return at <code>st3</code> once again. (Thus, there are up to 8 attempts.)</p>
+<p>If still in business (i.e. in normal flight mode), we are performing an <code>OR</code> on the previous control word and the current one and check this for the two left-most bits (left and right turn) set. If not, we are finished, and jump to <code>st3</code>.</p>
+<p>Otherwise we make the jump to hyperspace, showing object linking in all its glory: First the address of the entry part of the hyperspace routine is loaded, with the sign bit (as in octal <code>400000</code>) set to indicate a non-colliding state, into the accumulator and stored as the new status word of the spaceship in pointer <code>ml1</code> (pointing to the actual property of the current ship). Then the count for the time in hyperspace (before breakout) is loaded by the <code>xct</code> instruction (<code>-40</code>) and stored in pointer <code>ma1</code> (the general purpose counter). Finally, the new instruction count (just <code>3</code>) is set up in pointer <code>mb1</code>. Thus, in the next frame, the routine at label <code>hp1</code> will be called to handle the spaceship.</p>
+<p>By this, we're finally done at any rate and jump to the return address deposited in the address part of <code>srt</code> in the very first instruction of the spaceship routine at <code>ss1</code> for spaceship 1 and <code>ss2</code> for spaceship 2 respectively.</p>
+
+<h3 id="hyperspace_remarks">Remarks</h3>
+<p>There are some telling things here, regarding the development and history of the hyperspace routine, which might be address here &mdash; even, if we're going to investigate hyperspace in a separate episode.</p>
+<p>First, there is this jump to label <code>st3</code> for all the branches for a ship not ready to make the jump to hyperspace. This is indicating that there would have been some other code once, or that there were plans to add such later.</p>
+<p>Second, there is the code involving the logical <code>OR</code> on <code>\mco</code>, which is, as we already know, never set in this version of Spacewar!. (Actually, this piece of code was modified a bit, when <code>mco</code> became active again in version 4.) But how is this working at all? Since the control input is inverted to its one's complement by the <code>cma</code> instruction and the <code>ior</code> with <code>0</code> is without effect, the accumulator will be zero only when applying the instruction &quot;<code>and (600000</code>&quot;, if none of the two highest bits are set in <code>\scw</code>. But how would this perform with <code>mco</code> actually pointing to the previous control word? This would limit the trigger to fire only, when <em>both</em> of the bits for left and right would change from unset to set. In other words, we wouldn't go from any turn directly to hyperspace, but would have to go there from straight flight. Since hyperspace was wired in the control boxes to a distinctive direction of a lever (pushing the thrust lever away from the player), this is only of interest when using the test word switches, preventing operlapping turn commands from being parsed as jumps to hyperspace.</p>
+
+<p><del>We may conclude from this that accidental jumps to hyperspace when using test word controls were a serious usability issue, as soon as the hyperspace patch for Spacewar! 2b had been introduced. Since control boxes were long in use at this time at MIT, these lines would have probably been added on popular request by third parties (but much in vain, since <code>mco</code> is never set). This is also indicating an early spread of the program to other PDP-1 installations, including the various patches, namely Martin Gratz's hyperspace patch and probably also the auto-restart patch for version 2b.</del></p>
+
+<p><em>Edit:</em> The previous paragraph highlights pretty well, how carefully we must be with even the smallest of specalutive conclusions: A similar check in order to prohibit an accidental deployment of hyperspace is already to be found in Martin Graetz's original hyperspace patch for Spacewar! 2b (the source of which has become available in the meantime &mdash; see <a href="insidespacewar-pt8-hyperspace.html#hyperspace_patch" style="white-space: nowrap;">Part 8</a>). What we find here, in Spacewar! 3.1, is a more complex variation of a theme already present in the hyperspace patch. The additional complexity arises, because with the original patch hyperspace is actually triggered, when both signals (test word switches) would be <em>released</em> at once, while Spacewar! 3.1 deploys a ship to hyperspace as soon as both of the signals are set to high. As for any operability issues (see the next paragraph), it might have been a bit easier to let go both of the test word switches for clockwise and counter-clockwise turn at once as it might have been to activate them in a single frame. This is something we'll probably never no, since <code>mco</code> was set, in deed, in Spacewar! 2b, but not in version 3.1 &mdash; therefor we lack the comparison.</p> 
+
+<p>We may note that this would have hardly been a suitable fix, if <code>mco</code> would have been stored at all: Since the code requires <em>both</em> of the control bits being set at the same time in a single frame, this would have been nearly impossible to accomplish for a human player using the test-word controls. This was probably also why this code was eventually dismissed, when <code>mco</code> became a working property in Spacewar! 4.</p>
+
+
+<h2 id="variations">Variations</h2>
+
+<p>Since we're finally reaching the end of this episode, it's time to investigate some variations &mdash; and we'll stick to theme of the controls and human/computer interfaces here. While the controls and their encoding were quite stable all over the known versions of the game, there are a few variations, related to the hardware used and to the code involved.</p>
+
+<p>We know that there had been two series of the control boxes at MIT, but it is little known that there were also variations in their functionallity. There are clues for this, to be found in later versions Spacewar! 4:</p>
+
+<h3 id="iot111">The <code><strong>iot 111</strong></code> Instruction</h3>
+<p>If there is no documention on the normal &quot;<code>iot 11</code>&quot; instruction, there is &mdash; should this be possible &mdash; even less on the &quot;<code>iot 111</code>&quot; instruction used by some versions of Spacewar! 4. (We would really need a comparative form of &quot;none&quot; for this.)</p>
+<p>Technically, we know that the instruction &quot;<code>iot 111</code>&quot; is addressing the same device and that the control boxes would have been attached to the same box or bay of external connectors (&quot;taper pin block&quot;). The difference being that this instruction isn't only addressing device <code>11</code> (bay #1), but is also sending a <code>1</code> as an argument in the so-called x-bits <em>(control bits)</em> to the device. From the related source code we know that the readings weren't similarily straight forward as with the &quot;<code>iot 11</code>&quot; instruction. In fact, these versions are adding an extensive amount of extra code, just to parse these readings. Since the PDP-1s running this code were essentially later and/or upgraded machines, it may be as well, that this instruction wasn't that much related to the control boxes, but rather to some additional hardware for timesharing or some multiplexer (think of project MAC).</p>
+
+<p>Update: A note by Joe Morris on a version of Spacewar! 4.2 (there are two entirely unrelated versions 4.2) which is also using these &quot;<code>iot 111</code>&quot; controls suggests that those were used for some military grade joysticks for drone control: <em>&quot;4.2, dated 5/11/63 (with a torn scrap of greenbar where I scribbled notes about which buttons set which bits on the taper pin block (for the IOT instruction) from the drone controller someone bought from Eli's to run Spacewar on the PDP-1 on the first floor of building 20)&quot;</em> <cite>(<a href="https://groups.google.com/forum/#!msg/alt.sys.pdp10/cNG89mmlbK0/V0JPyn3Mg7sJ" target="_blank">alt.sys.pdp10/cNG89mmlbK0/V0JPyn3Mg7sJ</a>)</cite><br />(Was the &quot;PDP-1 on the first floor of building 20&quot; the one in room 26265, the &quot;Kluge Room&quot; next door to the TX-0?)</p>
+<p>See also this comment by Joe Morris in another thread on the <em>&quot;USAF surplus drone controllers that someone found at Eli's Surplus&quot;</em> which is also giving some explanation for the complexity of the code involved in parsing the reading of the &quot;<code>iot 111</code>&quot; instruction: <em>&quot;The surplus controllers had a problem: there were so many buttons and
+such (including a 'trigger' thumbswitch on the joystick and a foot pedal)
+that some of the buttons were dedicated to telling Spacewar which
+other buttons did what.&quot;</em> <cite>(<a href="https://groups.google.com/forum/#!msg/alt.folklore.computers/T7Oduo-ljgI/j-UXALPVIg0J" target="_blank">alt.folklore.computers/T7Oduo-ljgI</a>)</cite><br />And, a little bit further in the same thread: <em>&quot;The same taper pin block allowed an external device to read the 'program flags' (aka 'sense lights' in many other computers). The MIT system had three of the program flag outputs wired through a simple mixer into a Heathkit amplifier in Alan Kotok's office, and Pete Samson's music compiler used this configuration to produce some quite decent multi-part renditions of classical music.&quot;</em> <cite>(ibidem)</cite> So there would have been some kind of a multiplexer, in deed, and a program reading from this input channel would had have to deal with some kind of rather complex signal.</p>
+
+<p><em>UPDATE:</em> According to newer informations provided by Dan Edwards the &quot;surplus controllers&quot; mentioned by Joe Morris originated rather from a <em>Bomarc</em> missile control console: <em>&quot;[O]ther consoles being [&hellip;] the right arm
+	panel of a military surplus Bomarc missile control console which
+	featured [a] professing joy stick. That console looked fancy, had nice
+	directional micro switches plus a button on the top of the joystick
+	which was used [to] fire the 'photon torpedoes' in the game. In the end, this
+	console wasn't used much because it was too big and bulky.&quot;</em></p>
+
+<h3 id="multispeed">Multi-Speed Controls</h3>
+<p>We know from some oral history interviews that there had been control boxes using two-step levers, at least for ports of Spacewar! to other machines than the PDP-1. But there is strong evidence for experiments with this kind of input at MIT as early as early to mid 1963: The comment on the input encoding in Spacewar! 4.8 from July 1963 reads:</p>
+
+<pre>/ place to build a private control word routine.  
+/ it should leave the control word in the io as follows_.
+/ high order 6 bits, high acceleration, normal acceleration,
+/ rotate cw, rotate ccw, fire torpedo, and hyperspace.
+/ Routine is entered by jsp cwg for ss1 and by jsp dwg
+/ for ss2.</pre>
+
+<p>There are no further traces of this in the source code, but it's a strong indication for there once having been an input method involving two different acceleration speeds for the spaceships, and for this code having been reverted to original input methods since. Also, hyperspace had been moved to a separate signal channel, with each of the ships now consuming 6 of the total 18 bits, rendering test word controls nearly unusable, now seperated by just 6 switches between players maneuvering with both of their hands. (Seems that by then near to every of the Spacewar! installations had moved to employ their own set of control boxes.) Maybe the related control boxes hadn't been a great success, maybe another upgrade to the hardware would have rendered them incompatible. We may only conclude that these would have been there once (or, at least, that there would have been plans for them) and these were gone by July 1963.</p>
+
+<p><em>Edit:</em> Please note that Spacewar! 4.8 might well have been originated at some other PDP-1 installation outside of room 26265 of MIT. In the scorer patch for Spacewar! 4.8, there is the instruction &quot;<code>lai</code>&quot; specific to the PDP-1D (originally built to specifications from BBN). Spacewar! 4.8 is signed &quot;<code>7/24/63 dfw</code>&quot;, the scorer patch is unsigned.<br />PDP-1Ds are known to have been sold to BBN and Stanford: The first went to BBN, a second one arrived at Stanford <em>&quot;sometime before May of 1963&quot;</em> <cite>(<a href="https://forum.stanford.edu/wiki/index.php/Early_Computers_at_Stanford#DEC_PDP-1" target="_blank">Early Computers at Stanford / PDP-1</a>)</cite>. Or, it could have been the PDP-1 at the Lawrence Livermore Laboratory. On the other hand, MIT's PDP-1 wasn't only upgraded for the hardware multiply/divide option at the turn of 1962/63, but apparently upgraded for timesharing, too. Please mind that the main program and the patch are not necessarily originating from the same installation or programmer, nor has the comment quoted above to be original to version 4.8.</p>
+
+<h4>And Yet Another Variation</h4>
+
+<p>Another variation on the control boxes is to be found in the wiring scheme used to connect the boxes to the PDP-1: Version 4.4 and 4.8 are both using an additional &quot;<code>rir 4s</code>&quot; instruction <em>(rotate IO by 4 bits to the right)</em>, when reading the control input from the boxes:</p>
+
+<pre>mg1,	dap mg3
+	cli
+	iot 11
+	rir 4s
+mg3,	jmp .</pre>
+
+<p>Thus, the boxes would have been connected in the following way to the &quot;taper pin block&quot;:</p>
+
+<pre style="background-color: #fff;">bits:          0  1  2<span style="color:#888;">'</span> 3  4  5<span style="color:#888;">'</span> 6  7  8<span style="color:#888;">'</span> 9 10 11<span style="color:#888;">'</span>12 13 14<span style="color:#888;">'</span>15 16 17
+usage:                                       -PLAYER 2-  -PLAYER 1-
+semantics:                                   L  R  T  F  L  R  T  F
+                                             |  |        |  |
+                                             HYPERSPACE  HYPERSPACE</pre>
+
+<p>By rotating these readings right by 4 bits, the normal signal order would be restored. A note by Joe Morris suggests that these were control boxes featuring a dedicated hyperspace button: <em>&quot;the 
+one I first ran across also had hyperspace you could enter by pressing a 
+button.&quot;</em> <cite>(<a href="https://groups.google.com/forum/#!msg/alt.folklore.computers/KasuFvvTb7c/sc6kcHMnOC4J" target="_blank">alt.folklore.computers/KasuFvvTb7c</a>)</cite> Moreover both of these versions of Spacewar! are using instructions specific to a <nobr>PDP-1D</nobr> (version 4.4 is using the &quot;<code>swp</code>&quot; instruction, the scorer patch of 4.8 is usinge the &quot;<code>lai</code>&quot; instruction).</p>
+
+<p style="margin-top: 3em; text-indent: 0;"><em>Update (April 2015):</em></p>
+
+<h2 id="controlboxes" style="margin-top: 1em;">The Original Control Boxes</h2>
+<p>We investigated the theme of the control boxes at some extent in this episode. Reason enough to present the original setup in a comprehensive fashion. The standard setup was two control boxes wired up to the &quot;taper pin panels&quot; of the <nobr>PDP-1</nobr>, an arrays of connectors near the rear of the machine to interface with any kind of external hardware. (The <nobr>PDP-1</nobr> even came with a set of spare flip-flops to facilitate any external connections.)</p>
+
+<figure id="controlbox_taperpinpannels" class="img"><img src="images/pdp1-taper-pin-panels.jpg" alt="Taper pin panels of teh PDP-1." width="632" height="400" /><p>The taper pin panels of the PDP-1, located near the bottom of bay 3.<br />Image: Composite of images by DEC, PDP-1 Maintenance Manual  F-17, 1962.</p></figure>
+
+
+<p>This is, how the control boxes were connected in the standard setup:<p>
+
+<pre style="background-color: #fff;">usage:            -PLAYER 1-                                -PLAYER 2-
+
+bits/pins:        0  1  2<span style="color:#888;">'</span> 3  4  5<span style="color:#888;">'</span> 6  7  8<span style="color:#888;">'</span> 9 10 11<span style="color:#888;">'</span>12 13 14<span style="color:#888;">'</span>15 16 17
+                  |  |  |  |                                |  |  |  |
+device:           CTRL BOX A                                CTRL BOX B
+                  |  |  |  |                                |  |  |  |
+wiring:           L  R  T  F                                L  R  T  F
+                  |  |                                      |  |
+               HYPERSPACE                                HYPERSPACE</pre>
+<p>(Bit-order as transferred to the IO register by the &quot;<code>iot 11</code>&quot; instruction.)<br />&nbsp;</p>
+
+<p>And here is the circuit diagram for the original control boxes:</p>
+
+<figure id="controlboxcircuit" class="img borderless"><img src="images/controlbox-circuits.jpg" alt="Circuit diagram of the original control boxes for playing Spacewar!." title="Circuit diagram of the original control boxes for playing Spacewar!" width="700" height="886" /><p style="margin-left: 2em; margin-right: 2em; text-align: left;">Circuit diagram of the original control boxes. The diagram came along with some listings from the archives of J.M. Graetz, donated to the <em><a href="http://www.imusee.net/" target="_blank">iMus&eacute;e</a></em>, the <em>Mus&eacute;e de l'informatique du Quebec</em>, by Brian Silverman.<br /><br />The schematics at the bottom show the setup of the <em>iot 11</em> instruction. &quot;PA&quot; is a pulse amplifier, the I-O mixer interfaces with the IO register. (IO must be cleared before reading the input.)</p></figure>
+
+<p>Clockwise (right) and counterclockwise (left) turn were operated by a common lever, and thrust/acceleration and hyperspace by a second one (triggering a jump by pushing the lever forward, away from the player), while torpedoes were fired using a separate push button. &mdash; Please mind that Steve Russell also remembers in his oral history interview some early control boxes using buttons instead of levers (see <a href="#first_controlboxes">below</a>).</p>
+
+<pre style="background-color: #fff; line-height: 11px;">&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+&#9474;                                         &#9474;
+&#9474;                                         &#9474;
+&#9474;                                         &#9474;
+&#9474;     &#9484;&#9472;&#9472;<em>LEVER</em>&#9472;&#9472;&#9488;                         &#9474;
+&#9474;     &#9474;         &#9474;                         &#9474;
+&#9474;  [LEFT]&middot;&middot;&middot;&middot;[RIGHT]    [HYPERSPACE]&#9472;&#9472;&#9488;   &#9474;
+&#9474;                            &middot;        <em>L</em>   &#9474;
+&#9474;                            &middot;        <em>E</em>   &#9474;
+&#9474;                            &middot;        <em>V</em>   &#9474;
+&#9474;                            &middot;        <em>E</em>   &#9474;
+&#9474;                            &middot;        <em>R</em>   &#9474;
+&#9474;                         [THRUST]&#9472;&#9472;&#9472;&#9472;&#9496;   &#9474;
+&#9474;        [FIRE]                           &#9474;
+&#9474;          &#9474;                              &#9474;
+&#9474;        <em>BUTTON</em>                           &#9474;
+&#9474;                                         &#9474;
+&#9474;                                         &#9474;
+&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</pre>
+
+<p style="margin-bottom: 1.5em;"><em>Layout of the control elements on the control boxes (schematic, top view).<br />Hyperspace was triggered in Spacewar! 2b by letting go of the lever (as defined by the program), all later versions of the program triggered a jump on the deployment of the signal.</em></p>
+
+<p>According to <a href="http://www.tomtilley.net/" target="_blank" title="Thomas A. Tilley's blog">Thomas A. Tilley</a>, who engaged in <a href="http://www.tomtilley.net/projects/spacewar/" target="_blank" title="&quot;Spacewar! Controllers&quot; at Thomas A. Tilley's blog">recreating the original control boxes</a> in his <em>Game Controller Hacking class</em> at <a href="http://iit.payap.ac.th/" target="_blank">Payap University</a> featuring a talk by Dan Edwards on the subject, this was the kind of lever switch used:</p>
+
+<figure id="controlboxlever" class="img"><img src="images/leverswitch_SWZ-MCT4-RT5-O-O-B-O-4.jpg" alt="Lever Switch as used for the original control boxes for Spacewar! at MIT: (image: surplussales.com)" width="300" height="300" /><p>Kind of lever switch used for the original control boxes.<br />Image: <a href="http://www.surplussales.com/switches/SWLeaf-1.html" target="_blank">surplussales.com</a>.</p></figure>
+
+<p>The fire button triggering the torpedoes was a simple and inexpensive small red
+push button, the case was made of wood with a sloping Bakelite top (as recalled by Dan Edwards). And, in case you haven't seen this image before, here is what the control boxes looked like, according to J.M. Greatz <cite>(<a href="https://www.masswerk.at/spacewar/SpacewarOrigin.html" target="_blank">&quot;The Origin of Spacewar&quot;</a>, Creative Computing, Aug 1981; p.62)</cite> and confirmed by Dan Edwards to be &quot;a fair
+artist's rendition of [the] controller we commonly used&quot;:</p>
+
+<figure id="controlboxdrawing" class="img"><img src="images/creative_computing_v07_n08_1981_p62.jpg" alt="Original Spacewar! control box, MIT 1962 (image: J.M Graetz)" width="303" height="216" /><p>Drawing of a Spacewar! control box (MIT, 1962) as recalled by J.M. Graetz.<br />Image: J.M. Graetz, <a href="https://www.masswerk.at/spacewar/SpacewarOrigin.html" target="_blank">&quot;The Origin of Spacewar&quot;</a>, 1981.</p></figure>
+
+<p>And here is what the control boxes looked like in action:</p>
+
+<figure id="playingspacewar" class="img"><img src="images/playing-spacewar-1962.jpg" alt="Playing Spacewar! with the control boxes, ca. 1962, Dan Edwards (left) and Peter Samson (right) playing Spacewar!" width="500" height="340" /><p>The original Spacewar! control boxes in action.<br />Dan Edwards (left) and Peter Samson (right) playing Spacewar!, 1962 ca.<br />Photo: DEC, via the <a href="http://pdp-1.computerhistory.org/pdp-1/index.php?f=showitem&amp;id=26.54" target="_blank">Computer History Museum (accession 102631264)</a>.</p></figure>
+
+<p>We may suppose them to have been of a stable build &mdash; and also of some weight &mdash;, resisting pushes and other movements induced by heavy gaming. On the other hand some importance was put in the silent (read, <em>stealthy</em>) operation of the levers and switches. Moreover, we may infer from the image above that the levers were operating fairly smoothly as indicated by the lightweighted hand postures of the players.</p>
+
+<figure id="controller_tom_tilley" class="img borderless" style="margin-top: 2.5em; margin-bottom: 3em;"><img src="images/spacewar-controller-tom_tilley.jpg" alt="Spacewar controller reconstruction by Tom Tilley" width="300" height="261" /><p>Reconstruction of an original control box by Thomas A. Tilley.<br />Image: <a href="http://www.tomtilley.net/projects/spacewar/" target="_blank">Thomas A. Tilley</a>, 2015 (edited)</p></figure>
+
+<h3 id="first_controlboxes">The Very First Control Boxes</h3>
+
+<p>In history, there's always a first before the first, and there's no exception to this in computer history. As the living proof of this, here is a sketch of the very first control boxes featuring push buttons only as recalled by Steve Russell in 2003:</p>
+
+<figure id="srussell_first_controlboxes" class="img"><img src="images/s_russell_1st_spacewar_control_boxes_sketch.jpg" width="500" height="462" alt="The very first Spacewar control boxes according to Steve Russell" /><p>Sketch of the very first Spacewar- control boxes using pushbuttons as recalled by Steve Russell in 2003.<br />Source: <a href="http://pdp-1.org/PDP-1/PDP-1_SRussell_space_war_sketch.gif" target="_blank">pdp-1.org</a> / The CHM PDP-1 Restoration Team.</p></figure>
+
+<blockquote>The version that I remember quite clearly, and nobody else does, so I think they must have died very early &mdash; there was a 1930s design, 4-pushbutton block that was used for buzzing buzzers in an office; so you'd have a receptionist who had maybe one or two or three lines on a phone and when one of them rang, she'd pick it up, find out who it was and then buzz the buzzer to get that person to pick up the phone. Those were nice because you could hold them in one hand and play them like a flute. But they died very quickly; they were designed for being pushed a few times a day, and it turned out that there was a fatigue problem when they were pushed hundreds of times a day. And so they died fairly early.<br /><em class="cite">(Oral History of Steve Russell, interviewed by Al Kossow, rec. 9 Aug 2008, <a href="http://www.computerhistory.org/collections/catalog/102746453" target="_blank">CHM catalog no. 102746453</a>, p.16)</em></blockquote>
+
+<figure id="srussell_flute" class="img borderless"><img src="images/spacewar-flute-telephone-museum_joseph-fredrick.jpg" width="258" height="258" alt="Black 4-button telephone switch box." /><p>A similar block of telephone switches (as confirmed by Steve Russell).<br />From the collection of the  American Museum of Telephony / JKL Museum of Telephony,<br />photo by Joseph Fredrick, 2023 (cropped and edited; N.L.).</p></figure>
+
+<p>As annotated in the sketch, these very first control boxes were about 3.5 inches wide and featured four 1930's business phone style pushbuttons mounted on top of a black housing. (We may assume that the top plate was made of Bakelite, quite like it has been reported for the &quot;original control boxes&quot;.) Further, the boxes were connected to the taper pin block of the PDP-1 by a brown cotton covered cord (quite 1930's style, too) and were (presumably) read using the instruction &quot;<code style="white-space:nowrap;">iot 4</code>&quot; rather than the instruction &quot;<code style="white-space:nowrap;">iot 11</code>&quot; that we've learned to recognize and love in the surving source codes of Spacewar!.</p>
+
+<h3 id="last_controlboxes">The (To Date) Last Original Control Boxes</h3>
+
+<p>And, as a final rounding off of the topic, here are the schematics of the to date last incarnation of the control boxes used for the public display at the <a href="http://www.computerhistory.org/" target="_blank">Computer History Museum</a>, as sketched in 2005 on the white board of the PDP-1 Restoration Team:</p>
+
+<figure id="chm_controlboxes_sketch" class="img"><img src="images/chm-controlboxes-sketch.jpg" width="500" height="295" alt="Schematics of the Spacewar control boxes as of 2005 for use at the CHM" /><p>Early sketch of the control boxes and wiring schematics used at the CHM (2005).<br />Source: <a href="http://pdp-1.org/PDP-1/2005-01Jan-04/DSCN3811.JPG" target="_blank">pdp-1.org</a> / The CHM PDP-1 Restoration Team.</p></figure>
+
+<p>Notably, this wasn't the final design which features the hyperspace button in the middle and Thrust and Fire to the right of it, modeled &mdash; as a final twist in history &mdash; after the controls of the arcade game Space Duel. (Source: Ken Sumrall.)</p>
+
+<figure id="chm_controlboxes" class="img borderless" style="margin-left: 0; margin-right: 0;"><img src="images/chm-controlboxes.jpg" width="703" height="233" alt="Spacewar controls at the CHM and their relation to Space Duel" /><p>The controls of Space Duel (left) and the control boxes at the CHM (right).<br />Images: <a href="http://www.basementarcade.com/arcade/sd/sdoverlay.jpg" target="_blank">basementarcade.com</a> (Space Duel panel) and <a href="https://www.flickr.com/photos/mwichary/2635006533/in/album-72157605969148043/" target="_blank">Marcin Wichary</a>, 2008, <a href="https://creativecommons.org/licenses/by/2.0/" target="_blank">Creative Commons</a>.</p></figure>
+
+<figure id="chm_controlboxes_layout" class="img borderless" style="margin-top: 3.2em;"><img src="images/chm-controller-layout.gif" alt="Spacewar controller at the CHM - Layout" width="422" height="279" /><p>Final layout of the control boxes at the Computer History Museum (CHM).<br />Image: N. Landsteiner, 2015</p></figure>
+
+
+<p>&nbsp;</p>
+<p>That's all for now, next time we'll investigate the gravity code skipped here.</p>
+
+
+<p>&nbsp;</p>
+<p class="noindent"><span class="author">Norbert Landsteiner</span><br />
+Vienna, July 2014<br />
+<a href="https://www.masswerk.at/" target="_top">www.masswerk.at</a></p>
+<p>&nbsp;</p>
+<p class="noindent"><em>In case you would have found any errors or inconsistencies, or would have additional information,<br />please <a href="https://www.masswerk.at/contact.php">contact me</a>.</em></p>
+<p class="endex">*****</p>
+
+<p class="noindent"><span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9664;</span> Previous: &nbsp; <a href="insidespacewar-pt4-oc.html">Part 4: The Outline Compiler</a><br />
+<span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9654;</span> Next: &nbsp; <a href="insidespacewar-pt6-gravity.html">Part 6: Fatal Attraction &mdash; Gravity</a><br /><br />
+<span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9650;</span> Back to the <a href="./">index</a>.</p>
+
+</article>
+
+<section id="related">
+	<p>References / Related Links:</p>
+	<ul>
+		<li><a href="https://www.masswerk.at/spacewar/sources/spacewar3.1_complete.txt">Spacewar! 3.1 source code</a> (PDP-1, Macro assembler code)</li>
+		<li><a href="https://www.masswerk.at/spacewar/SpacewarOrigin.html">&quot;The Origin of Spacewar&quot; by J. M. Graetz</a> (redacted copy, incl. additional text and images)</li>
+		<li><a href="pdp1-instructions.html" target="_blank">PDP-1 Instruction List</a> (opens in a new window)</li>
+		<li><span style="font-family:sans-serif; font-size: 80%;color: #555;">&#9654;</span> <a href="https://www.masswerk.at/spacewar/" title="Play Spacewar! online">Play Spacewar! online</a> (html5 emulation of a PDP-1 running Spacewar!)</li>
+	</ul>
+	<p>&nbsp;</p>
+	<p>&lt;<a href="https://www.masswerk.at/" target="_top">www.masswerk.at</a>&gt;</p>
+</section>
+
+</body>
+</html>

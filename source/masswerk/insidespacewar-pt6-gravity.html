@@ -1,0 +1,1292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<title>Inside Spacewar! &mdash; Part 6: Fatal Attraction &ndash; Gravity</title>
+	<meta name="description" content="A software archeological approach to Spacewar!, the first digital video game. Part 6: Fatal Attraction &mdash; Gravity" />
+	<meta name="keywords" content="Spacewar!,Spacewar! 1962,PDP-1,gravity,dan edwards,software archeology,computer history" />
+	<meta name="format-detection" content="telephone=no" />
+	<link rel="stylesheet" href="insidespacewar.css" type="text/css" />
+	<link href="https://fonts.googleapis.com/css?family=Lato:300" rel="stylesheet" type="text/css" />
+	<link rel="shortcut icon" type="image/x-icon" href="../favicon-bw.ico" />
+	<script type="text/javascript" src="imgembedder.js"></script>
+	<script type="text/javascript" src="instructionlist.js"></script>
+	<script type="text/javascript" src="layoutselector.js"></script>
+</head>
+<body>
+
+<article id="main">
+<a href="./" title="Inside Spacewar! &mdash; Index" class="indexLink">Go to the Index</a>
+<h1>Inside Spacewar!<br />Part 6: Fatal Attraction &mdash; Gravity</h1>
+
+<div class="top_nav"><a href="insidespacewar-pt5-ships.html">Prev. <span style="font-family:sans-serif; font-size: 80%;">&#9664;</span></a>
+&mdash;
+<a href="insidespacewar-pt7-shootout.html"><span style="font-family:sans-serif; font-size: 80%;">&#9654;</span> Next</a></div>
+
+<p class="page_toc">(<a href="#main">Introduction</a> &middot; <a href="#code">The Code</a> &middot; <a href="#collision">Gravity's End [Scylla]</a> &middot; <a href="#gravity">The Merciless Ship Sucker [Charybdis]</a> &middot; <a href="#pof">Blazing in the Sun [Pof!]</a> &middot; <a href="#excursus">Excursus &ndash; De Computatione Mechanica</a> &middot; <a href="#spacewar4">Spacewar 4.x and the Hardware Multiply/Divide</a> &middot; <a href="#note_on_gravity">A Final Note on Gravity</a>)</p>
+
+
+<p class="noindent">In this part of our journey through the internals of Spacewar!, the first digital video game, we're paying another visit to the <em>heavy star.</em> While we've already seen in <a href="insidespacewar-pt2-star.html">Part 2</a> how its flashing presence would have been brought onto the scope, we're now going to investigate how it would unfold its influence on the gameplay by its ever present, all-encompassing effect on the spaceships, the single constant of the Spacewar!-universe and the driving force of space tactics: gravity.</p>
+
+<p>In other words, it's math time in &quot;Inside Spacewar!&quot;. But be assured, there's nothing ahead to be afraid of.<br />It even provides a pretext for some nice graphics like this one:</p>
+
+<figure id="spacewar_gravity" class="img"><img src="images/spacewar-gravity.jpg" width="600" height="600" alt="The field of gravity in Spacewar!" /><p>The field of gravity in Spacewar!<br />(Special purpose emulation with gravity mapping, isometric projection.)</p></figure>
+
+<p style="margin-bottom: 2em;">BTW: <span style="font-family:sans-serif; font-size: 80%;color: #555;">&#9654;</span> You can <a href="https://www.masswerk.at/spacewar/" target="_top" title="Play the original Spacewar! in a JS/HTML5 emulator of a PDP-1"> play here</a> the original code of Spacewar! running in an emulation.</p>
+
+<p>This piece of code, responsible for calculating the effects of the <em>heavy star</em> was done by Dan Edwards, and we also know, how it came into being, thanks to Martin Graetz's seminal article &quot;<a href="https://www.masswerk.at/spacewar/SpacewarOrigin.html">The Origin of Spacewar</a>&quot; <cite>(Creative Computing, 1981)</cite> quoting Steve Russell as follows:
+
+<blockquote>Russell: &quot;Dan Edwards was offended by the plain spaceships, and felt that gravity should be introduced. I pleaded innocence of numerical analysis and other things&quot; &mdash; in other words, here's the whitewash brush and there's a section of fence &mdash; &quot;so Dan put in the gravity calculations.&quot;</blockquote>
+
+<p>We've already seen in the previous episode (<a href="insidespacewar-pt5-ships.html">Part 5</a>) where this piece of code would have been placed &mdash; and there's already something interesting about it:</p>
+
+<pre>	jda sin		<span class="comment">// get sine and store it</span>
+	dac \sn
+	dzm \bx		<span class="comment">// clear \bx and \by (gravity factors)</span>
+	dzm \by
+	szs 60		<span class="comment">// sense switch 6 set?</span>
+	jmp bsg		<span class="comment">// yes, jump to bsg (no star)</span>
+
+	<em>// heavy star related code here</em>
+
+bsg,	cla		<span class="comment">// clean up AC from any leftovers</span>
+	sad i \mfu	<span class="comment">// ... back to business ...</span>
+	clf 6
+	lac i mth
+	jda cos		<span class="comment">// get cosine</span></pre>
+
+<p class="noindent"><em>(As usual, comments starting with double slashes are mine and not in the original code.)</em></p>
+
+<p>The interesting thing being, where this &quot;fence&quot; was put up. We could argue that the code related to the star would be starting with the clearing of the variables <code>\bx</code> and <code>\by</code> which will be holding the resulting factors to be added to the movement of the ship, quite like the final check for sense switch 6 (and the conditional jump to label <code>bsg</code> immediately following to this). This, and the clearing of the accumulator (<code>cla</code>) at label <code>bsg</code> is the &quot;fence&quot;. But what's on either side of this &quot;section&quot;? The jump to the subroutine for the sine of the turning angle (<code>\mth</code> as in <em>theta</em>) at the one side, and the same for the cosine at the other one. Provided it would be quite &quot;natural&quot; to have them in a common block at either side of the gap, this seems to be a bit like a statement, quite like, &quot;Now, there you are &mdash; now, this was really an interruption and here we're back to business, get off my lawn!&quot; Or we could view it rather as some kind of emphasis, like a <em>Sperrung</em> or <em>caesura</em> (the seperation of adjactive and noun in poetry), a framing order, which is emphasizing the separated elements.</p>
+<p>However, this rather peculiar placement was kept in each of the various versions of Spacewar!, from the earliest known version, 2b, to the last one, 4.8, despite off any refactoring, even when the code itself was changed for the update of the hardware multiply/divide option in version 4.</p>
+
+<p>Now, let's have a look at this code, as usual, it's Spacewar 3.1, and as usual, we won't do so, without including the standard credits first:</p>
+
+<blockquote>Spacewar! was conceived in 1961 by Martin Graetz, Stephen Russell, and Wayne Wiitanen. It was first realized on the PDP-1 in 1962 by Stephen Russell, Peter Samson, Dan Edwards, and Martin Graetz, together with Alan Kotok, Steve Piner, and Robert A Saunders. Spacewar! is in the public domain, but this credit paragraph must accompany all distributed versions of the program.</blockquote>
+
+
+<h2 id="code">The Code</h2>
+
+<pre>	lac i mx1
+	sar 9s
+	sar 2s
+	dac \t1
+	jda imp
+	lac \t1
+	dac \t2
+	lac i my1
+	sar 9s
+	sar 2s
+	dac \t1
+	jda imp
+	lac \t1
+	add \t2
+	sub str
+	sma i sza-skp
+	jmp pof
+	add str
+
+	dac \t1
+	jda sqt
+	sar 9s
+	jda mpy
+	lac \t1
+	scr 2s
+	szs i 20		/ switch 2 for light star
+	scr 2s
+	sza
+	jmp bsg
+	dio \t1
+	lac i mx1
+	cma
+	jda idv
+	lac \t1
+	opr
+	dac \bx
+	lac i my1
+	cma
+	jda idv
+	lac \t1
+	opr
+	dac \by</pre>
+
+<p class="noindent"><em>(Code as in version 3.1. For the basics of PDP-1 instructions and Macro assembler code, please refer to <a href="insidespacewar-pt1-ep.html#instructions">Part 1</a>.)</em></p>
+
+<p>As we can see, this is a single strain of code, without a single label, and there are only two jumps to anything outside, one to fast-forward to the label <code>bsg</code>, and one branching to another piece of code at label <code>pof</code> (for <em>point of force</em> or for a more graphical <em>&quot;Poff!&quot;</em>? &mdash; however, we learn from the heading comments, what this would be all about):</p>
+
+<pre>/ here to handle spaceships dragged into star
+
+
+/ spaceship in star
+
+pof,	dzm i \mdx
+	dzm i \mdy
+	szs 50
+	jmp po1
+	lac (377777
+	dac i mx1
+	dac i my1
+	lac i mb1
+	dac \ssn
+	count \ssn, .
+	jmp srt
+
+po1,	lac (mex 400000	/ now go bang
+	dac i ml1
+	law i 10
+	dac i ma1
+	jmp srt</pre>
+
+<p>The main part is actually dealing with two different aspects of the star, handling any collisions with it and calculating the influence of gravity, dragging the ships there in the first place. By this Spacewar! is putting its astronauts in the position of a Homeric hero, facing a double monster, while riding their ships through the ether <em style="white-space: nowrap;">(&copy; E. E. &quot;Doc&quot; Smith)</em> of outer space on the waves of gravity.<br />
+Let's start with the first one, the collision detection:</p>
+
+<h2 id="collision">Gravity's End (Scylla)</h2>
+
+<pre>	lac i mx1	<span class="comment">// load x position</span>
+	sar 9s		<span class="comment">// shift right 11 bits</span>
+	sar 2s
+	dac \t1		<span class="comment">// store it in \t1</span>
+	jda imp		<span class="comment">// integer multiply AC (x)</span>
+	lac \t1		<span class="comment">// by \t1 (x)</span>
+	dac \t2		<span class="comment">// store result in \t2 (x square)</span>
+	lac i my1	<span class="comment">// load y</span>
+	sar 9s		<span class="comment">// shift right 11 bits and store it in \t1</span>
+	sar 2s
+	dac \t1
+	jda imp		<span class="comment">// integer multiply y (in AC)</span>
+	lac \t1		<span class="comment">// by y (in \t1)</span>
+	add \t2		<span class="comment">// add x square</span>
+	sub str		<span class="comment">// subtract collision radius</span>
+	sma i sza-skp	<span class="comment">// is it a collision?</span>
+	jmp pof		<span class="comment">// yes, jump to pof</span>
+	add str		<span class="comment">// no, add collision radius again (restore sum of squares)</span></pre>
+
+<p>This piece of code is quite straight forward. It starts with loading the x-coordinate of the current objects position (<code>lac i mx1</code>) and shifting it to the right by 11 bits. (We may recall that the maximum amount of positions for a single shift or rotate operation is 9 bits, as in the Macro assembler's constant &quot;<code>9s</code>&quot;. Thus, we'll have to split this in two separate instructions, as in &quot;<code>sar 9s</code>&quot; and &quot;<code>sar 2s</code>&quot;.) The resulting value in the accumulator is then stored in variable <code>\t1</code> by the instruction &quot;<code>dac \t1</code>&quot;.</p>
+
+<p>So, why would we want to shift this left by 11 bits? We may recall that the positions are stored as screen coordinates in the highest 10 bits (including the sign-bit in bit 0), the lower 8 bits being just fractional values. We're going to perform an integer multiplication on this, therefor we actually have to do some scaling, at least we would want to shift this 8 bits to the right. This is leaving an extra shift by another 3 bits (or division by decimal 8) as the effective scaling. We'll see a bit later, why this would have been applied.</p>
+
+<p>The next two instructions are performing the multiplication. Happens, the PDP-1 doesn't perform any multiplications or divisions out of the box (but there are special instructions for multiply and divide steps performing a dedicated multiple register shift operation). Fortunately, there's BBN (Bolt, Beranek and Newman), and they were friendly enough to supply a multiply subroutine <cite>(<a href="http://www.bitsavers.org/pdf/dec/pdp1/memos/M-1096_Jan61.pdf" target="_blank">DEC Memo M-1096</a>, DEC/BBN, 19 Jan 1961)</cite>, both for single word results and for double precision results:</p>
+
+<pre>/BBN multiply subroutine
+/Call: lac one factor, jda mpy or imp, lac other factor.
+
+imp,	0		/returns low 17 bits and sign in ac
+	dap im1
+im1,	xct
+	<span class="comment">// ... snip ...</span>
+	idx im1
+	<span class="comment">// ... snip ...</span>
+	jmp i im1
+
+mpy,	0		/returns 34 bits and 2 signs
+	<span class="comment">// ... snip ...</span></pre>
+
+<p>According to the heading comment, we're expected to supply one of the two factors in the accumulator and to execute a &quot;<code>jda imp</code>&quot; (for the single precision routine), followed by a &quot;<code>lac</code>&quot; on the other factor, as in &quot;<code>lac \t1</code>&quot;. (Actually, a <code>law</code> instruction would do as well, as long as it would be loading the required value into the accumulator.)</p>
+<p>How would this work? The instruction <code>jda</code> puts the contents of the accumulator in the memory location specified in the address part and performs a jump to the subroutine in the next address immediately following to this. As with a normal <code>jsr</code> instruction, the current value of the program counter <code>+ 1 </code> is put in the accumulator as the return address. By executing &quot;<code>jda imp</code>&quot;, we've stored the contents of <code>AC</code> into location <code>imp</code> and are jumping to the next location with the return address in <code>AC</code>. The instruction &quot;<code>dap im1</code>&quot; deposits this in the address part of the location labeled <code>im1</code>, where the opcode <code>xct</code> <em>(execute instruction at given address)</em> is already set up and waiting. This is then executed, and as this instruction happens to be a <code>lac</code>, it will load the second argument into the accumulator. By now, we've the first argument in <code>imp</code> and the second one in <code>AC</code>. In order to jump to a sensible return address, we'll have to finally increment the address in <code>imp</code> and jump there, as in &quot;<code>idx im1</code>&quot; and &quot;<code>jmp i im1</code>&quot;.</p>
+
+
+<p>(We've seen a similar construct in <a href="insidespacewar-pt3-objects.html">Part 3</a> and <a href="insidespacewar-pt4-oc.html">Part 4</a>, where we investigated how the outline compiler would be called.)</p>
+
+<p>For this, the instruction &quot;<code>lac \t1</code>&quot; after the &quot;<code>jda imp</code>&quot; is not overwriting the result of the multiplication (returned in the accumulator), but provides the second factor. The multiply subroutine now returns at &quot;<code>dac \t2</code>&quot;, where the result is stored in variable <code>\t2</code>. Thus, the sequence</p>
+<pre>	dac \t1
+	jda imp
+	lac \t1
+	dac \t2</pre>
+<p class="noindent">calculates the square of the value in the accumulator (the modified x-coordinate) and stores the result in <code>\t2</code>.</p>
+<p>The next few instructions are repeating this for the y-coordinate in <code>my1</code>. This square of y is then summed with the previously calculated square of x by the instruction &quot;<code>add \t2</code>&quot;:</p>
+<pre>
+	lac i my1	<span class="comment">// load y</span>
+	sar 9s		<span class="comment">// shift right 11 bits and store it in \t1</span>
+	sar 2s
+	dac \t1
+	jda imp		<span class="comment">// integer multiply y (in AC)</span>
+	lac \t1		<span class="comment">// by y (in \t1)</span>
+	add \t2		<span class="comment">// add x square</span></pre>
+<p>By this, we just computed the square of the distance to the origin of the screen co-ordinates. As luck will have it, this happens to be at the center of the screen, right where the <em>heavy star</em> is placed, liberating us from the task of computing some delta x and delta y values. Thus we are ready to compare this to some <em>epsilon</em> in order to detect a collision. The capture radius (or rather the square of it) is defined in the table of constants at the very top of the source:</p>
+
+<pre>str, 15,	1	/ star capture radius</pre>
+
+<p>This quite lapidar value of <code>1</code> is now subtracted from the square and the result (in the accumulator) is then checked for a negative value:</p>
+
+<pre>	sub str		<span class="comment">// subtract collision radius (1)</span>
+	sma i sza-skp	<span class="comment">// is it a collision? (not sma or sza) </span>
+	jmp pof		<span class="comment">// yes, jump to pof</span>
+	add str		<span class="comment">// no, add collision radius again (restore sum of squares)</span></pre>
+
+<p>The instruction &quot;<code>sma i sza-skp</code>&quot; is a compound instruction that will be performed in a single cycle at once, like we've seen it already in other parts of the source: It sums the instructions <code>sma</code> <em>(skip on minus AC)</em> and <code>sza</code> <em>(skip on zero AC)</em> and subtracts the opcode value of the skip group from this (since this would be represented twice, in each of the two instructions) and the <code>i</code> bit causes the instruction to invert the condition given by this union. (Please mind that the resulting octal instruction <code>650500</code> is not the same as &quot;<code>spa</code>&quot; or <code>640200</code>, the latter simply testing for the sign-bit not being set.) Thus, the next instruction will be skipped, if the accumulator would not be zero or negative (as indicated by a set sign-bit).</p>
+<p>If not skipped, the square distance is less then <code>1</code> and we have a collision, handled at location <code>pof</code>. &mdash; <em>I really love this graphic label! (Someone seems to have been reading Batman or the like.)</em> &mdash; Otherwise, we add the value in <code>str</code> again to restore the original value of square distance for later use.</p>
+<p>As we may have observed, the capture radius is not that much defined by the constant <code>str</code>, but by the shift to the right by 11 bits. Since a shift to the right by 8 bits would have been perfect for transforming the positional coordinates to integers, we've an extra of 3 bits resulting in a division by 8. Thus, a ship is captured, if the absolute values of both of the coordinates would happen to be less than 8. This would have been quite an expensive calculation for something that could be checked by some simple shifts, if we wouldn't have any other use for the square distance. But if so, we're getting the absolute distance for free to be checked by a single condition. &mdash; In fact, we were already deep in the computations of gravity as well:</p>
+
+
+<h2 id="gravity">The Merciless Ship Sucker (Charybdis)</h2>
+
+<p>Let there be gravity:</p>
+
+<pre>	dac \t1		<span class="comment">// store square distance in \t1</span>
+	jda sqt		<span class="comment">// get the square root of it</span>
+	sar 9s		<span class="comment">// shift result 9 bits to the right</span>
+	jda mpy		<span class="comment">// calculate distance x square distance (\t1)</span>
+	lac \t1
+	scr 2s		<span class="comment">// shift result in AC and IO right 2 bits</span></pre>
+
+<p>The instruction &quot;<code>jda sqt</code>&quot; is calling another BBN subroutine, this time for the square root:</p>
+
+<pre>/integer square root
+/input in ac, binary point to right of bit 17, jda sqt
+/answer in ac with binary point between bits 8 and 9
+/largest input number = 177777
+
+sqt,	0
+	dap sqx
+	<span class="comment">// ... snip ...</span>
+sqx,	jmp .
+	<span class="comment">// ... snip ...</span></pre>
+
+<p>The heading comment is already providing all we need to know: The first line of the instructions is another (a bit complicated way) of saying that the input is expected to be an integer, the second one is specifying the output format, and we are learning that the highest input processed by this routine is (octal) <code>177777</code>. (Something we do not learn from this, is where this routine came from. It could be by Adams Associates like the sine-cosine routines, but it's not the same as distributed by DEC in the preliminary memo &quot;<a href="http://bitsavers.trailing-edge.com/pdf/dec/pdp1/memos/M-1092_Nov60.pdf" target="_blank">M-1092</a>&quot; from 22 Nov. 1960. Or it could be by BBN as well, as suggested by its placement right in between the multiply and the divide subroutines, both by BBN.)<br />Anyway, we're learning two things here: First, why the positional coordinates were shifted to the right by 11 bits in the first place, and second, why the result is then shifted right by 9 bits. The latter one is easy, since the floating point is right in the middle with 9 bits to the left and 9 bits to the right. This is simply converting the result to an integer.</p>
+<p>The first one is mostly related to the maximum input of octal <code>177777</code> or decimal <code>65535</code>: Let's recall, how our input was derived: It's a sum of two squares, which would give us a maximum value for any coordinate of <code>sqrt(65535/2)</code> or (decimal) <code>181</code>. With our screen postions ranging from <code>-512</code> to <code>+512</code>, we would have been clearly out of range here and some scaling was needed. Actually, we would have been on the safe side with a shift by two extra bits (making this a maximum of decimal <code>128</code>), so there's still a single extra shift involved in our initial shift by 11 bits to the right. Let's see ... (While speaking of ranges, the check for a capture radius of less than <code>1</code> is preventing us here on performing the square root routine on a zero value, which would probably return an undefined result.)</p>
+
+<p>The resulting square root (now converted to an integer) is then multiplied by the square of the distance (this time calling the double precision 34-bit version of the multiply routine) resulting in the absolute cube of the distance.</p>
+
+<p>This serves also the final solution of the riddle of the initial shift by 11 bits. If we would want to have the value of the resulting cube fitting into a single 18-bit word, we're sailing already hard at the limits with the maximum value of (decimal) <code>512</code> scaled to <code>64</code>, since the cube of <code>64</code> is <code>26,2144</code>, or octal <code>1000000</code>. Only the absolute values (and some losses by using integer operations only) are preventing an overflow, making this the maximum value for our purpose.</p>
+
+<p>And yet, there's another shift, this time by 2 bits to the rights on the result in the combined AC and IO registers:</p>
+<pre>	scr 2s		<span class="comment">// shift result in AC and IO right 2 bits</span></pre>
+<p>This is obviously scaling the result of the high precision multiply subroutine, but by what amount?<br />The comment at the call location is providing us with the output format, <em>&quot;returns 34 bits and 2 signs&quot;</em>. Seems to be clear enough &mdash; but, where would these two signs actually be located? Since the product of two 18-bit words less the sign (making 17 bits) may not exceed 34 bits, this leaves two spare bits. If the signs of the two operands happen to be different, the result is negative and both of the registers are complemented at the end of the procedure (forming a combined 1's complement), making the two spare bits the sign-bits. With the value stretching from AC to IO in consecutive bits, the additional sign-bit is obviously not the highest bit of IO. Where is it located then? Right at the end of IO, by this padding the value by sign-bits at either side. Thus, we've to shift the registers 1 bit to the right in order to make the value in IO an ordinary integer number.<br />Therefor, this shift by 2 bits is merely resulting in a division by 2.</p>
+
+<p>But we haven't arrived at the end of shifts yet:</p>
+
+<pre>	szs i 20	/ switch 2 for light star
+	scr 2s</pre>
+<p>If sense switch 2 would not be zero (mind the <code>i</code>-bit for the inverted condition), we're skipping the next instruction. If zero (not set), we're applying another &quot;<code>scr 2s</code>&quot;, thus <em>low gravity</em> will be a quarter of the normal amount. (This might be a bit confusing, but we'll see soon, why a smaller value would effect in a stronger influence of gravity.)</p>
+
+<p>Thus, we just computed a parabolic function as in</p>
+<pre><em>(Idealized)</em>  f(x,y) = sqrt((x/8)<sup>2</sup> + (y/8)<sup>2</sup>)<sup>3</sup> / 8
+
+<em>Actually:</em>
+    x1 = int(x / 8)
+    y1 = int(x / 8)
+    d2 = x1 * x1 + y1 * y1
+    d1 = int(sqrt(d2))
+g(x,y) = int((d1 * d2) / 8)
+
+where g(x,y) &lt;= f(x,y)</pre>
+
+
+<figure id="gravity_parabolic" class="img"><img src="images/spacewar-gravity-divisor.jpg" width="600" height="451" alt="The field of gravity in Spacewar! &ndash; The parabolic function for divisor" style="background-color: #f6f6f6;" /><p>The parabolic function in Spacewar! gravity.<br />(Isometric projection, orientation of z-axis is downwards.)</p></figure>
+
+<p>The higher part (as in <code>AC</code>) is now checked to be zero. If not, something went utterly wrong and we're aborting the sequence and jump to label <code>bsg</code>, ignoring any gravity for this frame. (This will actually never happen with a regular value, since we shifted the entire result into a single 18 bit value in <code>IO</code>.)</p>
+
+<pre>	sza
+	jmp bsg</pre>
+
+<p>Otherwise, we're calculating the vector of influence, as in <code>\bx</code> and <code>\by</code> (to be added to any other other movement vector in the code following at <code>bsg</code>):</p>
+
+<pre>	dio \t1
+	lac i mx1
+	cma
+	jda idv
+	lac \t1
+	opr
+	dac \bx
+	lac i my1
+	cma
+	jda idv
+	lac \t1
+	opr
+	dac \by</pre>
+
+<p>First, we're storing the output of our parabolic function in <code>\t1</code>. Since we branched on any non-zero value in the accumulator, this may only be the part left in the <code>IO</code> register, as in &quot;<code>dio \t1</code>&quot;. The next instructions are calling the last of the BBN subroutines, the integer divide <cite>(<a href="http://www.bitsavers.org/pdf/dec/pdp1/memos/M-1097_Jan61.pdf" target="_blank">DEC Memo M-1097</a>, DEC/BBN, 19 Jan 1961)</cite>:</p>
+
+<pre>/BBN Divide subroutine
+
+/calling squence: lac hi-dividend, lio lo-dividend, jda dvd, lac divisor.
+/returns quot in ac, rem in io.
+
+idv,	0		/integer divide, dividend in ac.
+	<span class="comment">// ... snip ...</span>
+dvd,	0
+	dap dv1
+	<span class="comment">// ... snip ...</span></pre>
+
+<p>Once again, we're supposed to provide two factors, the dividend and the divisor. The dividend may be a 36 bit number with the higher part in <code>AC</code> and the lower part in <code>IO</code> (just like the result of the square root routine, maybe a clue for its origin at BBN) for use with the high precision routine <code>dvd</code> or a simple 18 bit value (to be returned in <code>AC</code>) for the low precision routine <code>idv</code> (used here). The divisor is handed over quite like we've already seen it with the multiply routine, by a <code>lac</code> following immediately after the &quot;<code>jda idv</code>&quot;. The routine will return at the next instruction in case of an illegal operation as indicated by an overflow, or skip this instruction and return at the next one. For this, the instruction following the &quot;<code>lac \t1</code>&quot; is a simple <code>opr</code> (synonymous to the void instruction <code>nop</code>), providing no handling of this case at all. (We are pretty confident that our code won't end up here.)</p>
+<p>Thus, this sequence is loading the x-position (referred to by pointer <code>mx1</code>) into the accumulator and complements this by the following <code>cma</code> instruction. This is then divided by the output of the parablic function in <code>\t1</code> and the result is stored in variable <code>\bx</code>. (Mind that the value referred to by <code>mx1</code> is the unshifted x-coordinate, the equivalent of the x-position multiplied by decimal <code>256</code>.)</p>
+<p>The same procedure is then repeated for the y-cordinate in <code>my1</code> and the result is stored in variable <code>\by</code>.<br />This is effectively transforming our parabolic function into a vectorized hyperbolic one:</p>
+
+<pre>bx(x,y) = -x / f(x/256, y/256)
+by(x,y) = -y / f(x/256, y/256)</pre>
+
+<p>And since a greater divisor makes for a smaller quotient, we now also understand, why low gravity was achieved by skipping an extra shift to the right.</p>
+ 
+
+<figure id="gravity_hyperbolic" class="img"><img src="images/spacewar-gravity-applied.jpg" width="600" height="474" alt="The field of gravity in Spacewar!" style="background-color: #f6f6f6;" /><p>Applied factors of gravity in Spacewar!<br />(Isometric projection of combined forces along x/y, orientation of z-axis is downwards.)</p></figure>
+
+<p>Let's investigate this a bit more thoroughly, in order to understand it properly. Here is a table of actual inputs and outputs of the gravity calculations for some prominent values of x and y, as calculated for a freely floating spaceship:</p>
+
+<pre>Spaceship #1
+free falling from 0777/0777 (top right) towards 0/0 (center origin)
+all values octal, complete sequence provided for x/y positions &lt; 0100
+&times; ... integer multiply, &divide; ... integer divide, &radic; ... integer sqrt
+
+f(x,y) = ( &radic;((x &gt;&gt; 3)<sup>2</sup> + (y &gt;&gt; 3)<sup>2</sup>) &times; ((x &gt;&gt; 3)<sup>2</sup> + (y &gt;&gt; 3)<sup>2</sup>) ) &gt;&gt; 3
+\bx = -mx1 &divide; f(mx1 &gt;&gt; 8, my1 &gt;&gt; 8)
+\by = -my1 &divide; f(mx1 &gt;&gt; 8, my1 &gt;&gt; 8)
+
+<em> x      y        mx1      my1      f(x,y)       \bx     \by</em>
+777    777     377777   377777     254366         -1      -1
+700    700     340177   340177     170760         -1      -1
+600    600     300011   300011     113300         -2      -2
+500    500     240223   240223      53600         -3      -3
+400    400     200000   200000      26400         -5      -5
+300    300     140071   140071      11220        -12     -12
+201    201     100507   100507       2600        -27     -27
+177    177      77726    77726       2235        -33     -33
+141    141      60653    60653       1100        -53     -53
+120    120      50315    50315        536        -73     -73
+101    101      40732    40732        260       -137    -137
+ 77     77      37612    37612        156       -223    -223
+ 75     75      36447    36447        156       -216    -216
+ 72     72      35263    35263        156       -210    -210
+ 70     70      34056    34056        156       -202    -202
+ 65     65      32630    32630        110       -276    -276
+ 62     62      31353    31353        110       -265    -265
+ 60     60      30047    30047        110       -253    -253
+ 55     55      26516    26516         53       -415    -415
+ 52     52      25123    25123         53       -373    -373
+ 47     47      23471    23471         24       -766    -766
+ 43     43      21740    21740         24       -713    -713
+ 40     40      20115    20115         24       -635    -635
+ 34     34      16207    16207         11      -1453   -1453
+ 30     30      14133    14133         11      -1264   -1264
+ 23     23      11731    11731          2      -4754   -4754
+ 16     16       7031     7031          0          0       0
+ 10     10       4131     4131          0          0       0
+ *capture*</pre>
+ 
+ <p>As we may observe, there are some minor discontinuities, due to the limited 18-bit precision, and the result of the divison (<code>\bx = -mx1/f(x,y)</code>) is not decreasing steadily all over the range for <code>mx1</code>, because the intermediate result of the parabolic function <code>f(x,y)</code> not being unique for each value of <code>mx1</code> and <code>my1</code>. (So, yes, there are actually <em>waves of gravity</em> to ride.) Moreover, the two divisions by zero are yielding a zero result and not some irregular value, while there isn't any handling of this edge-case. (We'll see later why this would be.)</p>
+ <p>We may also note that while the curvature of this hyperbolic function isn't exactly steep, gravity will be applied at every frame, resulting into a near to immedate plunge into the <em>Star</em>, if we would approach it as near as <code>34/34</code> in any direction, unless our ship has an opposing velocity that is compensating or exceeding the pull exerted by gravity. On the other hand, <em>Scylla</em> and <em>Charybdis</em> are not exactly on par and the function will apply the typical sling-shot effect to a ship, if we manage to maneuver closely around the gravitational center in any direction.</p>
+ 
+ <p>Finally, we should note here that, while the gravity factors <code>\bx</code> and <code>\by</code> are directly added to the movement vector in pointers <code>mdx</code> and <code>mdy</code>, only a 2048<sup style="line-height: normal;">th</sup> part of this vector is applied to a spaceship's postion in each frame. Thus, the most extreme value of <code>4754</code> recorded in the series above attributes to an advance of a mere 2 display locations in the same frame, whereas normaly the effect will be building up gradually over a series of frames.</p>
+
+
+<h2 id="pof">Blazing in the Sun (Pof!)</h2>
+
+<p>So, what happens, if our ship falls prey to the Homeric monsters and we happen to collide with the <em>heavy star</em>?</p>
+
+<pre>/ here to handle spaceships dragged into star
+
+
+/ spaceship in star
+
+pof,	dzm i \mdx	<span class="comment">// reset x and y</span>
+	dzm i \mdy
+	szs 50		<span class="comment">// sense switch 5 set</span>
+	jmp po1		<span class="comment">// yes, explode</span>
+	lac (377777	<span class="comment">// no, reset to antipode</span>
+	dac i mx1
+	dac i my1
+	lac i mb1	<span class="comment">// load count of instructions</span>
+	dac \ssn
+	count \ssn, .	<span class="comment">// spend it on counting up in \ssn</span>
+	jmp srt		<span class="comment">// jump to return of spaceship routine (continues at mb1)</span>
+
+po1,	lac (mex 400000	/ now go bang
+	dac i ml1	<span class="comment">// store as new control word</span>
+	law i 10	<span class="comment">// set up explosion timing</span>
+	dac i ma1
+	jmp srt		<span class="comment">// jump to return</span></pre>
+
+<p>As we've seen previously, a square distance smaller than octal <code>10</code> will lead to a jump to label <code>pof</code>. Here, the instructions &quot;<code>dzm i \mdx</code>&quot; and &quot;<code>dzm i \mdy</code>&quot; are resetting the x and y velocities of the ship to zero.<br />What's happening next, is decided on the setting of sense switch 5: If set, we jump to <code>po1</code> and set up a nice explosion. If not set, the jump is skipped and the spaceship is warped to the <em>antipode</em> by loading <code>377777</code> into the two locations in pointers <code>mx1</code> and <code>my1</code>. &quot;<code>377777</code>&quot; corresponds to the screen location <code>777/777</code> (decimal +511/+511) in the upper right corner, where the spaceship will be drawn, split to a quadrant in each of the corners of the screen. But we're not going to display the warping ship (preserving some of the magic), so we'll spend the time involved in a count-up. For this we load the instruction count as stored in pointer <code>mb1</code> (<code>-4000</code>) into variable <code>\ssn</code> (else used to store the scaled sine) and spend the instruction in an empty loop. When finished, we jump to the exit of the spaceship routine at <code>srt</code> (the jump to the return address, effectively to <code>mb1</code>, just before the end of the comparison loop).</p>
+<p>If we end up at label <code>po1</code>, sense switch 5 is set to high for a killing <em>star</em> and we are up to see some pixel dust. As nicely illustrated by the comment, <em>&quot;now go bang&quot;</em>, the instruction &quot;<code>lac (mex 400000</code>&quot; is setting up the explosion routine: &quot;<code>mex</code>&quot; is the address of the routine and <code>400000</code> is the numerical equivalent of a set sign-bit to indicate a non-colliding state of the ship. This is loaded as a constant expression into the accumulator and deposited as the new <em>control word</em> into the location in pointer <code>ml1</code> (the handler property of the current object). &quot;<code>law i 10</code>&quot; loads the value <code>-10</code> to be deposited into the location in pointer <code>ma1</code>, setting up the duration of the explosion. By this, we're done for this frame and jump to the return at <code>srt</code>, happily awaiting the explosion to be displayed in the next frame.</p>
+
+<h2 id="excursus">Excursus &mdash; De Computatione Mechanica</h2>
+
+<blockquote style="text-align: center;"><strong style="font-size: 200%;">Cum deus calculat fit mundus.</strong> <em style="margin-left: 0.5em;">(Leibniz)</em></blockquote>
+
+<figure id="einerhatallesausnichtsgemacht" class="img borderless"><img src="images/einerhatallesausnichtsgemacht.jpg" width="477" height="469" alt="Leibniz: Bild der Sch&ouml;pfung" /><p>Draft for a medal sent by Leibniz to the duke of Braunschweig-Wolfenb&uuml;ttel in 1697.<br />The  inscription reads &quot;One has made all from nothing / A one is a nought.&quot; (Einer hat alles aus nichts gemacht / Eins ist noht.)<br />The medal shows an &quot;image of the creation&quot; (Bild der Sch&ouml;pffung[sic]) as addition and multiplication of binary numbers.</p></figure>
+
+<p><em>When God calculates, the world arises.</em> If possible, this is even more true for the Spacewar!-universe. But there's a little problem here, since our <em>deus ex machina</em>, arising from the contraption of the PDP-1, isn't exactly good at calculating. Ironically, inspite of its name, a digital <em>computer</em> is good at things like transferring and jamming bits, flipping them, or applying basic Boolean operations to them, but it is exceptionally bad when it comes to <em>computing</em>. A single addition of two binary digits wouldn't be that bad, since it's just an exclusive OR (XOR), but when it comes to numbers, there's a carry involved and we would have to add another XOR, two ANDs, and an inclusive OR, just to perform this on a single digit. Even something as simple as an addition is a serious business involving a serious amount of specialized hardware. Even a binary shift is expensive, but this is an essential operation to any Turing machine, as well as incrementing. It may be or it may be not due to the fact that most humans, if not all, aren't capable of any more complex mathematical operations themselves and are rather resigning to some kind of lookup table of partial results, they've learned to memorize, just like IBM's 1620 (CADET &mdash; <em>Can't Add, Doesn't Even Try</em>) did it. But this is not an option for realtime computing.</p>
+
+<h3 id="multiplication">Multiplication</h3>
+
+<p>So, how could we implement something like a multiplication on a binary computer? A naive approach would be a count down on one factor, while adding the other factor to the product in each of the steps. This might be according to the very definition of multiplication, but we would be up for a lengthy procedure involving up to (decimal) 131071 steps for an unsigned 17-bit number. Can't we do any better?</p>
+<p>While looking at a binary number, it's obvious that this is representing the sum of <code>1</code>s multiplied by <code>2</code> raised to a power corresponding to a digit's positions. Since multiplication is distributive, it doesn't matter to which of the two factors we would apply this multiplications (or, in terms of electronics, the shifts). Thus, we may just scan one of the factors for <code>1</code>s and add the other factor to the product with the appropriate number of shifts applied. (Compare Leibniz' medal draft above.)</p>
+
+<p>By this we've arrived at an algorithm that completes in a limited number of steps, one for each digit involved and one operation to be applied, if the scanned number (reduced by shifts itself) would happen to be an odd number. &mdash; I believe it was Leibniz, who was quoting Vergil in this context by annotating <em>&quot;numero deus impare gaudet&quot;</em> (&quot;god delights in an odd number&quot;). &mdash; Anway, a multiplication step involves a shift on the multiplier to the right to scan the least significant digit, and if we would find this to be what Shakespear called a <em>lucky number</em>, we would add the multiplicant to the product. Since we also need a double length register for a product of two factors of <em>n</em> length, we would rather apply the shift to the product instead of the multiplicant, and add the multiplicant to the higher part.</p>
+
+<p>This is also, what the instruction <code>MUS</code> <em>(multiply step)</em> does. Since the procedure involves both a right shift on the multiplier and a right shift on the double length output register, we may also combine these in a further step of optimization in a single shift: We will start with a cleared accumulator (AC) and one of the factors in IO. Then, for each step, we'll add the other factor (from memory) to the higher part of the double register in AC, if the least significant bit of the combined register would be a <code>1</code>. Subsequently we'll shift the combined register right by a single bit. In the next step, the next bit of the original multiplier would be in the least significant position and the accumulator would represent a position in the final product relatively shifted left by one bit. If we apply this 17 times (for each unsigned bit), we'll end up with the appropriate result in the combined AC-IO registers. All we have to do is to take care of the signs, since our algorithm is working on unsigned numbers.</p>
+
+<p>Let's have a look at the full scale multiplication of the BBN subroutine starting at <code>mpy</code>:</p>
+
+<pre>/BBN multiply subroutine
+/Call. lac one factor, jda mpy or imp, lac other factor.
+
+imp,	0		/returns low 17 bits and sign in ac
+	dap im1
+im1,	xct
+	jda mpy
+	lac imp
+	idx im1
+	rir 1s
+	rcr 9s
+	rcr 9s
+	jmp i im1
+
+mp2,	0
+
+mpy,	0		/returns 34 bits and 2 signs
+	dap mp1
+	lac mpy
+	spa
+	cma
+	rcr 9s
+	rcr 9s
+mp1,	xct
+	spa
+	cma
+	dac mp2
+	cla
+	repeat 21, mus mp2
+	dac mp2
+	xct mp1
+	xor mpy
+	sma
+	jmp mp3
+	lac mp2
+	cma
+	rcr 9s
+	rcr 9s
+	cma
+	rcr 9s
+	rcr 9s
+	dac mp2
+mp3,	idx mp1
+	lac mp2
+	jmp i mp1</pre>
+
+<p>The <code>jda</code> put's one factor into location <code>mpy</code> and starts at the instruction &quot;<code>dap mp1</code>&quot;, complementing its opcode <code>xtc</code> by inserting the address of the instruction that will fetch the other factor. The next instructions are loading the first factor into AC, convert it to an absolute value and swaps them to the IO register. Then the <code>xtc</code> at label <code>mp1</code> fetchs the other factor in AC and, after converting this one to an absolute value, too, it is stored in <code>mp2</code>. Now, we've one factor in IO and the other in <code>mp2</code>. After the preliminary clearing of AC, we perform the actual multiplication by applying 17 steps of &quot;<code>mus mp2</code>&quot; (as in &quot;<code>repeat 21, mus mp2</code>&quot;) &mdash; thus computing a raw 34-bit product with the sign-bit in AC and the least significant bit in IO both empty.</p>
+
+<p>Now we're left with the task of appling the appropriate sign. Obviously the product will be negative, when the two factors were of different signs, else the product will be positive. In order to detect the signs, we save AC (the higher value part of the product) in <code>mp2</code> and once again load the original second factor in AC by &quot;<code>xct mp1</code>&quot; (this will perform another <code>xtc</code> instruction). By performing an exclusive or with the first factor on this and testing for the sign-bit by the instruction <code>sma</code>, we'll either jump to <code>mp3</code>, if the factors were of the same sign, or complement the two parts of the double length product. At <code>mp3</code> the value in <code>mp1</code> is incremented to point to the final return address. With the double length registor restored by &quot;<code>lac mp2</code>&quot;, we're finsihed and take the jump to the return address.<br />Notably, the result will be a 34 bit value padded by two signs in AC<sub>0</sub> and IO<sub>17</sub>.</p>
+
+<p>The single length multiplication at <code>imp</code> is a derivative form of this. It will actually execute the routine at <code>mpy</code> that we've just investigated. Then it applies an extra shift in order to normalize the lower part result in IO (for the same reason as we've discussed while inspecting the gravity calculations) and performs a final swap to provide the result in AC.</p>
+
+<h3 id="division">Division</h3>
+
+<p>Division is a bit more complicated. The general algorithm for division is the <em>long division</em> algorithm as in:</p>
+
+<pre>Q: quotient, R: remainder, N: dividend, D: divisor
+
+Q := 0
+R := 0
+for i = n-1..0 do
+  R := R &lt;&lt; 1
+  R(0) := N(i)
+  if R &gt;= D then
+    R = R - D
+    Q(i) := 1
+  end
+end</pre>
+
+<p><em>Please note that this is using the standard notation with the index starting on the least significant digit, as opposed to the notation used by DEC, numbering the bits from left to right, we're using generally here.</em><p>
+
+<p>Generally, any division algorithm has to adjust for the following conditions:</p>
+
+<pre style="background-color: #fff;">dividend = remainder + quotient &times; divisor,  0 &lt;= remainder &lt; divisor</pre>
+
+<p>As we can see, the product of the quotient and the divisor has to be arranged in a way, that it will equal the dividend when summed with a remainder that is less than the divisor. We may see that there is a condition on the remainder for achieving a correct result, and we may see that the only way to arrive at a satisifying value for the remainder is by producing a corresponding quotient (since the divisor is a constant in this procedure). As for the product, we've already seen that we could regard this as a sum of products of powers of two, corresponding to the digits set to one in its factors. We should be able to reverse this procedure, reducing the tasks essentially to exactly knowing where to slice these factors out of the dividend.</p>
+
+<p>We'll start with a partial remainder set to equal the dividend, and like in multiplication, we will scan the number by shifting it one bit at each step. Since this is essentially the reverse operation to multiplication, we'll start at the highest significant digit and shift it to the left (thus dividing it by 2). If the divisor is fitting into the partial remainder (<code>P</code>), as expressed by the condition &quot;<code>P - D &gt;= 0</code>&quot;, we'll subtract the divisor (effectively multiplied by <code>2<sup>n-i</sup></code>) and set the corresponding bit in the quotient to high (since the divisor would fit into the dividend for the according times of this power of two).</p>
+
+<p>Thus, we have arrived at the <em>slow division</em> method, generally expressed in:</p>
+
+<pre>P<sub>i+1</sub> = R &times; P<sub>i</sub> - q<sub>n-(i+1)</sub> &times; D</pre>
+
+<p>Or, expressed as an algorithm:</p>
+
+<pre>P := N
+D := D &lt;&lt; n            <span class="comment">-- divisor will be implicitly shifted right by n bits</span>
+for i = n-1..0 do
+  P := 2P - D          <span class="comment">-- trial subtraction from shifted value</span>
+  if P &gt;= 0 then
+    q(i) := 1          <span class="comment">-- result-bit 1</span>
+  else
+    q(i) := 0          <span class="comment">-- result-bit 0</span>
+    P := P + D         <span class="comment">-- new partial remainder is (restored) shifted value</span>
+  end
+end</pre>
+
+<p>Since the subtraction has to be applied to the partial remainder only, if this subtraction is yielding a positive result, we're dealing effectively with <em>two</em> states of the partial remainder, before and after the subtraction, with the condition on the second one. One way to handle this is a <em>non-destructive</em> algorithm, where we would apply the subtraction anyway and restore the partial remainder by adding the divisor again, if the result would be negative (see above). On the other hand, the sign of the partial remainder would indicate the condition for the <em>previous</em> step, so we could put our emphasis on this. If the sign-bit would be unset, the subtraction would have satisfied our condition and we would set the corresponding bit in the quotient. Else, we would add the quotient multiplied by two (to compensate the shift). In both cases, we would then subtract the divisor again, to provide the sign-bit for the next step. Simplifying this, we will either subtract the divisor, if the partial remainder is positive, or we will add the divisor, if it happens to be negative.</p>
+
+<p>For our implementation, we're combining AC and IO into a double-length register once again (since the dividend is a double-length product) and use this for the partial remainder, being initially the dividend. Since we can provide for the corresponding bit position in the quotient by just setting the least significant bit and shifting the quotient to the left as well, we may reuse the AC-IO double-length register and gradually shift in the quotient at the lower side, while the partial remainder is shifted out at the other side. This way, the least significant bit of the double-length register is set to one, if the sign-bit before the shift was unset (indicating a positive partial remainder), and cleared, if the sign-bit is set. In other words, the complemented previous sign-bit becomes the new least significant bit in the gradually produced quotient.</p>
+
+<p>A thing to consider is the sign of the least significant bit shifted in when we would apply the addition for the previous partial remainder being negative. Since the less significant bits in IO will always be positive and the partial remainder is in this case negative (represented in 1's complement), we'll have to add <code>1</code> to the addition in order to correct this new bit to the sign. Thus, the addition step becomes &quot;add divisor plus 1&quot;, if the sign-bit was negative.</p>
+
+<p>Since each of the steps is presupposing a subtraction previously applied, we'll have to provide for an initial one before applying the first step. Similarly, the last step will apply a surplus one and we'll have to componsate this by a final addition. Moreover, we're dealing with operands of different word length, so we'll have to decide what they would represent. Generally, for this algorithm, they are regarded to represent fractional values, so we will apply the divison to the higher part of the double-length AC-IO register, leaving the part where the quotient is gradually produced intact. (Also, any subtractions or additions will be applied to AC exclusively and we will do fine with any adder-circuitry provided for AC only.) If we would want to use this for an integer divide, we'll have to provide a single-word dividend adjusted to the right of the double-word register in IO only (shifted left one bit to for the sign).</p>
+
+<p>Thus, we've finally arrived at the following algorithm:</p>
+
+<pre>0 &lt;= N &lt; 1,  0 &lt; D &lt; 1,  n<sub>P</sub> = 2n<sub>D</sub>
+
+D := D &lt;&lt; n<sub>D</sub>           <span class="comment">-- D is applied do the higher part of double word P only</span>
+P := N
+
+P := P - D             <span class="comment">-- initial subtraction</span>
+for i = 0..n<sub>D</sub>-1 do
+  s := sign(P)
+  P := P &lt;&lt; 1
+  if is_set(s) then    <span class="comment">-- was negative (P<sub>i-1</sub> - D &lt; 0)</span>
+    P(lsb) := 0
+    P := P + D + 1<span class="comment"><sup>*</sup>    -- *) PDP-1: + 1 corrects 1's complement of AC(lsb) shifted in</span>
+  else                 <span class="comment">-- was positive (P<sub>i-1</sub> - D &gt;= 0)</span>
+    P(lsb) := 1
+    P := P - D
+  end
+end
+P := P + D             <span class="comment">-- compensate the surplus subtraction applied in last step</span></pre>
+
+<p>The <em>divide step</em> as in instruction <code>DIS</code> expects the dividend in the combined AC and IO registers, and the divisor in the memory location referred to in the address part. At each step the combined registers are shifted left and the complement of the former sign-bit (in AC) is jammed into the least significant position (in IO). If this bit (now in IO bit 17) happens to be <code>1</code>, the divisor (from memory) is subtracted from AC, else AC is incremented by <code>1</code> and the divisor is added. (Actually, the subtraction is performed by an addition, too, complementing AC previously and afterwards.) Applied for each binary digit, it will produce the remainder in AC and will shift the intermediary quotient into IO.</p>
+
+<p>There are actually some constraints on this algorithm: First, it works on absolute values, so we'll have to manage the signs once again on our own. Second, it works only, if the divisor (notably shifted left by a word-length) is greater than the dividend. So, we have an error condition here (an overflow) that is also covering the edge-case of a divsion by zero.</p>
+
+<p>The BBN subroutine is testing the overflow condition after the initial subtraction. If there is an overflow (as indicated by a positive result), the routine returns at the location after the <code>lac</code> for the divisor. If the routine produces a valid result, this instruction is skipped and the routine will return at the next location. Further, there are two entry points: One for a simple integer divide and one for two fractional values with a double-length dividend. The call at <code>dvd</code> is performing a fractional divide (with the fractional point immediately after the sign-bit), the call at <code>idv</code> (as used in Spacewar!) an integer divide on a simple value in AC:</p>
+
+<pre>/BBN Divide subroutine
+
+/calling squence. lac hi-dividend, lio lo-dividend, jda dvd, lac divisor.
+/returns quot in ac, rem in io.
+
+idv,	0		/integer divide, dividend in ac.
+	dap dv1		<span class="comment">// store address to fetch the divisor</span>
+	lac idv		<span class="comment">// load the dividend</span>
+	scr 9s		<span class="comment">// prepare the dividend: swap it in IO</span>
+	scr 8s		<span class="comment">//                      (less sign-bit)</span>
+	dac dvd		<span class="comment">// deposit sign (-0/+0) in dvd</span>
+	jmp dv1		<span class="comment">// now continue with fractional divide</span>
+
+dvd,	0		<span class="comment">// fractional divide</span>
+	dap dv1		<span class="comment">// store address to fetch the divisor </span>
+dv1,	xct		<span class="comment">// fetch divisor (in AC)</span>
+	spa		<span class="comment">// make it an absolute value</span>
+	cma
+	dac idv		<span class="comment">// store divisor in idv</span>
+	lac dvd		<span class="comment">// load hi-dividend into AC</span>
+	sma		<span class="comment">// make dividend an absolute value</span>
+	jmp dv2
+	cma
+	rcr 9s
+	rcr 9s
+	cma
+	rcr 9s
+	rcr 9s
+dv2,	sub idv		<span class="comment">// initial subtraction (dividend - divisor)</span>
+	sma		<span class="comment">// negative? (divisor &gt; dividend)</span>
+	jmp dve		<span class="comment">// no, abort on overflow</span>
+	repeat 22, dis idv	<span class="comment">// apply division steps</span>
+	add idv		<span class="comment">// final addition (compensate surplus subtraction)</span>
+	dio idv		<span class="comment">// store quotient in idv</span>
+	cli		<span class="comment">// now arrange sign, first clear IO</span>
+	rcr 1s		<span class="comment">// rotate AC and IO right 1 bit (sign AC = 0)</span>
+	lio dvd		<span class="comment">// remainder is same sign as divdend, load hi-dividend</span>
+	spi		<span class="comment">// dividend was positive?</span>
+	cma		<span class="comment">// no, complement remainder</span>
+	dac dvd		<span class="comment">// deposit remainder in dvd</span>
+	xct dv1		<span class="comment">// compute sign of quotient, fetch divisor</span>
+	xor dvd		<span class="comment">// xor remainder (get sign diff)</span>
+	rcr 9s		<span class="comment">// swap AC and IO (store computed sign in IO)</span>
+	rcr 9s
+	idx dv1		<span class="comment">// good divide, increment return address</span>
+dve,	idx dv1		<span class="comment">// increment return address</span>
+	lac idv		<span class="comment">// load quotient into AC, arrange sign</span>
+	spi		<span class="comment">// check sign in IO</span>
+	cma		<span class="comment">// negative, complement AC (quotient)</span>
+	lio dvd		<span class="comment">// remainder in IO</span>
+	jmp i dv1	<span class="comment">// return</span></pre>
+
+<p>The instructions after the final addition are preparing the sign-bits: The remainder is of the same sign as the dividend and the quotient will be negative, if the signs of the divisor and the dividend (or the remainder) are different.</p>
+
+<p>Notably, the input format for the long dividend to be provided for routine <code>dvd</code> is the same as the output format of the high precision multiply routine, a continuous number stretching from AC to IO with no sign in the highest bit of IO. Therefore, if we would want to assemble this from two ordinary values, we would have to apply a shift to the left by one bit position to the low dividend in IO in advance, just like we see it in the preliminary steps of the integer divide routine at <code>idv</code>.</p>
+
+<p>(It is only here that we can see, why the series of Spacewar! gravity factors didn't produce any irregular value on a division by zero and returned <code>0</code> instead: Since <code>idv</code> was called for the single-word integer division, AC would have been zero (with the absolute dividend in IO), when the initial subtraction was applied. With zero also subtracted as the divsior, the routine aborted on a positive value by a jump to <code>dve</code>. At this time there's still the divisor in <code>idv</code>, which is now loaded as the result and adjusted to the sign of the absolute dividend, still in IO. Here, this is a small value with the higher bits cleared, resulting in an empty sign-bit. Thus the result returned in AC is a plain zero.)</p>
+
+<p>The automatic hardware multiply/divide option, required by Spacewar! 4.x, is essentially an automatization of these algrorithms performed by the BBN-subroutines with all values generally regarded to represent fractional values. When installed, the instructions <em>multiply step</em> <code>MUS</code> and <em>divide step</em> <code>DIS</code> are replaced by the instructions <code>MUL</code> and <code>DIV</code> respectively (reusing the opcodes of the former single-step instructions). The hardware solution will not only provide the results in fewer cycles, but it will also restore the values in AC and IO, in case a division would return with an overflow.</p>
+
+<p class="endex">*****</p>
+<p>There is a rather small chance that you, dear reader, would now be asking breathlessly, &quot;And how could we do square roots?&quot; O.k., this may be unlikely, but there are two other, higher order arithmetic subroutines in Spacewar!, namely the square root routine and the sine-cosine routine. And we really should have a look at them, too. Maybe, you, like me, weren't taught a square root algorithm in school, since there had already been this small shiny box, called an electronic calculator (they don't make them shiny anymore), and maybe you are interested in how it came up with its answers. Here is, how it would have done a square root &mdash; at least, if it would have been restricted to integer square roots:</p>
+<p class="endex">*****</p>
+
+<h3 id="square_roots">Square Roots</h3>
+
+<p>When it comes to integer square roots, there is again an approach both naive and literal to the definition: We would go over all the squares of the integers until we would encounter a square that would be greater than our argument. The answer would be the last square before this one, the one that just fitted into the given number. (Since we are dealing here with integers only, we would forget about any remainder.) Again, this is not a viable option for realtime computing and we may want to think about something different. Maybe something that would be working on factors. &mdash; But, are there any factors in squares?</p>
+
+<p>We may want to consider the well known formula for solving the square of a binomial term here:</p>
+
+<pre style="background-color: #fff">(a + b)<sup>2</sup>  =  a<sup>2</sup> + 2ab + b<sup>2</sup></pre>
+
+<p>From this follows that the square of any number in a number system of base <em>n</em> may be cosidered to be the square of the sum of the various powers of <em>n</em> in this number, as for any 2-digit number <em>x</em>:</p>
+
+<pre style="background-color: #fff">x = <em>n</em>p + q
+x<sup>2</sup>  =  (<em>n</em>p + q)<sup>2</sup>  =  <em>n</em><sup>2</sup>p<sup>2</sup> + 2<em>n</em>pq + q<sup>2</sup></pre>
+
+<p>p.e.</p>
+
+<pre style="background-color: #fff">95 = 10&times;9 + 5
+95<sup>2</sup>  =  (10&times;9 + 5)<sup>2</sup>  =  100&times;81 + 20&times;9&times;5 + 25  =  8100 + 900 + 25  =  9025</pre>
+
+<p>If we would want to reverse this, we are learning from the expressions &quot;<code><em>n</em><sup style="line-height: normal;">2</sup>p<sup style="line-height: normal;">2</sup></code>&quot; and &quot;<code>q<sup style="line-height: normal;">2</sup></code>&quot; (as in &quot;<code>100&times;81 + 25</code>&quot;) that the square parts of this term won't overlap for any two adjacent digits of the root, since the product of any two single-digit numbers must be less than <code><em>n</em><sup style="line-height: normal;">2</sup></code> (e.g, 9&times;9 &lt; 100). Thus we may want to scan the square in pairs of two adjacent digits in order to extract the squares of the individual digits of the underlying root. Also, as in division, we will try to extract the biggest factors first, so we will scan the square number from left to right, &quot;bringing off by two&quot;. But there might be some remainder involved and there will be some overlap as in the expression &quot;<code>2<em>n</em>pq</code>&quot;. How would we handle this?</p>
+
+<p>Let's see: Considering our base 10 example from above, we inspect the first pair <code>90</code>, and obviously the biggest square fitting into this is <code>9<sup style="line-height: normal;">2</sup></code>. So, we note <code>9</code> as the highest digit of our result and subtract its square <code>81</code> from <code>90</code>, makes <code>9</code>. As we advance to the next digit, bringing down <code>25</code> to get <em>q</em>, what does this remainder represent with respect to the square of a binomial?</p>
+
+<pre style="background-color: #fff;">x<sup>2</sup>  =  100p<sup>2</sup> + 20pq + q<sup>2</sup>
+q(20p + q)  =  x<sup>2</sup> - 100p<sup>2</sup>
+<span style=" line-height: 120%;">
+     x<sup>2</sup> - 100p<sup>2</sup>
+q = &ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;
+      20p + q</span></pre>
+
+<p>Generally, the steps we have to apply here are not that much different from solving the remainder and bringing down the next digit in long division, while a bit more complex: <em>Bringing down two</em> involves a shift by two digits to the left (<code>&times;100</code>), so &quot;<code>x<sup style="line-height: normal;">2</sup> - 100p<sup style="line-height: normal;">2</sup></code>&quot; represents the remainder of our subtraction, now to be shifted left two digits and the next two digits of the argument added to it. (The other way round, &quot;<code>x<sup style="line-height: normal;">2</sup></code>&quot; is the square number as far as we inspected it, and we've already factored out the square of the first root digit(s). As we arrive at <em>q</em>, we have applied a double shift to it and brought down the next two digits, providing the two new lower digits in this for <code>x<sup style="line-height: normal;">2</sup></code> and <code>100p<sup style="line-height: normal;">2</sup></code>, or <code><em>n</em><sup style="line-height: normal;">2</sup>p<sup style="line-height: normal;">2</sup></code>.) In order to get <em>q</em>, we will have to arrange for the divisor in the expression: We will double the partial root, we've just determined, shift it left one digit and add <em>q</em> to it. &mdash; Here, we're facing a little problem, since we can't know <em>q</em> at this time. We'll have to come up with a guess.</p>
+
+<p>In our example the dividend is &quot;<code>9&times;100+25</code>&quot; (or <code>925</code>) and we have to come up with a guess fo the divisor as in &quot;<code>20&times;9 + q</code>&quot; (or &quot;<code>180 + q</code>&quot;). In this case we're lucky, since this will work out perfectly with &quot;<code>q = 5</code>&quot;, providing the final  result <code>95</code>.</p>
+
+<p>But odds are, we will not be that lucky each time and there will be a remainder. Actually we have to go back and prove our guess:</p>
+
+<pre style="background-color: #fff;">r = x<sup>2</sup> - 100p<sup>2</sup> - q(20p + q)</pre>
+
+<p>In case we would get a negative remainder, we would have to track back and redo with a smaller guess for <em>q</em> before we would be able to continue with the next pair of digits by bringin down the next two highest digits of the argument at the right of <em>r</em> and <em>q</em> now becoming the next <em>p</em>. &mdash; Notably, it is this need for a trial-and-error operation and some potential backtracking which is contributing to the image of this long form method as rather being some kind of dark art or alchemy than an enlightened, clean algorithm.</p>
+
+<p>But see what's happening, when we do the same with binary numbers, with just a single case to be considered, namely <em>q</em> equalling <code>1</code>:</p>
+
+<pre style="background-color: #fff; line-height: 120%;">     x<sup>2</sup> - 4p<sup>2</sup>
+q = &ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;
+      4p + 1
+
+r = x<sup>2</sup> - 4p<sup>2</sup> - 1(4p + 1)</pre>
+
+<p>Amazingly, there is no need for guesses and backtracking with binary numbers: Since <em>q</em> is either <code>1</code> or <code>0</code>, the divisor will either fit into the remainder or not. The term &quot;<code>+ q</code>&quot; becomes a constant expression and the divisor is to be directly solved. With the various multiplications by 4 being the equivalent of double shifts, we arrive at a straight forward algorithm using only basic operations like shifts, increments, and maybe a subtraction:</p>
+
+<ol>
+	<li>Shift any remainder 2 bits to the left, shift in next two highest digits from the argument;<br />Shift the partial result (<em>p</em>) 1 bit to the left (advance to next digit).</li>
+	<li><em>Optional shortcut:</em> Is there any remainder? If zero, continue with step 1 (<em>q</em> = 0).</li>
+	<li>Get the divisor by &quot;<code>(p &lt;&lt; 1) + 1</code>&quot; (we already applied one shift to the partial result above)</li>
+	<li>Does this fit into the remainder?</li>
+	<li>If it fits, subtract the divisor from the remainder and increment the partial result by <code>1</code> (add <em>q</em>).</li>
+	<li>Repeat for any remaining digits.</li>
+</ol>
+
+<p>Let's have a look at the implementation used by Spacewar!:</p>
+
+<pre>/integer square root
+/input in ac, binary point to right of bit 17, jda sqt
+/answer in ac with binary point between bits 8 and 9
+/largest input number = 177777
+
+sqt,	0
+	dap sqx		<span class="comment">// deposit return address</span>
+	law i 23	<span class="comment">// load 23 (number of digits to produce + 1)</span>
+	dac sq1		<span class="comment">// store it in sq1 (loop counter)</span>
+	dzm sq2		<span class="comment">// clear sq2 (result)</span>
+	lio sqt		<span class="comment">// load argument into IO</span>
+	dzm sqt		<span class="comment">// clear sqt, now used for remainder</span>
+
+sq3,	isp sq1		<span class="comment">// index sq1, skip on positive (performs 18 iterations)</span>
+	jmp .+3		<span class="comment">// jump to loop body</span>
+	lac sq2		<span class="comment">// load sq2 into AC (result)</span>
+sqx,	jmp .		<span class="comment">// return</span>
+
+	lac sq2		<span class="comment">// load partial result</span>
+	sal 1s		<span class="comment">// shift left 1 bit</span>
+	dac sq2		<span class="comment">// and store it (sq2 = sq2 &lt;&lt; 1)</span>
+	lac sqt		<span class="comment">// load remainder</span>
+	rcl 2s		<span class="comment">// combined rotation, multiply &amp; get next 2 bits from IO</span>
+	sza i		<span class="comment">// is it zero?</span>
+	jmp sq3		<span class="comment">// yes, continue with next 2 digits at sq3 (root digit is 0)</span>
+	dac sqt		<span class="comment">// store remainder</span>
+	lac sq2		<span class="comment">// prepare divisor: load sq2 (partial result)</span>
+	sal 1s		<span class="comment">// shift left 1 bit</span>
+	add (1		<span class="comment">// add 1 to it  (ac = sq2 &lt;&lt; 1 + 1)</span>
+	sub sqt		<span class="comment">// subtract remainder (ac &le; sqt ?)</span>
+	sma+sza-skip	<span class="comment">// is it zero or minus?</span>
+	jmp sq3		<span class="comment">// no, continue with next 2 digits (root digit is 0)</span>
+	spa		<span class="comment">// is it positive?</span>
+	cma		<span class="comment">// no, complement it</span>
+	dac sqt		<span class="comment">// store as remainder</span>
+	idx sq2		<span class="comment">// increment partial result (root digit is 1)</span>
+	jmp sq3		<span class="comment">// continue</span>
+
+sq1,	0
+sq2,	0</pre>
+
+<p>Transforming this into some kind of C-like pseudocode (which happens to be valid JavaScript) we get:</p>
+
+<pre>function sqrt(num) {
+   var result = 0;
+   var remainder = 0;
+   var divisor, i, t;
+   
+   for (i = 0; i &lt; 18; i++) {               <span class="comment">// for each resulting digit</span>
+      result &lt;&lt;= 1;
+      t = (remainder &lt;&lt; 2) + (num &gt;&gt; 16);   <span class="comment">// this and next line: lac sqt, rcl 2s</span>
+      num &lt;&lt;= 2;
+      if (t) {
+         remainder = t;
+         divisor = (result &lt;&lt; 1) + 1;
+         if (divisor &lt;= remainder) {
+            remainder -= divisor;
+            result++;
+         }
+      }
+   }
+   return result;
+}</pre>
+
+<p>This is the perfect image of the algorithm we've drafted above: Inside the loop, we first advance to the next digit of our result by applying a shift. Then we apply the double shift to the remainder and add the next two digits to be inspected to it by rotating the combined AC &amp; IO registers, containing the remainder and the argument respectively. If the remainer would now be empty, there's nothing to fit and this digit of the root is a zero. Thus, we may continue by a jump to the next iteration of the loop. (In the assembler code, we won't even store the remainder in this case, since it must have been zero before.) If we've got some remainder, we will check the divisor to fit into the remainder. (This is done by a subtraction and testing the result for being either zero or a negative number. If the divisor fits, it is restored by complementing it.) In case the divisor is less than or equal to the remainder, our result digit is a 1 and we subtract the divisor from the remainder. After repeating this procedure for each bit of our 18-bit result, we're eventually done and return the result.</p>
+
+<p>(<em>Those more familar with the conventional high-school method may want to have a look at the excellent description at <a href="http://www.embedded.com/electronics-blogs/programmer-s-toolbox/4219659/Integer-Square-Roots" target="_blanK">http://www.embedded.com/electronics-blogs/programmer-s-toolbox/4219659/Integer-Square-Roots</a>, which is arriving at the very same algorithm.</em>)</p>
+
+<p>What's interesting here on a more textual level, is the clarity of the design of this square routine and its organization in three distinctive blocks, each representing a functional context: The first one at label <code>sqt</code> is storing the return address and initializing the various registers and memory locations used. (We may note the reuse of <code>sqt</code> for the remainder, after the argument, put there by the calling <code>jda</code> instruction, has been transferred to the IO register.) The second one constructs the loop by a single <code>isp</code> instruction <em>(index and skip on positive)</em> that is incrementing the counter and either performs a jump to the loop body, if the contents of the counter would be still negative after the increment, or skips this jump, when the counter becomes zero, and puts the result into the accumulator before jumping to the return address. The main part being the loop body is doing the heavy work, with any branches for another iteration jumping to the loop instruction at label <code>sq3</code>. Finally, there are the two memory registers used for the loop counter and the partial result.</p>
+
+<h3 id="sine_cosine">Sine &amp; Cosine</h3>
+
+<p>It may be surprising, but there is no standard method to calculate sine and cosine. Moreover, we may not hope to come up with some easy to operate algorithm based on shifts and additions only, since sine and cosine are essentially about projecting a 2D unit vector onto a 1D length. Hence, we may expect to see some higher order functions involved.</p>
+<p>While various algorithms are used in computer implementations, like the CORDIC algorithm, then just recently presented in 1959, or the approximation series published in &quot;Approximations for Digital Computers&quot; by Cecil Hastings Jr <cite>(Princeton, New Jersey, Princton University Press, 1955, p.138-140)</cite> which was also popular at DEC, the sine-cosine routine by Adams Associates, Inc <cite>(DEC Preliminary Memo <a href="http://www.bitsavers.org/pdf/dec/pdp1/memos/M-1094_Nov60.pdf" target="_blank">M-1094</a>, 22 Nov 1960)</cite> is using the well known Taylor series for approximation:</p>
+
+<pre style="background-color: #fff; line-height: 100%;">              x<sup>3</sup>    x<sup>5</sup>    x<sup>7</sup>
+sin(x) = x - &ndash;&ndash;&ndash; + &ndash;&ndash;&ndash; - &ndash;&ndash;&ndash; ...
+              3!    5!    7!</pre>
+
+<p>While this series is actually extending infinitely, we may observe that the higher order terms, like &quot;<code>x<sup style="line-height: normal;">9</sup>/9!</code>&quot;, are becoming smaller and smaller, especially with a small value for <em>x</em>. E.g., for <em>x = 0.1</em> the 9<sup style="line-height: normal;">th</sup> order term becomes <code>0.000000001/362880</code>, a value hardly representable in standard precision. Hence, we may keep the error small and restrict the approximation to just a few terms, as long as we're keeping our arguments small.</p>
+
+<p>Since the sine is both periodical (<em>sin(&theta;) = sin(&theta; + 2&pi;)</em>) and symmetrical (<em>sin(&theta;) = sin(&pi;/2 &ndash; &theta;)</em>), we may reduce the argument to a quadrant (or &pi;/2 radians) in order to keep the error small and to optimize the approximation. And since there is also a symmetry between sine and cosine (a phase shift by &pi;/2), we may use the same core algorithm to approximate both of these functions.</p>
+
+<p>By extracting the constants and rearranging the formula to determine the higher powers of <em>x</em> by repetitive multiplications (Horner scheme), we finally arrive at something that may be implemented on a digital computer:</p>
+
+<pre style="background-color: #fff; line-height: 100%;">x = &theta;/2&pi;   // -1 &le; x &le; 1
+
+               (2&pi;x)<sup>3</sup>   (2&pi;x)<sup>5</sup>   (2&pi;x)<sup>7</sup>
+sin(x) = 2&pi;x - &ndash;&ndash;&ndash;&ndash;&ndash;&ndash; + &ndash;&ndash;&ndash;&ndash;&ndash;&ndash; - &ndash;&ndash;&ndash;&ndash;&ndash;&ndash;
+                 3!       5!      7!
+
+       = C1x + C3x<sup>3</sup> + C5x<sup>5</sup> + C7x<sup>7</sup>
+
+       = ((((C7)x<sup>2</sup> + C5)x<sup>2</sup> + C3)x<sup>2</sup> + C1)x</pre>
+
+
+<p>Let's have a closer look at the sine-cosine routine used by Spacewar!. It is actually not the original form of the Adams Associates routine as provided in the <em>Preliminary Memo M-1094</em> from November 1960, but a revised version, reformatted for use with the Macro assembler and the BBN multiply routine:</p>
+
+<pre>/sine-cosine subroutine. Adams associates
+/calling sequence= number in AC, jda sin or jda cos.
+/argument is between &plusmn;2 pi, with binary point to right of bit 3.
+/answer has binary point to right of bit 0.  Time = 2.35 ms.
+
+define	mult Z		<span class="comment">// macro to call to the BBN multiply routine</span>
+	jda mpy		<span class="comment">// 34 bit routine</span>
+	lac Z
+	term
+
+cos,	0		<span class="comment">// entrance to cosine, argument deposited here by jda</span>
+	dap csx		<span class="comment">// routine starts here, deposit return address</span>
+	lac (62210	<span class="comment">// load &pi;/2</span>
+	add cos		<span class="comment">// add operand to it</span>
+	dac sin		<span class="comment">// store in sine</span>
+	jmp .+4		<span class="comment">// jump to main calculations: cos(x) = sin(&pi;/2+x)</span>
+
+sin,	0		<span class="comment">// entrance to sine, argument deposited here by jda</span>
+	dap csx		<span class="comment">// routine starts here, deposit return address</span>
+	lac sin		<span class="comment">// load operand</span>
+	spa		<span class="comment">// is it positive?</span>
+si1,	add (311040	<span class="comment">// no, add 2&pi;</span>
+	sub (62210	<span class="comment">// subtract &pi;/2</span>
+	sma		<span class="comment">// is it minus? (operand was &lt; &pi;/2)</span>
+	jmp si2		<span class="comment">// no, jump to si2 (reduce)</span>
+	add (62210	<span class="comment">// restore it (add &pi;/2 again)</span>
+			<span class="comment">// operand is now -&pi;/2 &le; AC &le; &pi;/2, 3 integer bits</span>
+si3,	ral 2s		<span class="comment">// rotate left 2 bits (now 1 integer bit)</span>
+	mult (242763	<span class="comment">// &times; 2/&pi; (with binary point right of sign)</span>
+	dac sin		<span class="comment">// store x</span>
+	mult sin	<span class="comment">// get square</span>
+	dac cos		<span class="comment">// store x^2</span>
+	mult (756103	<span class="comment">// C7x^2</span>
+	add (121312	<span class="comment">// C7x^2 + C5</span>
+	mult cos	<span class="comment">// C7x^4 + C5x^2</span>
+	add (532511	<span class="comment">// C7x^4 + C7x^2 + C3</span>
+	mult cos	<span class="comment">// C7x^6 + C5x^4 + C3x^2</span>
+	add (144417	<span class="comment">// C7x^6 + C5x^4 + C3x^2 + C1</span>
+	mult sin	<span class="comment">// C7x^7 + C5x^5 + C3x^3 + C1x</span>
+	scl 3s		<span class="comment">// shift AC &amp; IO left 3 bits (&times;8)</span>
+	dac cos		<span class="comment">// store result in cos</span>
+	xor sin		<span class="comment">// now adjust signs, xor x</span>
+	sma		<span class="comment">// is it negative? (are result and x of different signs?)</span>
+	jmp csx-1	<span class="comment">// no, return result (cos)</span>
+	lac (377777	<span class="comment">// max positive value (2^17-1, nearly 1.0)</span>
+	lio sin		<span class="comment">// load x into IO</span>
+	spi		<span class="comment">// is x positive?</span>
+	cma		<span class="comment">// no, complement AC (400000, 1.0 with bit-shift)</span>
+	jmp csx		<span class="comment">// jump to return</span>
+
+	lac cos		<span class="comment">// load result from cos (as before xor-ing with sin)</span>
+csx,	jmp .		<span class="comment">// return</span>
+
+si2,	cma		<span class="comment">// (operand - &pi;/2 &ge; 0) complement AC</span>
+	add (62210	<span class="comment">// add &pi;/2</span>
+	sma		<span class="comment">// is it negative?  (&pi;/2 - op<sub style="line-height: normal">si2</sub> &lt; 0?)</span>
+	jmp si3		<span class="comment">// no, jump to main calculations</span>
+	add (62210	<span class="comment">// add &pi;/2 once more</span>
+	spa		<span class="comment">// is it positive? (&pi; - op<sub style="line-height: normal">si2</sub> &gt; 0?)</span>
+	jmp .+3		<span class="comment">// no, skip next two instructions</span>
+	sub (62210	<span class="comment">// undo last addition (subtract &pi;/2 again)</span>
+	jmp si3		<span class="comment">// jump to main calculations</span>
+
+	sub (62210	<span class="comment">// subtract &pi;/2 (effectively: ac = &pi;/2 - op<sub style="line-height: normal">si2</sub>)</span>
+	jmp si1		<span class="comment">// and start over at si1</span></pre>
+
+<p>Our interpretation of the constant values here is backed by the labels in the original code as in Memo <a href="http://www.bitsavers.org/pdf/dec/pdp1/memos/M-1094_Nov60.pdf" target="_blank">M-1094</a>, where &quot;<code>xOy</code>&quot; means <em>x/y</em> and &quot;<code>P</code>&quot; is for &pi;:</p>
+
+<pre>	C7	756103
+	C5	121312
+	C3	532511
+	C1	144417
+	2OP	242763
+	2P	311040
+	PO2	062210
+	ONE	377777</pre>
+<p>(To identify the constants otherwise, we have to inspect the binary representation of these fractional octal numbers for equivalents. E.g., &quot;<code>242763</code>&quot; is <code>010100010111110011</code> with the binary point just after the sign-bit as in &quot;<code>0.10100010111110011</code>&quot;, the equivalent of <em style="white-space: nowrap;">2/&pi;</em> or &quot;<code>0.1010001011111001100000110&hellip;</code>&quot;. Notably, the outer parts at labels <code>si1</code> and <code>si2</code> are using a representation with a sign and 3 integer digits, hence &quot;<code>311040</code>&quot; is &quot;<code>0110.01001000100000</code>&quot; or <em style="white-space: nowrap;">2&pi;</em>.)
+
+<p>So, what's happening here? Let's start at the sine routine (since the cosine ist quite trivial by adding &pi;/2 to the argument and then continuing with the code for the sine):</p>
+
+<p>The routine is called by &quot;<code>jda sin</code>&quot;, hence the argument (or operand) is stored at label <code>sin</code> and the execution starts at the next instruction with the return address in AC. After storing the return address in the address part of location <code>csx</code> the operand is first reduced to the range <code>0..2&pi;</code> due to the periodicy of the sine. Then, if the operand isn't in the range <code>0..&pi;/2</code> already, it is further reformatted and reduced to the range of <code>-&pi;/2..&pi;/2</code> at label <code>si2</code>.</p>
+
+<p>As we enter the core part at label <code>si3</code>, the value of the operand is reduced to plus/minus a quadrant, but still in the input format of a sign and 3 binary integer digits. The instruction &quot;<code>ral 2s</code>&quot; rotates the first two bits (which must be empty by now) out to the left, by this gaining some precision. Since we're going to use the format of the high-precision multiply routine with the binary point next to the sign-bit, this is effectively a divide by two in relation to the values of the following operations. The multiplication by <code>2/&pi;</code> transforms this to a parametric function. The next instructions are cumulatively building up the series approximating the sine, by first setting up a square and then multiplying this square and alternately adding a constant to the product. After a last multiplication by the simple operand, we've arrived at a raw value for the sine in the combined AC and IO registers, which are now shifted to the left by 3 bits. (We may observe that the constants C7 and C3 have their sign-bits set and are thus representing negative values. &mdash; This is also, why we can single out the algorithm presented by Cecil Hastings Jr, even without inspecting the constants more closely, because this one would be using just a single negative component in its four-terms version. E.g., compare this 1962 <a href="http://www.computerhistory.org/collections/catalog/102650074" target="_blank">DEC library implementation</a> by Margaret Wu, who may be better known to some readers for her textbook <cite>An Introduction to Computer Data Processing</cite> from 1975.)</p>
+
+<p>With the higher part of the raw result stored in <code>cos</code>, we're now ready to adjust the sign: By applying an exlusive or of the simple operand to the result, we're comparing the sign-bits. If they are the same, we return the contents of <code>cos</code> as the result, by jumping to &quot;<code>csx-1</code>&quot;. Notably, the return format is a fractual value with the binary point next to sign-bit. If the signs would differ, we skip the jump and the maximum positive value (<code>377777</code>) is loaded into the accumulator. Since we're returning an all-fractional value, this represents the value as close to <code style="white-space: nowrap;">1.0</code> as possible. With the sign of the simple operand loaded and inspected in the IO register, the value will be complemented to (exactly) <code style="white-space: nowrap;">1.0</code> (with the bit-shift applied), if the operand was positive (as of the entrance to <code>si3</code>). In both cases we then jump to the return at <code>csx</code>, returning <code style="white-space: nowrap;">+/-1</code>.</p>
+
+<p>So, why would the Taylor series work at all? It's a well known fact that for a small value of an angle <em>&theta;</em> the  sine <em style="white-space: nowrap;">sin(&theta;)</em> will be almost &theta; (and thus <em style="white-space: nowrap;">cos(&theta;)</em> will be nearly 1, with <em style="white-space: nowrap;">cos(0)</em> being just a phase shift of <em style="white-space: nowrap;">sin(&pi;/2)</em>). If we think of the sine and cosine in terms of a projection of a 2D unit vector on a simple length (along the axes of the coordinates system), we can also see why: The projection onto the y-axis, the sine, will be measuring the deviation of this vector from the x-axis, and as this deviation, described by the angle <em>&theta;</em>, approaches zero, the length of this projection onto the y-axis, the sine, will be approaching zero, too. But as the angle is becoming greater, the difference will be becoming more substantial and we will be in need for some kind of compensation to adjust for the characteristic slopes of these transcendental functions. The terms <em>x<sup style="line-height: normal; white-space: nowrap;">n</sup>/n!</em> are adding the compensation needed with an increasing fineness and level of fidelity as the order of <em>n</em> increases, and each one will be also compensating the additions already applied by the preceding ones as the terms are of alternating signs, thus minimizing the error. (We may observe that these expressions are of some parabolic form, as these are exponential terms, and the effect will decrease by increasing order.) Theses terms are becoming smaller and smaller with increasing order of <em>n</em>, until they would be approximating zero, especially for small input values. (Which also conforms with the observation that the sine of a small angle will be approximating the angle itself.) Thanks to the periodical and symmetrical nature of the sine and cosine, we may limit the range of the input value, as long as we're taking care of the sign for the given quadrant. Obviously, the sign of the sine will be positive for the first two quadrants and negative for the third and fourth ones. Further, we may transform the input values for the second and fourth quadrants to conform to the transformation <em style="white-space: nowrap;">sin(&theta;) = sin(&pi;/2 &ndash; &theta;)</em>, thus reducing our effective input to a range of -&pi;/2..&pi;/2 (which will be transformed to a prametric range by multiplying it by the factor 2/&pi;), as we see it in the Adams Associates routine.</p>
+
+<p class="endex">*****</p>
+
+<p>Now, that we've also peeked inside the subroutines that were essentially black boxes to Spacewar!, we may return to our principal subject:</p>
+
+<h2 id="spacewar4">Spacewar 4.x and the Hardware Multiply/Divide</h2>
+
+<p>Spacewar! 4.x is all about the automatic multiply/divide option added to MIT's PDP-1 at the turn of 1962/63. Basically it is Spacewar! 3.1 modified to run with the hardware multiply/divide and some small fixes (like for the small bug caused by the property <code>mco</code> never being set, so the continuous/single fire option will work as intended). Spacewar! 4.0 was done by Monty Preonas (aka &quot;Diamantis Drakos Preonas&quot;, thus signing &quot;<code>ddp</code>&quot;) in Jannuary/February 1963 and the final version 4.0 is dated 2 Feb. 1963. (There's also a version 4.1 and a version 4.8 both signed &quot;<code>dfw</code>&quot;, but the author of those hasn't been identified yet. Steve Russell had eventually left MIT, just returning to arrange the consolidated version 3, and wasn't involved in version 4 at all.)</p>
+
+<p>While Martin Graetz had already announced a somewhat refined method for calculating gravity in his DECUS paper on Spacewar! 2b,</p>
+<blockquote>&quot;In the final version of SPACEWAR! he [Dan Edwards] is going to provide an improved integration to eliminate some of the more unexpected, albeit interesting, properties of the 'heavy star.'&quot; <cite>(<a href="https://www.masswerk.at/spacewar/decus1962/">&quot;Spacewar! Real-Time Capability of the <nobr>PDP-1</nobr>&quot;</a>, DECUS Proceedings 1962)</cite>,</blockquote>
+<p class="noindent">the algorithm remained the same until version 4.0. (Apparently, the minor discontinuities produced by the approximation used in versions 2b &ndash; 3.1 was somewhat of a thorn in the side: It would have been good enough for a <em>game</em>, but it wasn't right for a <em>simulation</em>.)</p>
+<p>When Monty Preonas addressed version 4, he wasn't only upgrading the program to make use of the faster hardware multiply/divide, he also introduced a new algorithm, which finally provided the long announced &quot;improved integration&quot;.<br />(Aside from this, he also applied a small change to the sine-cosine routine, originally provided by Adams Associates, Inc., <cite><a href="http://www.bitsavers.org/pdf/dec/pdp1/memos/M-1094_Nov60.pdf" target="_blank">DEC Memo M-1094, 22 Nov 1960</a></cite>, in order to make it work with the hardware arithmetics. &mdash; On Monty Preonas (ddp) and Spacewar! 4.0 see <cite>Joe Morris, <a href="https://groups.google.com/d/msg/alt.folklore.computers/T7Oduo-ljgI/rfHKNZgVXkMJ" target="_blank">alt.folklore.computers</a>, 5 April 2001</cite>.)</p>
+<p class="noindent"><em>Note: While Joe Morris recalls ddp's full name as &quot;Demitrios D. Peronas&quot;, Peter Samson is confident of it being &quot;Diamantis Drakos Preonas&quot; &mdash; we're going here with Peter Samson.<br />As an alternate/complementary source the <a href="http://tmrc.mit.edu/members.html" target="_blank">TMRC members list</a> shows an entry for &quot;Monty Preonas&quot; as a member since 9/1960.</em></p>
+
+<p>Due to the new, improved integration method any ships entering the star at the same time would now be warped to the <em>antipode</em> before colliding. With Spacewar 4.x else being quite undistinguishable from version 3.1, the easiest way to tell them apart is to start a new game and let the ships float freely, until they would plunge into the <em>heavy star</em>. If the ships are exploding inside the star, you're watching version 3.1. If the explosion of the colliding ships is spread over the corners of the screen (the <em>antipode</em>), you're watching some flavor of version 4.</p>
+
+<p>Since we're dedicated to the &quot;classic&quot; version 3.1, we're not going to explore version 4.x in every detail. (Actually, we've already spent some pages on this topic, and the gravity algorithm of version 4.x isn't an easy one. However, we'll scratch at least the surface in a bit more detail below.) Anyway, here's the source for gravity in Spacewar 4.0, the grayed instruction marking the parts unchanged from the previous versions:</p>
+
+
+<pre>spacewar 4.0  2/2/63 ddp
+<span style="color:#556;">...</span>
+
+str, 15,	100	/ star capture radius
+grv, 32,	sar 6s	/ gravitational constant
+
+...
+
+	<span style="color:#556;">dzm \bx
+	dzm \by
+	szs 60
+	jmp bsg</span>
+	lac i mx1
+	dac \t1
+	mul \t1
+	scr 1s
+	dac \acx
+	cla
+	scr 2s
+	dio \iox
+	lac i my1
+	dac \t1
+	mul \t1
+	scr 1s
+	dac \acy
+	cla
+	scr 2s
+	swap
+	add \iox
+	swap
+	scl 2s
+	add \acx
+	add \acy
+	<span style="color:#556;">sub str
+	sma i sza-skp
+	jmp pof
+	add str</span>
+	varsft
+	dac \t1
+	jda sqt
+	mul \t1
+	undosft
+	scr 9s
+	scr 6s
+	<span style="color:#556;">szs i 20		/ switch 2 for light star
+	scr 2s
+	sza
+	jmp bsg</span>
+	scr 1s
+	dio \t1
+	integrate mx1, \bx
+	integrate my1, \by
+<span style="color:#556;">bsg,	...</span></pre>
+
+<p>And there are some new macro definitions for this as well:</p>
+
+<pre>define
+	varsft
+	dzm \xys
+	dac \t1
+	idx \xys
+v2,	idx \xys
+	lac \t1
+	scr 2s
+	dac \t1
+	sza
+	jmp v2+R
+	scr 2s
+	swap
+	terminate
+
+define
+	undosft
+	dac t1
+	dio \t2
+	lac \xys
+	add sft
+	dap .+1
+	lac .
+	dac .+6
+	dac .+6
+	xor (10000	/ change scr to scl or scl to scr.
+	dac \xyt
+	lac \t1
+	dio \t2
+	scr .
+	scr .
+	terminate
+
+define
+	integrate A,B
+	cli
+	lac i A
+	scr 9s
+	scr 1s
+	div \t1
+	hlt
+	cma+cli-opr
+	xct \xyt
+	xct grv		<span class="comment">// sar 6s</span>
+	dac B
+	terminate
+
+sft,	lac .-1
+	scr 7s
+	scr 6s
+	scr 5s
+	scr 4s
+	scr 3s
+	scr 2s
+	scr 1s
+	scr
+	scl 1s</pre>
+
+<p>And here are the changes to the sin-cosine routine, replacing the insertions of the macro &quot;<code>mult</code>&quot; by the instruction &quot;<code>mul</code>&quot;:</p>
+
+<pre>/sine-cosine subroutine; Adams associates
+/calling sequence= number in AC, jda sin or jda cos.
+/argument is between &plusmn;2 pi, with binary point to right of bit 3.
+/answer has binary point to right of bit 0.  Time = 2.35<span style="color: #160">-?</span> ms.
+<span style="color: #160">/changed for auto-multiply , ddp 1/19/63</span>
+
+<strike style="color: #800;">define	mult Z</strike>
+	<strike style="color: #800;">jda mpy</strike>
+	<strike style="color: #800;">lac Z</strike>
+	<strike style="color: #800;">term</strike>
+
+	...
+	mul<strike style="color: #800;">t</strike> (242763
+	...
+	mul<strike style="color: #800;">t</strike> sin
+	...
+	mul<strike style="color: #800;">t</strike> (756103
+	...
+	mul<strike style="color: #800;">t</strike> cos
+	...
+	mul<strike style="color: #800;">t</strike> cos
+	...
+	mul<strike style="color: #800;">t</strike> sin
+	...</pre>
+
+<p>And fianally, here is the raw output of the gravity calculations:</p>
+
+<pre>Spacewar! 4.0, Spaceship #1
+free falling from 0777/0777 (top right) towards 0/0 (center origin)
+all values octal, complete sequence provided for x/y positions &lt; 0100
+
+<em> x       y         mx1        my1       \bx      \by</em>
+777     777      377777     377777        -1       -1
+700     700      340077     340077        -1       -1
+600     600      300103     300103        -2       -2
+500     500      240201     240201        -3       -3
+400     400      200112     200112        -5       -5
+300     300      140355     140355       -11      -11
+200     200      100277     100277       -26      -26
+140     140       60345      60345       -47      -47
+120     120       50352      50352       -70      -70
+100     100       40325      40325      -130     -130
+ 76      76       37247      37247      -136     -136
+ 74      74       36156      36156      -145     -145
+ 72      72       35050      35050      -155     -155
+ 67      67       33724      33724      -166     -166
+ 65      65       32562      32562      -201     -201
+ 62      62       31377      31377      -216     -216
+ 60      60       30173      30173      -235     -235
+ 55      55       26743      26743      -260     -260
+ 53      53       25465      25465      -306     -306
+ 50      50       24156      24156      -342     -342
+ 45      45       22613      22613      -407     -407
+ 42      42       21207      21207      -467     -467
+ 37      37       17534      17534      -571     -571
+ 34      34       16002      16002      -732     -732
+ 30      30       14155      14155     -1161    -1161
+ 24      24       12212      12212     -1560    -1560
+ 20      20       10071      10071     -2605    -2605
+ *capture*</pre>
+ 
+ <p>As we may observe, the (effectively unnoticeable) discontinuities of the previous implementation are gone and the integration produces a steady hyperbolic function with a smooth curvature that is a bit less steep than the one of version 3.1. Also, a ship is now captured at <code>20</code>/<code>20</code>, providing the reason, why two ships entering the <em>heavy star</em> at once would be rather warped to the <em>antipode</em> before colliding.</p>
+ 
+<figure id="gravity_compared" class="img"><img src="images/spacewar-gravity-plots.jpg" width="570" height="570" alt="Gravity plots of Spacewar 3.1 and Spacewar 4.0" style="background-color: #f6f6f6;" /><p>Comparative gravity plots for Spacewar! 3.1 and Spacewar! 4.x<br />(PDP-1 / Type 30 CRT emulation by N. Landsteiner 2014.)<br />Legend: x-axis: axial distance to the center (x/y), y-axis: gravity applied (see above for raw data points).<br />
+Compared with the smooth plot of version 4 the plot for Spacewar! 3.1 depicts a <em>devil's staircase</em> function.</p></figure>
+
+<p>We might guess by the smothness of the graph drawn by Spacewar! 4.x that this was the result of some nifty integration, like the KR4 algorithm (Kutta-Runge order 4 integration) we see employed in games nowadays, as also suggested by the name of the macro <code>integrate</code>. But, at closer inspection, the algorithm is quite the same as in Spacewar! 3.1. As we've observed, the jagged graph of Spacewar! 3.1's gravity function is the result of a lack of precision, caused by all the multiplications, divisions, cubes, and square root computations, which left us with just a handfull of significant bits of the initial wealth of 18-bits words. What we're seeing in Spacewar! 4.1 accordingly, is a quest for computational precision.</p>
+
+<p>As stated above, we won't strive for verbal detail, but rather do with inline-comments. However, let's see how it's done:</p>
+
+<pre>	dzm \bx		<span class="comment">// initially clear \bx and \by</span>
+	dzm \by
+	szs 60		<span class="comment">// check sense switch 6</span>
+	jmp bsg		<span class="comment">// deployed, no star, no gravity</span>
+	lac i mx1	<span class="comment">// pos x</span>
+	dac \t1
+	mul \t1
+	scr 1s
+	dac \acx	<span class="comment">// \acx = mx1<sup>2</sup> / 2  (high part)</span>
+	cla
+	scr 2s
+	dio \iox	<span class="comment">// \iox = mx1<sup>2</sup> / 2  (low part, 2 bits zero padding)</span>
+	lac i my1	<span class="comment">// pos y</span>
+	dac \t1
+	mul \t1
+	scr 1s
+	dac \acy	<span class="comment">// \acy = mxy<sup>2</sup> / 2  (high part)</span>
+	cla
+	scr 2s		<span class="comment">// IO = mxy<sup>2</sup> / 2    (low part, 2 bits zero padding)</span>
+	swap
+	add \iox
+	swap		<span class="comment">// IO = (low (y<sup>2</sup> / 2) + low (x<sup>2</sup> / 2)) &gt;&gt; 2</span>
+	scl 2s		<span class="comment">// shift padding/carry back into AC</span>
+	add \acx
+	add \acy	<span class="comment">// square distance (mx1 &times; mx1 + my1 &times; my1)</span></pre>
+
+<p>This is actually not that different from what we've seen in Spacewar! 3.1. We're building a square distance in the accumulator, but now we're using the built-in fixed point multiplications rather than the integer multiply by BBN. Since the <code>mul</code> instruction returns a 34-bit result with a high order word in <code>AC</code> and a low order word in <code>IO</code>, there's something to gain. Actually, the whole handling of the low order results in IO just contributes to a carry for the square distance currently in <code>AC</code> at the end of this snippet.</p>
+
+<p>Follows the check for the collision with the <em>heavy star</em>, like in Spacewar! 3.1. In version 3.1, there was an initial shift by 11 bits to the right applied to the x- and y-coordinates, transforming them from screen-coordinates to integers (8 bits) and another 3 bits for some computational reserve. Therefor, when <code>str</code> was <code>1</code> in version 3.1, it's now octal <code>100</code>, as <code>1</code> shifted by 6 bits to the left.</p>
+
+<pre>	sub str		<span class="comment">// str: 100</span>
+	sma i sza-skp	<span class="comment">// is it smaller than str?</span>
+	jmp pof		<span class="comment">// yes, we collide with the star, jump to pof</span>
+	add str		<span class="comment">// restore previous square distance</span></pre>
+
+<p>Next, we compute the cube distance by multiplying the square distance by its square root, like in Spacewar! 3.1, but this time it's framed by the macors <code>varsft</code> and <code>undosft</code>:</p>
+
+<pre>	varsft		<span class="comment">// shift to AC justified left, 2 bits zero padding</span>
+	dac \t1		<span class="comment">// \t1 = square distance justified left</span>
+	jda sqt		<span class="comment">// get square root</span>
+	mul \t1		<span class="comment">// \t1 = cube distance</span>
+	undosft		<span class="comment">// undo previous justification</span></pre>
+
+<p>As the names of the two macros suggest, they are about a variable shift and the respective reverse/undo operation:</p>
+
+<pre>define
+	varsft
+	dzm \xys
+	dac \t1		<span class="comment">// store AC in \t1</span>
+	idx \xys	<span class="comment">// \xys = 1</span>
+v2,	idx \xys	<span class="comment">// increment \xys</span>
+	lac \t1
+	scr 2s		<span class="comment">// right shift \t1 into IO 2 bits</span>
+	dac \t1		<span class="comment">// store it</span>
+	sza		<span class="comment">// is it zero?</span>
+	jmp v2+R	<span class="comment">// no, redo</span>
+	scr 2s		<span class="comment">// do another shift</span>
+	swap		<span class="comment">// AC justified left, 2 bits zero padding</span>
+	terminate	<span class="comment">// \xys: number of steps</span></pre>
+
+<p>To get the most out of the 18-bit precision available in <code>AC</code>, macro <code>varsft</code> inspects the value in <code>AC</code> in steps of a double shift to the right. As the value in <code>AC</code> eventually becomes zero, the value in <code>IO</code> is the significant 18 bits part of the initial value in the combined <code>AC</code> and <code>IO</code> registers. After an extra shift by two bits to the right (2 bits zero padding to allow for a sign and any carry) we swap this back, with now the significant bits in <code>AC</code>. Variable <code>xys</code> stores the number of double-shifts applied. (All the storing and restoring of the contents of the accumulator in <code>\t1</code> is just for the instruction <code>idx</code> destroying its contents by leaving the value resulting from the increment in <code>AC</code>.) What's now in <code>AC</code>, is the significant part of the initial value, justified left with a padding of two bits for some computational reserve.</p>
+
+<p>Macro <code>undosft</code> isn't really applying the reverse operation, it adds another transformation:</p>
+
+<pre>define
+	undosft
+	dac t1		<span class="comment">// AC in t1</span>
+	dio \t2		<span class="comment">// IO in \t2</span>
+	lac \xys	<span class="comment">// get number of shift steps of varsft</span>
+	add sft
+	dap .+1		<span class="comment">// set up address of according shift</span>
+	lac .		<span class="comment">// load it and deposit it twice</span>
+	dac .+6
+	dac .+6
+	xor (10000	/ change scr to scl or scl to scr.
+	dac \xyt	<span class="comment">// store reverse shift in \xyt</span>
+	lac \t1		<span class="comment">// restore AC and IO</span>
+	dio \t2
+	scr .		<span class="comment">// apply the shifts</span>
+	scr .
+	terminate
+
+sft,	lac .-1
+	scr 7s
+	scr 6s
+	scr 5s
+	scr 4s
+	scr 3s
+	scr 2s
+	scr 1s
+	scr		<span class="comment">// &quot;scr 0&quot; - no shift at all</span>
+	scl 1s</pre>
+
+<p>We may want to go a bit more into detail here: When <code>AC</code> was holding just up to two significant bits, we only applied a single double-shift in <code>varsft</code> and variable <code>xys</code> would be <code>2</code>. In this case, we would use the instruction at &quot;<code>sft -1 + 2</code>&quot;, namely a combined shift to the right by 7 bits (&quot;<code>scr 7s</code>&quot;), just immediately below label <code>sft</code>, and apply this twice. In case we had to apply the full range of 9 double-shifts, we would apply the last &quot;<code>scl 1s</code>&quot; twice, and in case we applied 8 double-shifts, we won't apply any transformation at all.</p>
+<p>As a notable side effect, we store the reverse operation of the selected shift instruction (by flipping the significant bit of the micro-code, instruction <code>scl</code> is <code>667<em>xxx</em></code>, <code>scr</code> is <code>677<em>xxx</em></code>) in variable <code>\xyt</code> for later use.</p>
+
+<p>Back to main, we're scaling our gravitational factor according to sense switch settings:</p>
+<pre>	scr 9s		<span class="comment">// shift 17 bits left (low gravity 15)</span>
+	scr 6s
+	szs i 20	/ switch 2 for light star
+	scr 2s
+	sza
+	jmp bsg		<span class="comment">// overflow, apply no gravity at all</span>
+	scr 1s		<span class="comment">// shift by another bit (complete swap with full gravity)</span>
+	dio \t1		<span class="comment">// deposit IO in \t1</span></pre>
+
+<p>As in version 3.1, low gravity will be a quarter of normal gravity (by the divisor being 4 times as big). At the end of the operation, we've applied a full swap (by 18 bits for full gravity) and store the factor in variable <code>\t1</code>.</p>
+
+<p>Finally, we apply our gravitational factor, so delicately derived, to the position of the ship:</p>
+
+<pre>	integrate mx1, \bx	<span class="comment">// apply gravity for x, resulting delta in \bx</span>
+	integrate my1, \by	<span class="comment">// apply gravity for y, resulting delta in \by</span>
+bsg,	...</pre>
+
+<p>While the first two macros were actually included just once and their being a macro was merely decoupeling the computations from the main flow, macro <code>integrate</code> is applied twice, once for the x-coordinate and once for the y-coordinate, storing the resulting delta in variables <code>\bx</code> and <code>\by</code> respectively. Here, we finally apply the reverse shift operation prepared in macro <code>undosft</code> to account for the shifts applied for left justification of the gravity factor, done to squeeze the most of precision out of the 18-bit words of the PDP-1. (We may recall that no shift will be applied, if the shift in <code>varsft</code> was exactly 8 bits to the right twice, and shifts will increase in number of bits to the left with a decreasing number of right shifts applied in <code>varsft</code>.)</p>
+
+<pre>define
+	integrate A,B
+	cli
+	lac i A			
+	scr 9s		<span class="comment">// AC/IO &gt;&gt; 10 (screen coordinates to integer &gt;&gt; 2)</span>
+	scr 1s
+	div \t1		<span class="comment">// divide by gravity factor</span>
+	hlt		<span class="comment">// here on div overflow, else skipped</span>
+	cma+cli-opr	<span class="comment">// complement AC, clear IO</span>
+	xct \xyt	<span class="comment">// apply reverse shift ( &quot;rcl 1s &quot; ..  &quot;scl 7s &quot;)</span>
+	xct grv		<span class="comment">// apply &quot;gravitational constant&quot; (sar 6s)</span>
+	dac B		<span class="comment">// deposit result in B</span>
+	terminate</pre>
+
+<p>Since the positions in <code>mx1</code> and <code>my1</code> respectively represent an offset to the center origin, the <code>cma</code> instruction in &quot;<code>cma+cli-opr</code>&quot; reverts the delta in <code>\bx</code> and  <code>\by</code> to the opposite direction, pulling the ship closer to the center when added to the current <code>dx/dy</code> movement vector. The code where this is applied, following below this at label <code>bsg</code>, is just the same as in version 3.1.</p>
+
+<p>Generally, we may describe the procedures as converting the fixed point values (as derived from the format used by the display instruction: sign, 9 integer bits, 8 fractional bits) to floating point, proceding with the critical computations in floating point, and finally restoring the usual fixed point format.</p>
+
+<p>As the <a href="#gravity_compared" onclick="if (window.showEmbeddedImage) {return showEmbeddedImage('images/spacewar-gravity-plots.jpg', 570, 750, '#f8f8fa', 4);} else {return true;}">comparative graph</a> of the gravity computations in version 3.1 and 4.x shows, both functions produce nearly similar results in the mid and higher ranges. As might be expected, it's in the lower regions of the positional values that the gain in precision shows. Towards the origin, where the input values become smaller, significant bits are soon moved out of the range of precision without further preparations. But, with the data thus prepared as we've seen it here, computable information is still maintained as the function approaches the origin, as illustrated by the steady smoothness of the graph over the whole range of input data.</p>
+
+<p>With a deeper analysis of Spacewar! 4.x gravity left as a home work &mdash; like arriving at an actual formula notation of the procedures involved &mdash;, we'll close here. (<em>Note:</em> This episode was originally published in <em>back-to-school week</em>.)<br />Next time we're going to explore the warfare in Space<em>war</em>, as in pyrotechnics and explosions.</p>
+
+<p class="endex">*****</p>
+
+<h3 id="note_on_gravity">Update: A Final Note on Gravity</h3>
+
+<p>In case anyone would doubt a formula based on <code>1/r<sup>3</sup></code> to be suitable for a perfect simulation of gravity, here is a professional statement on the subject, provided by Magnus Olsson, Department of Theoretical Physics of the University of Lund, Sweden at an <em>alt.folklore.computers</em>-thread in 1993:</p>
+
+<pre id="alt_sys_pdp10" style="background-color: #fff;"><em>&gt;Did it ever occur to anyone that the gravity simulated in Space War (one of
+&gt;my all-time fav. computer games) is not correct
+&gt;                                    ~~~</em>
+
+Well, it has occured to me, but then I'm a physicist...
+
+If <em>classical Newtonian</em> gravity were to wok in the same way in a 2-D
+universe as in ours, the force wouldn't be proportional to 1/r^2 (r
+being the distance from the &quot;sun&quot; to the spaceship) but as 1/r.
+
+From this point of view, one could say that Space War doesn't
+&quot;correctly simulate gravity in a 2-D universe&quot;.
+
+However, the matter is more complicated than this.
+
+Firstly, <em>Einsteinian</em> gravity, i.e. general relativity, won't work at
+all in 2 space dimensions. Either there is no gravitational force at
+all, or the theory is radically different. That means that we can't
+make any arguments by analogy with our familiar 3-D (or, rather,
+(3+1)-D) world.
+
+Secondly, even if one says taht we should stick to the analogy to
+Newtonian gravity (i.e., to be more mathematically precise, that the
+gravitational potential should be a solution to Poisson's equation in
+2 dimensions) and use a force prop. to 1/r we would get problems. The
+reason is that in a 1/r force field, there are no stable orbits
+(except for the perfectly circular ones). This means that the space
+ships would behave quite differently from the way they do in 3-space.
+
+
+One might ask whether what one <strong>really</strong> wants is to simulate a truly
+2-D world, or to simulate a 2-D cross section through our 3-D
+universe. (I.e. we have the ordinary universe with some strange law
+added that forces all space ships to keep in the plane of the ecliptic
+all the time). All the space games I've seen that even attempt to have
+realistic physics (most, alas, don't &ndash; space ships stop dead as soon
+as you release the thrustre button, and similar atrocities) do the
+latter thing.
+
+IMHO this is a good solution, since it's the best simulation you can
+get of &quot;real&quot; spaceflight on a 2-D screen. I find it far easier to
+swallow that I'm forbidden by divine law to leave the ecliptic, but
+that I can still have my familiar elliptical orbits, than to have the
+strange, non-closed orbits that I would get in a true 2-D world (with
+Newtonian gravity). But this is of course a matter of taste.
+
+Magnus Olsson
+Department of Theoretical Physics
+University of Lund, Sweden</pre>
+<p style="text-indent: 2em; margin-bottom: 2em;"><em>(Magnus Olsson, <a href="https://groups.google.com/d/msg/alt.folklore.computers/FumCeSapsPs/EbPeHNB38iMJ" target="_blank">alt.folklore.computers</a>, October 11, 1993)</em></p>
+<p class="endex">*****</p>
+
+
+<p>&nbsp;</p>
+<p class="noindent"><span class="author">Norbert Landsteiner</span><br />
+Vienna, September 2014<br />
+<a href="https://www.masswerk.at/" target="_top">www.masswerk.at</a></p>
+<p>&nbsp;</p>
+<p class="noindent"><em>In case you would have found any errors or inconsistencies, or would have additional information,<br />please <a href="https://www.masswerk.at/contact.php">contact me</a>.</em></p>
+<p class="endex">*****</p>
+
+<p class="noindent"><span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9664;</span> Previous: &nbsp; <a href="insidespacewar-pt5-ships.html">Part 5: Maneuvering in Space</a><br />
+<span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9654;</span> Next: &nbsp; <a href="insidespacewar-pt7-shootout.html">Part 7: Shootout at El Cassiopeia</a><br /><br />
+<span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9650;</span> Back to the <a href="./">index</a>.</p>
+
+</article>
+
+<section id="related">
+	<p>References / Related Links:</p>
+	<ul>
+		<li><a href="https://www.masswerk.at/spacewar/sources/spacewar3.1_complete.txt">Spacewar! 3.1 source code</a> (PDP-1, Macro assembler code)</li>
+		<li><a href="https://www.masswerk.at/spacewar/SpacewarOrigin.html">&quot;The Origin of Spacewar&quot; by J. M. Graetz</a> (redacted copy, incl. additional text and images)</li>
+		<li><a href="https://www.masswerk.at/spacewar/decus1962/">&quot;Spacewar! Real-Time Capability of the PDP-1&quot; by J.M. Graetz</a> (Decus Proceedings 1962)</li>
+		<li><a href="pdp1-instructions.html" target="_blank">PDP-1 Instruction List</a> (opens in a new window)</li>
+		<li><span style="font-family:sans-serif; font-size: 80%;color: #555;">&#9654;</span> <a href="https://www.masswerk.at/spacewar/" title="Play Spacewar! online">Play Spacewar! online</a> (html5 emulation of a PDP-1 running Spacewar!)</li>
+	</ul>
+	<p>&nbsp;</p>
+	<p>&lt;<a href="https://www.masswerk.at/" target="_top">www.masswerk.at</a>&gt;</p>
+</section>
+
+</body>
+</html>

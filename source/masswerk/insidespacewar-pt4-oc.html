@@ -1,0 +1,1285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<title>Inside Spacewar! &mdash; Part 4: The Outline Compiler</title>
+	<meta name="description" content="A software archeological approach to Spacewar!, the first digital video game. Part 4: The Outline Compiler" />
+	<meta name="keywords" content="Spacewar!,Spacewar! 1962,PDP-1,outline compiler,dan edwards,software archeology,computer history" />
+	<meta name="format-detection" content="telephone=no" />
+	<link rel="stylesheet" href="insidespacewar.css" type="text/css" />
+	<link href="https://fonts.googleapis.com/css?family=Lato:300" rel="stylesheet" type="text/css" />
+	<link rel="shortcut icon" type="image/x-icon" href="../favicon-bw.ico" />
+	<script type="text/javascript" src="instructionlist.js"></script>
+	<script type="text/javascript" src="layoutselector.js"></script>
+</head>
+<body>
+
+<article id="main">
+<a href="./" title="Inside Spacewar! &mdash; Index" class="indexLink">Go to the Index</a>
+<h1>Inside Spacewar!<br />Part 4: The Outline Compiler</h1>
+
+<div class="top_nav"><a href="insidespacewar-pt3-objects.html">Prev. <span style="font-family:sans-serif; font-size: 80%;">&#9664;</span></a>
+&mdash;
+<a href="insidespacewar-pt5-ships.html"><span style="font-family:sans-serif; font-size: 80%;">&#9654;</span> Next</a></div>
+
+<p class="page_toc">(<a href="#main">Introduction</a> &middot; <a href="#code">The Code</a> &middot; <a href="#compiling">Compiling the Outlines</a> &middot; <a href="#movements">Movement Semantics</a> &middot; <a href="#pragmatics">Outline Pragmatics</a> &middot; <a href="#constraints">Constraints</a> &middot; <a href="#objectcode">The Object Code</a>)</p>
+
+<p class="noindent">In this part of our software archeological journey through the internals of Spacewar!, the earliest known digital video game, we're going to peek inside one of the most opaque parts of Spacewar!, Dan Edwards' famous outline compiler for drawing the spaceships.</p>
+
+<figure id="spacewar_outlines" class="img borderless"><img src="images/spacewar-outlines.jpg" width="623" height="623" alt="Spaceship outlines in Spacewar!" /><p>Outline encoding of the spaceships in Spacewar!</p></figure>
+
+<p style="margin-bottom: 2em;">BTW: <span style="font-family:sans-serif; font-size: 80%;color: #555;">&#9654;</span> You can <a href="https://www.masswerk.at/spacewar/" target="_top" title="Play the original Spacewar! in a JS/HTML5 emulator of a PDP-1"> play here</a> the original code of Spacewar! running in an emulation.</p>
+
+<p>There is some history behind this piece of code: Once there would have been an outline interpreter by Steve Russell which would be stepping over the defining outline data held in a separate table per spaceship. But with the introduction of the code for calculating gravity &mdash; also by Dan Edwards and all-important to the gameplay &mdash; the game was driven beyond flicker-free display performance. Enter the outline compiler, maintaining both the required speed and the configureable outlines:</p>
+
+<blockquote>The ship outlines were represented as a series of direction codes starting from the nose of the ship; when the ship was vertical and tail-down, each code pointed to one of the five possible adjacent dots could be displayed next. To display the ship at an angle, Russell calculated the appropriate sine and cosine and added them to the original direction code constants, in effect rotating the entire grid. With this method, the ship's angle had to be calculated only once in each display frame. The outline codes were kept in a table so that different shapes could be tried out at will, but this meant the table had to be searched every frame to generate the outline. As the game developed, this arrangement proved to be a sticking point which we shall see, was neatly solved by Dan Edwards.<br />
+(&hellip;)<br />
+The addition of gravity pushed Spacewar! over the edge of flicker-free display. To get back under the limit, Dan Edwards devised an elegant fiddle to speed up the outline display routine.<br />
+In Russell's original program, the outline tables were examined and interpreted in every display frame, an essentially redundant operation. Edwards replaced this procedure with an outline &quot;compiler,&quot; which examined the tables at the start of a game and compiled a short program to generate the outline for each ship. This dramatically reduced calculation time, restoring the steady display and making room for the last of the original bells and whistles.
+<em class="cite" rel="cite">(J. M. Graetz, &quot;<a href="https://www.masswerk.at/spacewar/SpacewarOrigin.html">The Origin of Spacewar</a>&quot;, Creative Computing, August 1981)</em></blockquote>
+
+<p>So, instead of iterating over the data twice per frame (once for each ship) and having to do all this parsing of the data and branching to various parts of the code based on the encoded commands, the outline data would be parsed once for all at the start of the game. The outline compiler would step over the various data points and would assemble the required code in a single stream of commands, to be injected into the PDP-1's memory just after the end of the data of the <em>collidible objects table</em>. Thus, there are now two sides to the code, which is effectively separating into two distinctive tasks, what would have been done at once by the interpreter before: On the one hand, there's the branching required to follow an outline as encoded in the outline table, which is done at compile time. On the other hand, there is the actual drawing in a 2D context, done by calling the resulting object code. For this, the main program would have to supply the current x and y coordinates telling the compiled code were to draw the outline. And it will have to tell the compiled routine, at wich angle to draw a ship. (There will be probably some trigonometry involved in order to map a given rotation angle to a Cartesian coordinate system.)</p>
+
+<p>We've already seen in <a href="insidespacewar-pt3-objects.html">Part 3</a>, how the outline compiler would have been initially called at the start of the program. Let's see, what's actually happening, when &quot;<code>jda oc</code>&quot; is executed &hellip;</p>
+
+
+<h2 id="code">The Code</h2>
+
+<blockquote>Credits: Spacewar! was conceived in 1961 by Martin Graetz, Stephen Russell, and Wayne Wiitanen. It was first realized on the PDP-1 in 1962 by Stephen Russell, Peter Samson, Dan Edwards, and Martin Graetz, together with Alan Kotok, Steve Piner, and Robert A Saunders. Spacewar! is in the public domain, but this credit paragraph must accompany all distributed versions of the program.</blockquote>
+
+<pre>	/outline compiler
+	/ac=where to compile to, call   jda oc
+	/ot=address of outline table
+
+define
+	plinst A
+	lac A
+	dac i oc
+	idx oc
+	terminate
+
+define
+	comtab A, B
+	plinst A
+	jsp ocs
+	lac B
+	jmp oce
+	terminate
+
+ocs,	dap ocz		/puts in swap
+	dio i oc
+	idx oc
+	dio i oc
+	idx oc
+ocz,	jmp .
+
+oc,	0		/outline compiler proper
+	dap ocx
+	lac i ocx
+	dap ocg
+	plinst (stf 5
+	dap ocm
+	idx ocx
+ock,	plinst (lac \sx1
+	plinst (lio \sy1
+	clf 6
+ocj,	setup \occ,6
+ocg,	lio .		/outline table
+och,	cla
+	rcl 3s
+	dio \oci
+	lio (rcl 9s
+	dispatch
+	opr
+	jmp oc1
+oco,	jmp oc2
+ocq,	jmp oc3
+ocp,	jmp oc4
+ocr,	jmp oc5
+	jmp oc6
+
+	plinst (szf 5	/7 code
+	add (4
+	dap ocn
+	plinst ocn
+	plinst (dac \sx1
+	plinst (dio \sy1
+	plinst (jmp sq6
+	plinst (clf 5
+	plinst (lac \scm
+	plinst (cma
+	plinst (dac \scm
+	plinst (lac \ssm
+	plinst (cma
+	plinst (dac \ssm
+	plinst (lac \csm
+	plinst (lio \ssd
+	plinst (dac \ssd
+	plinst (dio \csm
+	plinst (lac \ssc
+	plinst (lio \csn
+	plinst (dac \csn
+	plinst (dio \ssc
+	plinst ocm
+ocx,	jmp .
+
+ocm,	jmp .
+ocn,	jmp .
+
+oc1,	plinst (add \ssn
+	jsp ocs
+	lac (sub \scn
+oce,	dac i oc
+	idx oc
+	jsp ocs
+	plinst (ioh
+	lac (dpy-4000
+ocd,	dac i oc
+	idx oc
+	lio \oci
+	count \occ, och
+	idx ocg
+	jmp ocj
+
+oc2,	comtab (add \scm, (add \ssm
+oc3,	comtab (add \ssc, (sub \csm
+oc4,	comtab (sub \scm, (sub \ssm
+oc5,	comtab (add \csn, (sub \ssd
+oc6,	szf 6
+	jmp oc9
+	stf 6
+	plinst (dac \ssa
+	lac (dio \ssi
+	jmp ocd
+oc9,	clf 6
+	plinst (lac \ssa
+	lac (lio \ssi
+	jmp ocd</pre>
+
+<p>And this is the data defining the outlines of the spaceships:</p>
+
+<pre>/ outlines of spaceships
+
+ot1,	111131
+	111111
+	111111
+	111163
+	311111
+	146111
+	111114
+	700000
+. 5/
+
+ot2,	013113
+	113111
+	116313
+	131111
+	161151
+	111633
+	365114
+	700000
+. 5/</pre>
+
+<p class="noindent"><em>(For the basics of PDP-1 instructions and Macro assembler code, please refer to <a href="insidespacewar-pt1-ep.html#instructions">Part 1</a>. We'll repeat the semantics of the instructions as we're encountering them.)</em></p>
+
+<p>Where to start with this piece of code? Following best practice, we'll start at the beginning, right where the compiler is called by the main code:</p>
+
+<h2 id="compiling">Compiling the Outlines</h2>
+
+<p class="noindent">As we might remember from <a href="insidespacewar-pt3-objects.html#start_of_program">Part 3</a>, the outline compiler is called by the following instructions, here for spaceship 1:</p>
+
+<pre>	law nnn		/ start of outline program
+	dac not
+<span style="color:#666;">/	...</span>
+	jda oc		/ compile outline
+	ot1</pre>
+<p>This is loading the address of the location right after the data of the objects table into the accumulator, stores this for later use as the start address of the compiled code in the location labeled <code>not</code>, and calls the outline compiler by the instruction &quot;<code>jda oc</code>&quot;, followed by the address of the outline data for the first spaceship in the next location.</p>
+<p>As we already know (from previous parts), instruction <code>jda</code> deposits the contents of the accumulator in the location provided in the address part, puts the value of the program counter plus 1 into the accumulator (to be used as the return address) and jumps to the next location after the provided address. By this, we've successfully passed the start address for the code (in <code>oc</code>) as well as the address of the data (in the accumulator), and make a jump to <code>oc+1</code>.</p>
+<p class="noindent"><em>Note: It might be fair to note here that this technique of passing multiple parameters is already to be found in the multiply and divide routines by BBN (Bolt, Beranek and Newman) and might have been adopted from there.</em></p>
+
+<pre>oc,	0		/outline compiler proper
+	dap ocx		<span class="comment">// store address of pointer to the data in ocx</span>
+	lac i ocx	<span class="comment">// load first data word</span>
+	dap ocg		<span class="comment">// store it in address part of ocg</span>
+	plinst (stf 5	<span class="comment">// compile &quot;stf 5&quot; (set flag 5)</span>
+	dap ocm		<span class="comment">// put the current object code address in ocm</span>
+	idx ocx		<span class="comment">// index ocx, now the actual return address</span></pre>
+
+<p><em>(As usual, comments starting with double slashes are mine and not in the original code.)</em></p>
+
+<p>With location <code>oc</code> serving as the pointer for the generated object code, we enter at the next instruction, where we store the location of the data table in the address part of <code>ocx</code>. (This is using the naming convention generally indicating a return address. We'll see soon, why this would be so.) Then, we load the contents of the address to which the value in <code>ocx</code> is pointing to, the very first location of the data table, into the accumulator. This first data word is then stored in <code>ocg</code>, serving as the store for the <em>current data word</em>.</p>
+<p>The macro <code>plinst</code> <em>(push last instruction ?)</em> injects the provided constant expression in the current (or currently last) location of the object code as designated by <code>oc</code> and increments <code>oc</code> to point to the next location. As a side effect, the current value of <code>oc</code> is also left in the accumulator. This is now stored in the address part of location <code>ocm</code> (which is already containing a <code>jmp</code> in the instruction part) for later use. We may note that this is the location of the next instruction after the very first &quot;<code>stf 5</code>&quot; <em>(set flag 5)</em> at the start of the compiled code.</p>
+<p>Finally, the contents of <code>ocx</code> is incremented by 1, now pointing to the actual return address after the pointer to the outline data.</p>
+
+<p>Let's have a closer look at macro <code>plinst</code>, which is performing most of the actual assembly:</p>
+<pre>define
+	plinst A
+	lac A
+	dac i oc
+	idx oc
+	terminate</pre>
+<p>This macro is taking a single argument (<code>A</code>), a constant expression which is loaded into the accumulator by the first <code>lac</code>. This value is then deposited in the location to which <code>oc</code> is currently pointing to. Finally, the instruction &quot;<code>idx oc</code>&quot; increments the contents of <code>oc</code>, leaving the incremented value in the accumulator as a side effect.</p>
+
+<p>The following instructions are finializing the setup steps:</p>
+
+<pre>ock,	plinst (lac \sx1	<span class="comment">// compile &quot;lac \sx1&quot; (load x into AC)</span>
+	plinst (lio \sy1	<span class="comment">// compile &quot;lio \sy1&quot; (load y into IO)</span>
+	clf 6			<span class="comment">// clear flag 6</span>
+ocj,	setup \occ,6		<span class="comment">// initialize \occ with -6</span></pre>
+
+<p>The first two pseudo instruction insert the macor <code>plinst</code> to compile the instructions &quot;<code>lac \sx1</code>&quot; and &quot;<code>lio \sy1</code>&quot;, effecting in the object code to load the x-position and the y-position of the current object (the spaceship) into the accumulator and the IO register respectively. Then &quot;<code>clf 6</code>&quot; clears program flag 6 and the macro <code>setup</code> (which we've already seen in <a href="insidespacewar-pt3-objects.html">Part 3</a>) sets the variable <code>\occ</code> to the value <code>-6</code> to be used as a count-up.</p>
+
+<p>By now, the compiled code is:</p>
+<pre><em>	stf 5
+	lac \sx1
+	lio \sy1</em></pre>
+
+<p>As we may remember from <a href="insidespacewar-pt3-objects.html">Part 3</a>, the variables <code>\sx1</code> and <code>\sy1</code> are containing the x and y coordinates of the current spaceship in the format used by the <code>dpy</code> instruction (with the most significant 10 bits indicating the position and the lower 8 bits ignored). Thus, in the compiled code, AC and IO are now pointing to the very first display location as stored in <code>\sx1</code> and <code>\sy1</code>.</p>
+
+<pre>ocg,	lio .		/outline table  <span class="comment">// load current data word into IO</span>
+och,	cla		<span class="comment">// clear AC</span>
+	rcl 3s		<span class="comment">// rotate first three bits (first nibble) of IO into AC</span>
+	dio \oci	<span class="comment">// store rest in \oci</span>
+	lio (rcl 9s	<span class="comment">// load constant &quot;rcl 9s&quot; into IO</span>
+	dispatch	<span class="comment">// like FORTRAN <em>computed GO TO</em> on contents of AC</span>
+	opr		<span class="comment">// case 0: nop, fall through</span>
+	jmp oc1		<span class="comment">// case 1</span>
+oco,	jmp oc2		<span class="comment">// case 2</span>
+ocq,	jmp oc3		<span class="comment">// case 3</span>
+ocp,	jmp oc4		<span class="comment">// case 4</span>
+ocr,	jmp oc5		<span class="comment">// case 5</span>
+	jmp oc6		<span class="comment">// case 6</span>
+	...		<span class="comment">// case 7</span></pre>
+	
+<p>With this initial setup done, we're heading straight to the actual parsing. At <code>ocg</code> the <code>lio</code> instruction loads the contents of the current data word (this being the very first location, inserted previously by a <code>dap</code> instruction) into the IO register. The next instruction &quot;<code>rcl 3s</code>&quot; <em>(rotate combined registers left)</em> rotates the highest three bits (or nibble, or the first octal digit) into the accumulator, with the remainder stored in the variable <code>\oci</code> for later use. As we can already see, the commands creating the outlines are encoded in three bits or a single octal digit. Since there are 6 of them in an 18-bit word, we also can now understand, why the counter <code>occ</code> would have been initialized for a countup from <code>-6</code>. The next pseudo instruction inserts the production of the macro <code>dispatch</code>, which is quite the equivalent of a FORTRAN <em>computed GO TO</em> statement (or, as we would call this in assembler, is setting up a jump by a dispatch table):</p>
+
+<pre>	define
+dispatch
+	add (. 3	<span class="comment">// add current address + 3 (first after macro) to AC</span>
+	dap . 1		<span class="comment">// deposit in next address</span>
+	jmp .		<span class="comment">// and jump there</span>
+	term</pre>
+
+<p>The macro effects in an indexed jump to any of the 7 locations following immediately after its insertion.<br />(In case you would wonder, this macro is defined at the top of the source of part 1, in the section containing the macros specific to Spacewar!. This placement and the fact that it is used only here once, suggests that this might have been a piece of code used more commonly by the original outline interpreter.)</p>
+<p>The first instruction of the <em>dispatch table</em>, executed in case that the accumulator would contain <code>0</code>, is a simple <code>opr</code>, synonymous to <code>nop</code> <em>(no operation)</em>. This will simply fall through to the next case.</p>
+<p>The next <code>jmp</code> instructions cover the cases for the acumulator containing any value in the range <code>1..6</code>, and with <code>7</code>, we would continue with the code following to these jump vectors.</p>
+
+<p>Let's see, what's happening, in case we would take the jump to <code>oc1</code> for a nibble of value <code>1</code> in our data word:</p>
+
+<pre>oc1,	plinst (add \ssn	<span class="comment">// compile &quot;add \ssn&quot;</span>
+	jsp ocs			<span class="comment">// copy IO to the next 2 addresses at oc (swap)</span>
+	lac (sub \scn		<span class="comment">// load &quot;sub \scn&quot; into AC</span>
+oce,	dac i oc		<span class="comment">// display action: deposit AC at current code location</span>
+	idx oc			<span class="comment">// increment oc</span>
+	jsp ocs			<span class="comment">// copy IO to the next 2 addresses at oc (swap)</span>
+	plinst (ioh		<span class="comment">// compile &quot;ioh&quot; (wait for completion pulse)</span>
+	lac (dpy-4000		<span class="comment">// load &quot;dpy-400&quot; into AC</span>
+ocd,	dac i oc		<span class="comment">// deposit at current code location</span>
+	idx oc			<span class="comment">// increment oc</span>
+	lio \oci		<span class="comment">// advance to next nibble or word: load \oci in IO</span>
+	count \occ, och		<span class="comment">// increment \occ (up from -6), while negative,</span>
+				<span class="comment">// jump to och (get next nibble and execute switch)</span>
+	idx ocg			<span class="comment">// increment ocg (next data word)</span>
+	jmp ocj			<span class="comment">// start over with the new data word</span></pre>
+
+<p>After compiling &quot;<code>add \ssn</code>&quot; by inserting macro <code>plinst</code> (we'll explore the semantics of these variables soon), the jump to the subroutine <code>ocs</code> effects in the compiliation of twice the contents of IO:</p>
+
+<pre>ocs,	dap ocz		/puts in swap <span class="comment">// deposit return address in ocz</span>
+	dio i oc	<span class="comment">// deposit IO in address in oc</span>
+	idx oc		<span class="comment">// increment oc</span>
+	dio i oc	<span class="comment">// deposit IO in address in oc</span>
+	idx oc		<span class="comment">// increment oc</span>
+ocz,	jmp .		<span class="comment">// return</span></pre>
+
+<p>Since the IO register was set up to contain the value of the constant expression &quot;<code>rcl 9s</code>&quot;, this will insert the equivalent of the macro <code>swap</code>, we've seen already in <a href="insidespacewar-pt2-star.html">Part 2</a>: Two consecutive instructions to rotate AC and IO as a combined register by 9 bits, resulting in an exchange of the contents of the two registers. As we may remember, this was used to set up AC for the x-coordinate of a <code>dpy</code> instruction, then swap the registers, compose the y-coordinate in the accumulator, and swap the registers back, now with the y-coordinate in IO and the x-coordinate in AC.</p>
+
+<p>This is exactly what is compiled here: AC was set up in the compiled code to contain the current x-coordinate as in <code>\sx1</code>. This is now swapped and the accumulator is now containing the current y-position. The expression &quot;<code>sub \scn</code>&quot; is now compiled and this is followed by another call of <code>ocs</code>, inserting another swap.</p>
+
+<p>The pseudo instruction &quot;<code>plinst (ioh</code>&quot; compiles a <code>ioh</code> instruction, resulting in the CPU to wait for the completion pulse sent by the CRT display. (For details, please refer to <a href="insidespacewar-pt2-star.html?dpy-400">Part 2</a>.) Then the constant expression for the actual display command &quot;<code>dpy-4000</code>&quot; is loaded into AC. At <code>ocd</code> this is put at the current end of the object code stack and the pointer <code>oc</code> is incremented once again.</p>
+
+<p>By now, this inserted the following code production in the object code at <code>oc</code>, updating both the x and y coordinates, waiting for the display to be ready, and finally issuing a new display command:</p>
+<pre><em>	add \ssn
+	rcl 9s
+	rcl 9s
+	sub \scn
+	rcl 9s
+	rcl 9s
+	ioh
+	dpy-4000</em></pre>
+
+<p>With the actual compilation done, we're left with advancing to the next nibble of the outline data (last few lines repeated from above):</p>
+
+<pre>	lio \oci		<span class="comment">// advance to next nibble or word: load \oci in IO</span>
+	count \occ, och		<span class="comment">// increment \occ (up from -6), while negative,</span>
+				<span class="comment">// jump to och (get next nibble and execute switch)</span>
+	idx ocg			<span class="comment">// increment ocg (next data word)</span>
+	jmp ocj			<span class="comment">// start over with the new data word</span></pre>
+
+<p>This loads the rest of the rotated data word as stored previously in <code>\oci</code> into IO, just as befor at label <code>ocg</code>. The pseudo instruction &quot;<code>count \occ, och</code>&quot; performs the count-up on the 6 nibbles of the data word. (We've seen the macro <code>count</code> already in <a href="insidespacewar-pt3-objects.html">Part 3</a>.) If <code>\occ</code> would be still negative after the increment, we would jump to label <code>och</code>, rotating the next nibble into AC. If the result would be positive, indicating we would have parsed all 6 nibbles already, we fall through to the next instruction, incrementing the address stored in <code>ocg</code> to advance to the next data word. This is then parsed by the jump to <code>ocj</code>, resetting the counter <code>\occ</code>, and starting over with the new data word.</p>
+
+<p>Having investigated a full loop for parsing and compiling an outline code of <code>1</code>, let's see whats happening with some other codes:</p>
+
+<pre>oc2,	comtab (add \scm, (add \ssm
+oc3,	comtab (add \ssc, (sub \csm
+oc4,	comtab (sub \scm, (sub \ssm
+oc5,	comtab (add \csn, (sub \ssd</pre>
+<p>The jump vectors for the codes <code>2..5</code> will take us to the labels with the respective numbers at their end. Each of them inserts the macro <code>comtab</code> with two constant expressions as the arguments, each representing an instruction to be compiled. This is, what <code>comtab</code> <em>(command tablutor ?)</em> looks like:</p>
+
+<pre>define
+	comtab A, B
+	plinst A		<span class="comment">// compile A in oc</span>
+	jsp ocs			<span class="comment">// compile swap</span>
+	lac B			<span class="comment">// put B into AC</span>
+	jmp oce			<span class="comment">// display and advance</span>
+	terminate</pre>
+
+<p>This is compiling the first parameter into the current location of the object code, adds a swap to it (there's still &quot;<code>rcl 9s</code>&quot; in IO) and puts the value of the second parameter into the accumulator. Then it jumps to the label <code>oce</code>, we've seen before: This will compile the contents of AC, add another swap to the compiled code, as well as the <code>ioh</code> and <code>dpy-4000</code> instructions, and execute the next iteration over the parse/compile loop.</p>
+
+<p>Thus, macro <code>comtab</code> produces a compiled object code quite like the one we've seen before, with the notable difference of the instructions for updating the x and y coordinates by the expressions in <code>A</code> and <code>B</code> respectively:</p>
+
+<pre><em>	A		<span class="comment">// first parameter (update x)</span>
+	rcl 9s
+	rcl 9s
+	B		<span class="comment">// second parameter (update y)</span>
+	rcl 9s
+	rcl 9s
+	ioh
+	dpy-4000</em></pre>
+
+<p><em>Note: An attentive reader might have noticed that this is the same production as the one of the code entered at <code>oc1</code>, even using the same instructions at label <code>oce</code> and beyond, but with parameters. Why isn't the code at <code>oc1</code> just</em> &quot;<code>comtab (add \ssn, (sub \scn</code>&quot;<em>? We don't know, but it's quite as if the code at <code>oc1</code> would be exemplifying the workings of the macro <code>comtab</code> which would be hidden in some indirectness else.</em></p>
+
+<h2 id="movements">Movement Semantics</h2>
+
+<p>In order to understand the semantics of these code productions inserted by the outline codes <code>0...5</code>, we'll have to peek ahead into some code of the main program, we haven't explored yet. By now, we only know that the outline commands will cause the following movements:</p>
+
+<pre>outline advance by x, y:
+
+0: fall through to 1
+1: +\ssn -\scn
+2: +\scm +\ssm
+3: +\ssc -\csm
+4: -\scm -\ssm
+5: +\csn -\ssd</pre>
+
+<p>Inside the code managing the spaceships, we'll find the following setup of these variables just before the call of the compiled outline code (at <code>sp5</code>), with <code>\sn</code> being the sine of the rotation angle in <code>mth</code> and <code>\cs</code> containing the cosine:</p>
+
+<pre>	scale \sn, 9s, \ssn	<span class="comment">// store scaled sine in \ssn</span>
+	scale \cs, 9s, \scn	<span class="comment">// store scaled cosine in \scn</span>
+	lac \ssn
+	dac \ssm		<span class="comment">// \ssm = \ssn</span>
+	add \scn
+	dac \ssc		<span class="comment">// \ssc = \ssn + \scn</span>
+	dac \ssd		<span class="comment">// \ssd = \ssn + \scn</span>
+	lac \ssn
+	sub \scn
+	dac \csn		<span class="comment">// \csn = \ssn - \scn</span>
+	cma			<span class="comment">// complement AC</span>
+	dac \csm		<span class="comment">// \csm = -\csn</span>
+	lac \scn
+	dac \scm		<span class="comment">// \scm = \scn</span>
+	cla cli-opr		<span class="comment">// clear AC and IO</span>
+	dpy-4000		<span class="comment">// display a dot in center, request completion pulse</span>
+sp5,	jmp .			<span class="comment">// jump to compiled outline code</span>
+sq6,	ioh			<span class="comment">// wait for last completion pulse</span></pre>
+
+<p>The two insertions of the macro <code>scale</code> are scaling the current sine and cosine to a value that would produce an advance by a single display location for a value of <code>1</code>. (By altering the scaling factor as in <code>9s</code>, we could enlarge the outline by multiplying the steps by powers of 2. This is also the trick applied by Barry Silverman, Brian Silverman, and Vadim Gerasimov in their version of the code of Spacewar! 3.1, modified to display the ships at double size for the benefit of modern displays, by changing this value to <code>8s</code>.) Since the format of the positional values for the <code>dpy</code> instruction automatically allows for a fractional part of 8 binary digits, any values between <code>0</code> and <code>1</code> will be handled gracefully, with just the discrete integer parts used as the actual display location.</p>
+
+<p>As we can see, rather than just supplying the turning angle <em>(theta)</em> of the ship, the required trigonometry is done in the main program. This is part of Steve Russell's &quot;basic trick&quot; of calculating the sine and cosine only once per frame and reusing them (resulting in something alike turning the entire universe), here by setting up a matrix of derivative values for the use of the compiled outline routines, which will have to deal with these positional offsets only. This is, what this matrix looks like, when the code produced by the outline compiler is called at label <code>sq5</code>:</p>
+<pre>\ssn = sin (scaled)
+\scn = cos (scaled)
+\ssm = \ssn
+\ssc = \ssn + \scn
+\ssd = \ssn + \scn
+\csn = \ssn - \scn
+\csm = -(\ssn - \scn)
+\scm = \scn</pre>
+
+<p>Before we investigating these values, we may note the actual calling sequence of the compiled outline code: Since the compiled code is starting with a <code>ioh</code>, we would need to call a <code>dpy-4000</code> instruction before (in order to provide the completion pulse by the display) or the code would be waiting for ever. This is provided by the combined <code>cla</code> <em>(clear AC)</em> and <code>cli</code> <em>(clear IO)</em> as in &quot;<code>cla cli-opr</code>&quot; and the following <code>dpy-4000</code> display command. As this is resetting AC and IO to point to the origin at the center of the screen, there will be always a spot at the very center of the scope, even, if the &quot;heavy star&quot; would be disabled by activating sense switch 6. Likewise, the code produced by the compiler loop is ending in a <code>dpy-4000</code> instruction, so there's a <code>ioh</code> to wait for and clear this final completion pulse at label <code>sq6</code>.</p>
+
+<p>Back to the semantics of the outline code, we'll see that just some values are actually used to move the outline in the resulting code. This would translate to the following values and respective movements:</p>
+
+<pre>Movements by x, y:
+
+code / theta (deg)          90        45          30        0
+0: =&gt; 1
+1: +sin       -cos         1 -0    0.7 -0.7    0.5 -0.8    0 -1
+2: +cos       +sin         0  1    0.7  0.7    0.8  0.5    1  0
+3: +(sin+cos) +(sin-cos)   1  1    1.4  0      1.3 -0.3    1 -1
+4: -cos       -sin        -0 -1   -0.7 -0.7   -0.8 -0.5   -1  0
+5: +(sin-cos) -(sin+cos)   1 -1    0   -1.4   -0.3 -1.3   -1 -1</pre>
+
+<p>Thus, for a rotation angle <em>theta</em> of <code>0</code>, the following semantics apply to the outline codes <code>0..5</code>:
+
+<pre>
+0:           <em>fall through to 1</em>
+1:   0 -1    down
+2:   1  0    right
+3:   1 -1    right down
+4:  -1  0    left
+5:  -1 -1    left down</pre>
+
+<p>So, what's happening at codes <code>6</code> and <code>7</code>, and why are there 8 variables defined to encode just 5 distinctive values? Let's see:</p>
+
+<h2 id="pragmatics">Outline Pragmatics</h2>
+
+<p>The codes <code>6</code> and <code>7</code> may be referred to as the <em>pragmatic</em> part of the outline vocabulary. This is, what's happening at <code>oc6</code>, executed for code <code>6</code>:</p>
+
+<pre>oc6,	szf 6			<span class="comment">// flag 6: store or restore?</span>
+	jmp oc9			<span class="comment">// set: restore position at oc9</span>
+	stf 6			<span class="comment">// set flag 6 for visted, store position</span>
+	plinst (dac \ssa	<span class="comment">// compile &quot;dac \ssa&quot; (deposit AC in \ssa)</span>
+	lac (dio \ssi		<span class="comment">// load &quot;dio \ssi&quot;    (deposit IO in \ssi)</span>
+	jmp ocd			<span class="comment">// compile and next nibble</span>
+
+oc9,	clf 6			<span class="comment">// clear flag 6</span>
+	plinst (lac \ssa	<span class="comment">// compile &quot;lac \ssa&quot; (load \ssa)</span>
+	lac (lio \ssi		<span class="comment">// load &quot;lio \ssi&quot;    (load \ssi)</span>
+	jmp ocd			<span class="comment">// compile and next nibble</span></pre>
+
+<p>So, based on flag 6 set or unset, this either compiles a code that will store the current x and y coordinates as in AC and IO in the variables <code>\ssa</code> and <code>\ssi</code> respectively, or will restore the current location from these. (Label <code>ocd</code> is the final part of the parser/compiler loop, depositing the contents of the accumulator in the current object-code address and advancing to the next nibble or word.)</p>
+
+<p>Since flag 6 is initially cleared just before the start of the loop at label <code>ocj</code>, code <code>6</code> is alternatingly storing and restore the current display location for the outline.</p>
+
+<p>The part covering code <code>7</code> is following immediately to the jump table with the vectors for code <code>1..6</code>:</p>
+
+<pre>	plinst (szf 5	/7 code	<span class="comment">// compile &quot;szf 5&quot;</span>
+	add (4			<span class="comment">// add 4 (to oc)</span>
+	dap ocn			<span class="comment">// deposit in address part of ocn</span>
+	plinst ocn		<span class="comment">// compile &quot;jmp ocn&quot; (oc+4)</span>
+	plinst (dac \sx1	<span class="comment">// compile &quot;dac \sx1&quot; (deposit AC in \sx1)</span>
+	plinst (dio \sy1	<span class="comment">// compile  &quot;dio \sx1&quot; (deposit IO in \sy1)</span>
+	plinst (jmp sq6		<span class="comment">// compile &quot;jmp sq6&quot; (return)</span>
+
+	plinst (clf 5		<span class="comment">// compile &quot;clf 5&quot; (clear flag 5)</span>
+	plinst (lac \scm	<span class="comment">// compile &quot;lac \scm&quot; (load \scm into AC)</span>
+	plinst (cma		<span class="comment">// compile &quot;cma&quot; (complement AC)</span>
+	plinst (dac \scm	<span class="comment">// compile &quot;dac \scm&quot; (\scm = -\scm)</span>
+	plinst (lac \ssm	<span class="comment">// compile &quot;lac \ssm&quot;</span>
+	plinst (cma		<span class="comment">// compile &quot;cma&quot;</span>
+	plinst (dac \ssm	<span class="comment">// compile &quot;dac \ssm&quot; (\ssm = -\ssm)</span>
+	plinst (lac \csm	<span class="comment">// compile &quot;lac \csm&quot;</span>
+	plinst (lio \ssd	<span class="comment">// compile &quot;lio \ssd&quot;</span>
+	plinst (dac \ssd	<span class="comment">// compile &quot;dac \ssd&quot; (swap \csm and \ssd)</span>
+	plinst (dio \csm	<span class="comment">// compile &quot;dio \csm&quot; (--&quot;--)</span>
+	plinst (lac \ssc	<span class="comment">// compile &quot;lac \ssc&quot;</span>
+	plinst (lio \csn	<span class="comment">// compile &quot;lio \csn&quot;</span>
+	plinst (dac \csn	<span class="comment">// compile &quot;dac \csn&quot; (swap \csn and \ssc)</span>
+	plinst (dio \ssc	<span class="comment">// compile &quot;dio \ssc&quot; (--&quot;--)</span>
+	plinst ocm		<span class="comment">// compile &quot;jmp &lt;start+1&gt;&quot; (start over)</span>
+ocx,	jmp .			<span class="comment">// return</span>
+
+ocm,	jmp .
+ocn,	jmp .</pre>
+
+<p>As we can see by the jump instruction at label <code>ocx</code>, a code of <code>7</code> is ending the compilition. Also, as we've seen all of the code of the outline compiler by now, a code <code>7</code> <em>must</em> be the last command of any outline data, else the compiler will not return. (Since the current value of <code>oc</code> is also left by <code>plinst</code> in the accumulator, when executing the jump at <code>ocx</code>, the location of the next instruction follwing immediately after the object code will be returned thus in the accumulator to the main program.)</p>
+
+<p>On the pragmatic side, this is producing the following object code as the final coda of the assembled stream:</p>
+
+<pre><em>szf 5		<span class="comment">// flag 5 zero?</span>
+jmp . + 4	<span class="comment">// no, not visited yet, skip next three instructions</span>
+dac \sx1	<span class="comment">// yes, update \sx1 and \sx2 to current outline position</span>
+dio \sy1
+jmp sq6		<span class="comment">// return (sq6 is a label in the main program)</span>
+
+clf 5		<span class="comment">// clear flag 5</span>
+lac \scm
+cma
+dac \scm	<span class="comment">// \scm = -\scm</span>
+lac \ssm
+cma
+dac \ssm	<span class="comment">// \ssm = -\ssm</span>
+lac \csm
+lio \ssd
+dac \ssd	<span class="comment">// swap \ssd and \csm</span>
+dio \csm
+lac \ssc
+lio \csn
+dac \csn	<span class="comment">// swap \csn and \ssc</span>
+dio \ssc
+jmp &lt;ocm&gt;	<span class="comment">// start+1</span></em></pre>
+
+<p>As we may remember, a &quot;<code>stf 5</code>&quot; <em>(set flag 5)</em> was the very first instruction compiled at the head of the resulting outline code. Now this flag is checked. If still set, we haven't seen this code production by command <code>7</code> yet and jump to the &quot;<code>clf 5</code>&quot; instruction 4 locations ahead, clearing this flag. The next instructions are either complementing or swapping all values related to left and right movements, then the code jumps to the very beginning, just after the initial <em>set flag 5</em> to start over with the same code, but now drawing the left side.</p>
+<p>If we would return from this second run, as indicated by a cleared flag 5, the code stores the current position of the outline in <code>\sx1</code> and <code>\sy1</code>, the x and y coordinates of the spaceship currently handled. Thanks to this, any exhaust trail to be displayed for a thrusting ship will be drawn at the exact tail position, what ever shape would be described by the outline data.</p>
+
+<p>Now, we may provide the complete instruction set of the outline compiler, properly replacing any references to <em>left</em> and <em>right</em> by <em>in</em> and <em>out</em>, referring to either an inward or outward direction relative to the central y-axis:</p>
+
+<pre>
+0:  <em>synonymous to 1</em>
+1:  down
+2:  out
+3:  out &amp; down
+4:  in
+5:  in &amp; down
+6:  store /restore current position
+7:  draw other side / return</pre>
+
+<p class="noindent"><em>Note: Actually, we might exchange the terms &quot;out&quot; and &quot;in&quot;. Applying them as described here, we would start in a clockwise motion &mdash; as used in Spacewar!. By interchanging them, we would still achieve a visually similar result, but now by drawing the first half of the outline in a counterclockwise motion. This is much like describing (a cross section of) a lathe object by describing the curve defining its surface: It doesn't matter, which side of the object we would actually describe, as long as we're using directions consistently.</em></p>
+
+<h2 id="constraints">Constraints</h2>
+
+<p>An attentive reader may have already noticed the following constraints applied to any outline data, to be properly contemplated by any ardent hacker of spaceship outlines (remember the extra space of 4 instruction words appended to each of the data tables?):</p>
+
+<ul>
+	<li>The default orientation is standing on the tail, drawn from the tip downwards (there are only downward and/or sideward movements and store/restore).</li>
+	<li>Each outline will be drawn symetrically, mirrored by the y axis. (Dots located at the center will be drawn twice.)</li>
+	<li>Each outline should end at the very center and at the very bottom (else any exhaust flames would be drawn in an odd position).</li>
+	<li>A spaceship's position, as in <code>\sx1</code> and <code>\sy1</code>, is actually outside the outlines of the ship (just in front of its tip) &mdash; therefor there must be some compensation applied (as we'll see this in a future episode).</li>
+	<li>Since runtime is always an issue (and the combination of <code>ioh</code> and <code>dpy-4000</code> instructions is requiring at least 50 microseconds per outline code, cf. <a href="insidespacewar-pt2-star.html#dpy-400">Part 2</a>), each of the spaceships should be drawn by an equal count of outline codes in the interest of a stable frame rate.</li>
+</ul>
+
+<p>It's also this very last constraint, which might shed some light on the else superfluous outline code <code>0</code> that is still the very first code of the outline data for the second spaceship, the &quot;wedge&quot;, as defined in <code>ot2</code>: This might have originally served as some kind of elaborated <code>NOP</code>, spending the runtime consumed by any of the other outline commands (each of them being of the same length and cycle count), while effecting essentially in a void instruction, just to compensate for any timing differences. (Please mind that this just a guess and not confirmed by any historical sources or references.)</p>
+
+<p>&nbsp;</p>
+
+<p>Sticking to our usual procedures, this would be just the place to investigate a (prominent) variations of the main theme of the article as to be found in some versions of Spacewar!. &mdash; But not this time!</p>
+<p>The outline compiler was that a success, it didn't see any variations or modifications at all, just like the data defining the outline of two spaceships.</p>
+<p>With nothing else to show, we're closing here with the disassembly of the productions of the outline compiler for both of the spaceships:</p>
+
+<h2 id="objectcode">The Object Code</h2>
+<p>Disassembly of the spaceship outline code produced by the outline compiler, locations as in Spacewar! 3.1 <em>(labels <code>c1m</code> and <code>c2m</code> inserted by me, N.L.)</em>:</p>
+
+<pre><em>spaceship 1</em>
+
+ot1,	111131
+	111111
+	111111
+	111163
+	311111
+	146111
+	111114
+	700000
+
+<em>loc.    instr.     opcode       symbols</em>
+
+3772    760015     stf 5              stf 5
+3773    203225     lac 3225     c1m,  lac \sx1
+3774    223226     lio 3226           lio \sy1
+3775    403223     add 3223           add \ssn
+3776    663777     rcl 9s             rcl 9s
+3777    663777     rcl 9s             rcl 9s
+4000    423224     sub 3224           sub \scn
+4001    663777     rcl 9s             rcl 9s
+4002    663777     rcl 9s             rcl 9s
+4003    730000     ioh                ioh
+4004    724007     dpy-4000           dpy-4000
+4005    403223     add 3223           add \ssn
+4006    663777     rcl 9s             rcl 9s
+4007    663777     rcl 9s             rcl 9s
+4010    423224     sub 3224           sub \scn
+4011    663777     rcl 9s             rcl 9s
+4012    663777     rcl 9s             rcl 9s
+4013    730000     ioh                ioh
+4014    724007     dpy-4000           dpy-4000
+4015    403223     add 3223           add \ssn
+4016    663777     rcl 9s             rcl 9s
+4017    663777     rcl 9s             rcl 9s
+4020    423224     sub 3224           sub \scn
+4021    663777     rcl 9s             rcl 9s
+4022    663777     rcl 9s             rcl 9s
+4023    730000     ioh                ioh
+4024    724007     dpy-4000           dpy-4000
+4025    403223     add 3223           add \ssn
+4026    663777     rcl 9s             rcl 9s
+4027    663777     rcl 9s             rcl 9s
+4030    423224     sub 3224           sub \scn
+4031    663777     rcl 9s             rcl 9s
+4032    663777     rcl 9s             rcl 9s
+4033    730000     ioh                ioh
+4034    724007     dpy-4000           dpy-4000
+4035    403235     add 3235           add \ssc
+4036    663777     rcl 9s             rcl 9s
+4037    663777     rcl 9s             rcl 9s
+4040    423233     sub 3233           sub \csm
+4041    663777     rcl 9s             rcl 9s
+4042    663777     rcl 9s             rcl 9s
+4043    730000     ioh                ioh
+4044    724007     dpy-4000           dpy-4000
+4045    403223     add 3223           add \ssn
+4046    663777     rcl 9s             rcl 9s
+4047    663777     rcl 9s             rcl 9s
+4050    423224     sub 3224           sub \scn
+4051    663777     rcl 9s             rcl 9s
+4052    663777     rcl 9s             rcl 9s
+4053    730000     ioh                ioh
+4054    724007     dpy-4000           dpy-4000
+4055    403223     add 3223           add \ssn
+4056    663777     rcl 9s             rcl 9s
+4057    663777     rcl 9s             rcl 9s
+4060    423224     sub 3224           sub \scn
+4061    663777     rcl 9s             rcl 9s
+4062    663777     rcl 9s             rcl 9s
+4063    730000     ioh                ioh
+4064    724007     dpy-4000           dpy-4000
+4065    403223     add 3223           add \ssn
+4066    663777     rcl 9s             rcl 9s
+4067    663777     rcl 9s             rcl 9s
+4070    423224     sub 3224           sub \scn
+4071    663777     rcl 9s             rcl 9s
+4072    663777     rcl 9s             rcl 9s
+4073    730000     ioh                ioh
+4074    724007     dpy-4000           dpy-4000
+4075    403223     add 3223           add \ssn
+4076    663777     rcl 9s             rcl 9s
+4077    663777     rcl 9s             rcl 9s
+4100    423224     sub 3224           sub \scn
+4101    663777     rcl 9s             rcl 9s
+4102    663777     rcl 9s             rcl 9s
+4103    730000     ioh                ioh
+4104    724007     dpy-4000           dpy-4000
+4105    403223     add 3223           add \ssn
+4106    663777     rcl 9s             rcl 9s
+4107    663777     rcl 9s             rcl 9s
+4110    423224     sub 3224           sub \scn
+4111    663777     rcl 9s             rcl 9s
+4112    663777     rcl 9s             rcl 9s
+4113    730000     ioh                ioh
+4114    724007     dpy-4000           dpy-4000
+4115    403223     add 3223           add \ssn
+4116    663777     rcl 9s             rcl 9s
+4117    663777     rcl 9s             rcl 9s
+4120    423224     sub 3224           sub \scn
+4121    663777     rcl 9s             rcl 9s
+4122    663777     rcl 9s             rcl 9s
+4123    730000     ioh                ioh
+4124    724007     dpy-4000           dpy-4000
+4125    403223     add 3223           add \ssn
+4126    663777     rcl 9s             rcl 9s
+4127    663777     rcl 9s             rcl 9s
+4130    423224     sub 3224           sub \scn
+4131    663777     rcl 9s             rcl 9s
+4132    663777     rcl 9s             rcl 9s
+4133    730000     ioh                ioh
+4134    724007     dpy-4000           dpy-4000
+4135    403223     add 3223           add \ssn
+4136    663777     rcl 9s             rcl 9s
+4137    663777     rcl 9s             rcl 9s
+4140    423224     sub 3224           sub \scn
+4141    663777     rcl 9s             rcl 9s
+4142    663777     rcl 9s             rcl 9s
+4143    730000     ioh                ioh
+4144    724007     dpy-4000           dpy-4000
+4145    403223     add 3223           add \ssn
+4146    663777     rcl 9s             rcl 9s
+4147    663777     rcl 9s             rcl 9s
+4150    423224     sub 3224           sub \scn
+4151    663777     rcl 9s             rcl 9s
+4152    663777     rcl 9s             rcl 9s
+4153    730000     ioh                ioh
+4154    724007     dpy-4000           dpy-4000
+4155    403223     add 3223           add \ssn
+4156    663777     rcl 9s             rcl 9s
+4157    663777     rcl 9s             rcl 9s
+4160    423224     sub 3224           sub \scn
+4161    663777     rcl 9s             rcl 9s
+4162    663777     rcl 9s             rcl 9s
+4163    730000     ioh                ioh
+4164    724007     dpy-4000           dpy-4000
+4165    403223     add 3223           add \ssn
+4166    663777     rcl 9s             rcl 9s
+4167    663777     rcl 9s             rcl 9s
+4170    423224     sub 3224           sub \scn
+4171    663777     rcl 9s             rcl 9s
+4172    663777     rcl 9s             rcl 9s
+4173    730000     ioh                ioh
+4174    724007     dpy-4000           dpy-4000
+4175    403223     add 3223           add \ssn
+4176    663777     rcl 9s             rcl 9s
+4177    663777     rcl 9s             rcl 9s
+4200    423224     sub 3224           sub \scn
+4201    663777     rcl 9s             rcl 9s
+4202    663777     rcl 9s             rcl 9s
+4203    730000     ioh                ioh
+4204    724007     dpy-4000           dpy-4000
+4205    403223     add 3223           add \ssn
+4206    663777     rcl 9s             rcl 9s
+4207    663777     rcl 9s             rcl 9s
+4210    423224     sub 3224           sub \scn
+4211    663777     rcl 9s             rcl 9s
+4212    663777     rcl 9s             rcl 9s
+4213    730000     ioh                ioh
+4214    724007     dpy-4000           dpy-4000
+4215    403223     add 3223           add \ssn
+4216    663777     rcl 9s             rcl 9s
+4217    663777     rcl 9s             rcl 9s
+4220    423224     sub 3224           sub \scn
+4221    663777     rcl 9s             rcl 9s
+4222    663777     rcl 9s             rcl 9s
+4223    730000     ioh                ioh
+4224    724007     dpy-4000           dpy-4000
+4225    403223     add 3223           add \ssn
+4226    663777     rcl 9s             rcl 9s
+4227    663777     rcl 9s             rcl 9s
+4230    423224     sub 3224           sub \scn
+4231    663777     rcl 9s             rcl 9s
+4232    663777     rcl 9s             rcl 9s
+4233    730000     ioh                ioh
+4234    724007     dpy-4000           dpy-4000
+4235    403223     add 3223           add \ssn
+4236    663777     rcl 9s             rcl 9s
+4237    663777     rcl 9s             rcl 9s
+4240    423224     sub 3224           sub \scn
+4241    663777     rcl 9s             rcl 9s
+4242    663777     rcl 9s             rcl 9s
+4243    730000     ioh                ioh
+4244    724007     dpy-4000           dpy-4000
+4245    403223     add 3223           add \ssn
+4246    663777     rcl 9s             rcl 9s
+4247    663777     rcl 9s             rcl 9s
+4250    423224     sub 3224           sub \scn
+4251    663777     rcl 9s             rcl 9s
+4252    663777     rcl 9s             rcl 9s
+4253    730000     ioh                ioh
+4254    724007     dpy-4000           dpy-4000
+4255    243237     dac 3237           dac \ssa
+4256    323240     dio 3240           dio \ssi
+4257    403235     add 3235           add \ssc
+4260    663777     rcl 9s             rcl 9s
+4261    663777     rcl 9s             rcl 9s
+4262    423233     sub 3233           sub \csm
+4263    663777     rcl 9s             rcl 9s
+4264    663777     rcl 9s             rcl 9s
+4265    730000     ioh                ioh
+4266    724007     dpy-4000           dpy-4000
+4267    403235     add 3235           add \ssc
+4270    663777     rcl 9s             rcl 9s
+4271    663777     rcl 9s             rcl 9s
+4272    423233     sub 3233           sub \csm
+4273    663777     rcl 9s             rcl 9s
+4274    663777     rcl 9s             rcl 9s
+4275    730000     ioh                ioh
+4276    724007     dpy-4000           dpy-4000
+4277    403223     add 3223           add \ssn
+4300    663777     rcl 9s             rcl 9s
+4301    663777     rcl 9s             rcl 9s
+4302    423224     sub 3224           sub \scn
+4303    663777     rcl 9s             rcl 9s
+4304    663777     rcl 9s             rcl 9s
+4305    730000     ioh                ioh
+4306    724007     dpy-4000           dpy-4000
+4307    403223     add 3223           add \ssn
+4310    663777     rcl 9s             rcl 9s
+4311    663777     rcl 9s             rcl 9s
+4312    423224     sub 3224           sub \scn
+4313    663777     rcl 9s             rcl 9s
+4314    663777     rcl 9s             rcl 9s
+4315    730000     ioh                ioh
+4316    724007     dpy-4000           dpy-4000
+4317    403223     add 3223           add \ssn
+4320    663777     rcl 9s             rcl 9s
+4321    663777     rcl 9s             rcl 9s
+4322    423224     sub 3224           sub \scn
+4323    663777     rcl 9s             rcl 9s
+4324    663777     rcl 9s             rcl 9s
+4325    730000     ioh                ioh
+4326    724007     dpy-4000           dpy-4000
+4327    403223     add 3223           add \ssn
+4330    663777     rcl 9s             rcl 9s
+4331    663777     rcl 9s             rcl 9s
+4332    423224     sub 3224           sub \scn
+4333    663777     rcl 9s             rcl 9s
+4334    663777     rcl 9s             rcl 9s
+4335    730000     ioh                ioh
+4336    724007     dpy-4000           dpy-4000
+4337    403223     add 3223           add \ssn
+4340    663777     rcl 9s             rcl 9s
+4341    663777     rcl 9s             rcl 9s
+4342    423224     sub 3224           sub \scn
+4343    663777     rcl 9s             rcl 9s
+4344    663777     rcl 9s             rcl 9s
+4345    730000     ioh                ioh
+4346    724007     dpy-4000           dpy-4000
+4347    403223     add 3223           add \ssn
+4350    663777     rcl 9s             rcl 9s
+4351    663777     rcl 9s             rcl 9s
+4352    423224     sub 3224           sub \scn
+4353    663777     rcl 9s             rcl 9s
+4354    663777     rcl 9s             rcl 9s
+4355    730000     ioh                ioh
+4356    724007     dpy-4000           dpy-4000
+4357    423231     sub 3231           sub \scm
+4360    663777     rcl 9s             rcl 9s
+4361    663777     rcl 9s             rcl 9s
+4362    423232     sub 3232           sub \ssm
+4363    663777     rcl 9s             rcl 9s
+4364    663777     rcl 9s             rcl 9s
+4365    730000     ioh                ioh
+4366    724007     dpy-4000           dpy-4000
+4367    203237     lac 3237           lac \ssa
+4370    223240     lio 3240           lio \ssi
+4371    403223     add 3223           add \ssn
+4372    663777     rcl 9s             rcl 9s
+4373    663777     rcl 9s             rcl 9s
+4374    423224     sub 3224           sub \scn
+4375    663777     rcl 9s             rcl 9s
+4376    663777     rcl 9s             rcl 9s
+4377    730000     ioh                ioh
+4400    724007     dpy-4000           dpy-4000
+4401    403223     add 3223           add \ssn
+4402    663777     rcl 9s             rcl 9s
+4403    663777     rcl 9s             rcl 9s
+4404    423224     sub 3224           sub \scn
+4405    663777     rcl 9s             rcl 9s
+4406    663777     rcl 9s             rcl 9s
+4407    730000     ioh                ioh
+4410    724007     dpy-4000           dpy-4000
+4411    403223     add 3223           add \ssn
+4412    663777     rcl 9s             rcl 9s
+4413    663777     rcl 9s             rcl 9s
+4414    423224     sub 3224           sub \scn
+4415    663777     rcl 9s             rcl 9s
+4416    663777     rcl 9s             rcl 9s
+4417    730000     ioh                ioh
+4420    724007     dpy-4000           dpy-4000
+4421    403223     add 3223           add \ssn
+4422    663777     rcl 9s             rcl 9s
+4423    663777     rcl 9s             rcl 9s
+4424    423224     sub 3224           sub \scn
+4425    663777     rcl 9s             rcl 9s
+4426    663777     rcl 9s             rcl 9s
+4427    730000     ioh                ioh
+4430    724007     dpy-4000           dpy-4000
+4431    403223     add 3223           add \ssn
+4432    663777     rcl 9s             rcl 9s
+4433    663777     rcl 9s             rcl 9s
+4434    423224     sub 3224           sub \scn
+4435    663777     rcl 9s             rcl 9s
+4436    663777     rcl 9s             rcl 9s
+4437    730000     ioh                ioh
+4440    724007     dpy-4000           dpy-4000
+4441    403223     add 3223           add \ssn
+4442    663777     rcl 9s             rcl 9s
+4443    663777     rcl 9s             rcl 9s
+4444    423224     sub 3224           sub \scn
+4445    663777     rcl 9s             rcl 9s
+4446    663777     rcl 9s             rcl 9s
+4447    730000     ioh                ioh
+4450    724007     dpy-4000           dpy-4000
+4451    403223     add 3223           add \ssn
+4452    663777     rcl 9s             rcl 9s
+4453    663777     rcl 9s             rcl 9s
+4454    423224     sub 3224           sub \scn
+4455    663777     rcl 9s             rcl 9s
+4456    663777     rcl 9s             rcl 9s
+4457    730000     ioh                ioh
+4460    724007     dpy-4000           dpy-4000
+4461    403223     add 3223           add \ssn
+4462    663777     rcl 9s             rcl 9s
+4463    663777     rcl 9s             rcl 9s
+4464    423224     sub 3224           sub \scn
+4465    663777     rcl 9s             rcl 9s
+4466    663777     rcl 9s             rcl 9s
+4467    730000     ioh                ioh
+4470    724007     dpy-4000           dpy-4000
+4471    423231     sub 3231           sub \scm
+4472    663777     rcl 9s             rcl 9s
+4473    663777     rcl 9s             rcl 9s
+4474    423232     sub 3232           sub \ssm
+4475    663777     rcl 9s             rcl 9s
+4476    663777     rcl 9s             rcl 9s
+4477    730000     ioh                ioh
+4500    724007     dpy-4000           dpy-4000
+4501    640005     szf 5              szf 5
+4502    604506     jmp 4506           jmp . 4
+4503    243225     dac 3225           dac \sx1
+4504    323226     dio 3226           dio \sy1
+4505    602531     jmp 2531           jmp sq6
+4506    760005     clf 5              clf 5
+4507    203231     lac 3231           lac \scm
+4510    761000     cma                cma
+4511    243231     dac 3231           dac \scm
+4512    203232     lac 3232           lac \ssm
+4513    761000     cma                cma
+4514    243232     dac 3232           dac \ssm
+4515    203233     lac 3233           lac \csm
+4516    223234     lio 3234           lio \ssd
+4517    243234     dac 3234           dac \ssd
+4520    323233     dio 3233           dio \csm
+4521    203235     lac 3235           lac \ssc
+4522    223236     lio 3236           lio \csn
+4523    243236     dac 3236           dac \csn
+4524    323235     dio 3235           dio \ssc
+4525    603773     jmp 3773           jmp c1m
+
+
+<em>spaceship 2</em>
+
+ot2,	013113
+	113111
+	116313
+	131111
+	161151
+	111633
+	365114
+	700000
+
+<em>loc.    instr.     opcode       symbols</em>
+
+4526    760015     stf 5              stf 5
+4527    203225     lac 3225     c2m,  lac \sx1
+4530    223226     lio 3226           lio \sy1
+4531    403223     add 3223           add \ssn
+4532    663777     rcl 9s             rcl 9s
+4533    663777     rcl 9s             rcl 9s
+4534    423224     sub 3224           sub \scn
+4535    663777     rcl 9s             rcl 9s
+4536    663777     rcl 9s             rcl 9s
+4537    730000     ioh                ioh
+4540    724007     dpy-4000           dpy-4000
+4541    403223     add 3223           add \ssn
+4542    663777     rcl 9s             rcl 9s
+4543    663777     rcl 9s             rcl 9s
+4544    423224     sub 3224           sub \scn
+4545    663777     rcl 9s             rcl 9s
+4546    663777     rcl 9s             rcl 9s
+4547    730000     ioh                ioh
+4550    724007     dpy-4000           dpy-4000
+4551    403235     add 3235           add \ssc
+4552    663777     rcl 9s             rcl 9s
+4553    663777     rcl 9s             rcl 9s
+4554    423233     sub 3233           sub \csm
+4555    663777     rcl 9s             rcl 9s
+4556    663777     rcl 9s             rcl 9s
+4557    730000     ioh                ioh
+4560    724007     dpy-4000           dpy-4000
+4561    403223     add 3223           add \ssn
+4562    663777     rcl 9s             rcl 9s
+4563    663777     rcl 9s             rcl 9s
+4564    423224     sub 3224           sub \scn
+4565    663777     rcl 9s             rcl 9s
+4566    663777     rcl 9s             rcl 9s
+4567    730000     ioh                ioh
+4570    724007     dpy-4000           dpy-4000
+4571    403223     add 3223           add \ssn
+4572    663777     rcl 9s             rcl 9s
+4573    663777     rcl 9s             rcl 9s
+4574    423224     sub 3224           sub \scn
+4575    663777     rcl 9s             rcl 9s
+4576    663777     rcl 9s             rcl 9s
+4577    730000     ioh                ioh
+4600    724007     dpy-4000           dpy-4000
+4601    403235     add 3235           add \ssc
+4602    663777     rcl 9s             rcl 9s
+4603    663777     rcl 9s             rcl 9s
+4604    423233     sub 3233           sub \csm
+4605    663777     rcl 9s             rcl 9s
+4606    663777     rcl 9s             rcl 9s
+4607    730000     ioh                ioh
+4610    724007     dpy-4000           dpy-4000
+4611    403223     add 3223           add \ssn
+4612    663777     rcl 9s             rcl 9s
+4613    663777     rcl 9s             rcl 9s
+4614    423224     sub 3224           sub \scn
+4615    663777     rcl 9s             rcl 9s
+4616    663777     rcl 9s             rcl 9s
+4617    730000     ioh                ioh
+4620    724007     dpy-4000           dpy-4000
+4621    403223     add 3223           add \ssn
+4622    663777     rcl 9s             rcl 9s
+4623    663777     rcl 9s             rcl 9s
+4624    423224     sub 3224           sub \scn
+4625    663777     rcl 9s             rcl 9s
+4626    663777     rcl 9s             rcl 9s
+4627    730000     ioh                ioh
+4630    724007     dpy-4000           dpy-4000
+4631    403235     add 3235           add \ssc
+4632    663777     rcl 9s             rcl 9s
+4633    663777     rcl 9s             rcl 9s
+4634    423233     sub 3233           sub \csm
+4635    663777     rcl 9s             rcl 9s
+4636    663777     rcl 9s             rcl 9s
+4637    730000     ioh                ioh
+4640    724007     dpy-4000           dpy-4000
+4641    403223     add 3223           add \ssn
+4642    663777     rcl 9s             rcl 9s
+4643    663777     rcl 9s             rcl 9s
+4644    423224     sub 3224           sub \scn
+4645    663777     rcl 9s             rcl 9s
+4646    663777     rcl 9s             rcl 9s
+4647    730000     ioh                ioh
+4650    724007     dpy-4000           dpy-4000
+4651    403223     add 3223           add \ssn
+4652    663777     rcl 9s             rcl 9s
+4653    663777     rcl 9s             rcl 9s
+4654    423224     sub 3224           sub \scn
+4655    663777     rcl 9s             rcl 9s
+4656    663777     rcl 9s             rcl 9s
+4657    730000     ioh                ioh
+4660    724007     dpy-4000           dpy-4000
+4661    403223     add 3223           add \ssn
+4662    663777     rcl 9s             rcl 9s
+4663    663777     rcl 9s             rcl 9s
+4664    423224     sub 3224           sub \scn
+4665    663777     rcl 9s             rcl 9s
+4666    663777     rcl 9s             rcl 9s
+4667    730000     ioh                ioh
+4670    724007     dpy-4000           dpy-4000
+4671    403223     add 3223           add \ssn
+4672    663777     rcl 9s             rcl 9s
+4673    663777     rcl 9s             rcl 9s
+4674    423224     sub 3224           sub \scn
+4675    663777     rcl 9s             rcl 9s
+4676    663777     rcl 9s             rcl 9s
+4677    730000     ioh                ioh
+4700    724007     dpy-4000           dpy-4000
+4701    403223     add 3223           add \ssn
+4702    663777     rcl 9s             rcl 9s
+4703    663777     rcl 9s             rcl 9s
+4704    423224     sub 3224           sub \scn
+4705    663777     rcl 9s             rcl 9s
+4706    663777     rcl 9s             rcl 9s
+4707    730000     ioh                ioh
+4710    724007     dpy-4000           dpy-4000
+4711    243237     dac 3237           dac \ssa
+4712    323240     dio 3240           dio \ssi
+4713    403235     add 3235           add \ssc
+4714    663777     rcl 9s             rcl 9s
+4715    663777     rcl 9s             rcl 9s
+4716    423233     sub 3233           sub \csm
+4717    663777     rcl 9s             rcl 9s
+4720    663777     rcl 9s             rcl 9s
+4721    730000     ioh                ioh
+4722    724007     dpy-4000           dpy-4000
+4723    403223     add 3223           add \ssn
+4724    663777     rcl 9s             rcl 9s
+4725    663777     rcl 9s             rcl 9s
+4726    423224     sub 3224           sub \scn
+4727    663777     rcl 9s             rcl 9s
+4730    663777     rcl 9s             rcl 9s
+4731    730000     ioh                ioh
+4732    724007     dpy-4000           dpy-4000
+4733    403235     add 3235           add \ssc
+4734    663777     rcl 9s             rcl 9s
+4735    663777     rcl 9s             rcl 9s
+4736    423233     sub 3233           sub \csm
+4737    663777     rcl 9s             rcl 9s
+4740    663777     rcl 9s             rcl 9s
+4741    730000     ioh                ioh
+4742    724007     dpy-4000           dpy-4000
+4743    403223     add 3223           add \ssn
+4744    663777     rcl 9s             rcl 9s
+4745    663777     rcl 9s             rcl 9s
+4746    423224     sub 3224           sub \scn
+4747    663777     rcl 9s             rcl 9s
+4750    663777     rcl 9s             rcl 9s
+4751    730000     ioh                ioh
+4752    724007     dpy-4000           dpy-4000
+4753    403235     add 3235           add \ssc
+4754    663777     rcl 9s             rcl 9s
+4755    663777     rcl 9s             rcl 9s
+4756    423233     sub 3233           sub \csm
+4757    663777     rcl 9s             rcl 9s
+4760    663777     rcl 9s             rcl 9s
+4761    730000     ioh                ioh
+4762    724007     dpy-4000           dpy-4000
+4763    403223     add 3223           add \ssn
+4764    663777     rcl 9s             rcl 9s
+4765    663777     rcl 9s             rcl 9s
+4766    423224     sub 3224           sub \scn
+4767    663777     rcl 9s             rcl 9s
+4770    663777     rcl 9s             rcl 9s
+4771    730000     ioh                ioh
+4772    724007     dpy-4000           dpy-4000
+4773    403223     add 3223           add \ssn
+4774    663777     rcl 9s             rcl 9s
+4775    663777     rcl 9s             rcl 9s
+4776    423224     sub 3224           sub \scn
+4777    663777     rcl 9s             rcl 9s
+5000    663777     rcl 9s             rcl 9s
+5001    730000     ioh                ioh
+5002    724007     dpy-4000           dpy-4000
+5003    403223     add 3223           add \ssn
+5004    663777     rcl 9s             rcl 9s
+5005    663777     rcl 9s             rcl 9s
+5006    423224     sub 3224           sub \scn
+5007    663777     rcl 9s             rcl 9s
+5010    663777     rcl 9s             rcl 9s
+5011    730000     ioh                ioh
+5012    724007     dpy-4000           dpy-4000
+5013    403223     add 3223           add \ssn
+5014    663777     rcl 9s             rcl 9s
+5015    663777     rcl 9s             rcl 9s
+5016    423224     sub 3224           sub \scn
+5017    663777     rcl 9s             rcl 9s
+5020    663777     rcl 9s             rcl 9s
+5021    730000     ioh                ioh
+5022    724007     dpy-4000           dpy-4000
+5023    403223     add 3223           add \ssn
+5024    663777     rcl 9s             rcl 9s
+5025    663777     rcl 9s             rcl 9s
+5026    423224     sub 3224           sub \scn
+5027    663777     rcl 9s             rcl 9s
+5030    663777     rcl 9s             rcl 9s
+5031    730000     ioh                ioh
+5032    724007     dpy-4000           dpy-4000
+5033    203237     lac 3237           lac \ssa
+5034    223240     lio 3240           lio \ssi
+5035    403223     add 3223           add \ssn
+5036    663777     rcl 9s             rcl 9s
+5037    663777     rcl 9s             rcl 9s
+5040    423224     sub 3224           sub \scn
+5041    663777     rcl 9s             rcl 9s
+5042    663777     rcl 9s             rcl 9s
+5043    730000     ioh                ioh
+5044    724007     dpy-4000           dpy-4000
+5045    403223     add 3223           add \ssn
+5046    663777     rcl 9s             rcl 9s
+5047    663777     rcl 9s             rcl 9s
+5050    423224     sub 3224           sub \scn
+5051    663777     rcl 9s             rcl 9s
+5052    663777     rcl 9s             rcl 9s
+5053    730000     ioh                ioh
+5054    724007     dpy-4000           dpy-4000
+5055    403236     add 3236           add \csn
+5056    663777     rcl 9s             rcl 9s
+5057    663777     rcl 9s             rcl 9s
+5060    423234     sub 3234           sub \ssd
+5061    663777     rcl 9s             rcl 9s
+5062    663777     rcl 9s             rcl 9s
+5063    730000     ioh                ioh
+5064    724007     dpy-4000           dpy-4000
+5065    403223     add 3223           add \ssn
+5066    663777     rcl 9s             rcl 9s
+5067    663777     rcl 9s             rcl 9s
+5070    423224     sub 3224           sub \scn
+5071    663777     rcl 9s             rcl 9s
+5072    663777     rcl 9s             rcl 9s
+5073    730000     ioh                ioh
+5074    724007     dpy-4000           dpy-4000
+5075    403223     add 3223           add \ssn
+5076    663777     rcl 9s             rcl 9s
+5077    663777     rcl 9s             rcl 9s
+5100    423224     sub 3224           sub \scn
+5101    663777     rcl 9s             rcl 9s
+5102    663777     rcl 9s             rcl 9s
+5103    730000     ioh                ioh
+5104    724007     dpy-4000           dpy-4000
+5105    403223     add 3223           add \ssn
+5106    663777     rcl 9s             rcl 9s
+5107    663777     rcl 9s             rcl 9s
+5110    423224     sub 3224           sub \scn
+5111    663777     rcl 9s             rcl 9s
+5112    663777     rcl 9s             rcl 9s
+5113    730000     ioh                ioh
+5114    724007     dpy-4000           dpy-4000
+5115    403223     add 3223           add \ssn
+5116    663777     rcl 9s             rcl 9s
+5117    663777     rcl 9s             rcl 9s
+5120    423224     sub 3224           sub \scn
+5121    663777     rcl 9s             rcl 9s
+5122    663777     rcl 9s             rcl 9s
+5123    730000     ioh                ioh
+5124    724007     dpy-4000           dpy-4000
+5125    243237     dac 3237           dac \ssa
+5126    323240     dio 3240           dio \ssi
+5127    403235     add 3235           add \ssc
+5130    663777     rcl 9s             rcl 9s
+5131    663777     rcl 9s             rcl 9s
+5132    423233     sub 3233           sub \csm
+5133    663777     rcl 9s             rcl 9s
+5134    663777     rcl 9s             rcl 9s
+5135    730000     ioh                ioh
+5136    724007     dpy-4000           dpy-4000
+5137    403235     add 3235           add \ssc
+5140    663777     rcl 9s             rcl 9s
+5141    663777     rcl 9s             rcl 9s
+5142    423233     sub 3233           sub \csm
+5143    663777     rcl 9s             rcl 9s
+5144    663777     rcl 9s             rcl 9s
+5145    730000     ioh                ioh
+5146    724007     dpy-4000           dpy-4000
+5147    403235     add 3235           add \ssc
+5150    663777     rcl 9s             rcl 9s
+5151    663777     rcl 9s             rcl 9s
+5152    423233     sub 3233           sub \csm
+5153    663777     rcl 9s             rcl 9s
+5154    663777     rcl 9s             rcl 9s
+5155    730000     ioh                ioh
+5156    724007     dpy-4000           dpy-4000
+5157    203237     lac 3237           lac \ssa
+5160    223240     lio 3240           lio \ssi
+5161    403236     add 3236           add \csn
+5162    663777     rcl 9s             rcl 9s
+5163    663777     rcl 9s             rcl 9s
+5164    423234     sub 3234           sub \ssd
+5165    663777     rcl 9s             rcl 9s
+5166    663777     rcl 9s             rcl 9s
+5167    730000     ioh                ioh
+5170    724007     dpy-4000           dpy-4000
+5171    403223     add 3223           add \ssn
+5172    663777     rcl 9s             rcl 9s
+5173    663777     rcl 9s             rcl 9s
+5174    423224     sub 3224           sub \scn
+5175    663777     rcl 9s             rcl 9s
+5176    663777     rcl 9s             rcl 9s
+5177    730000     ioh                ioh
+5200    724007     dpy-4000           dpy-4000
+5201    403223     add 3223           add \ssn
+5202    663777     rcl 9s             rcl 9s
+5203    663777     rcl 9s             rcl 9s
+5204    423224     sub 3224           sub \scn
+5205    663777     rcl 9s             rcl 9s
+5206    663777     rcl 9s             rcl 9s
+5207    730000     ioh                ioh
+5210    724007     dpy-4000           dpy-4000
+5211    423231     sub 3231           sub \scm
+5212    663777     rcl 9s             rcl 9s
+5213    663777     rcl 9s             rcl 9s
+5214    423232     sub 3232           sub \ssm
+5215    663777     rcl 9s             rcl 9s
+5216    663777     rcl 9s             rcl 9s
+5217    730000     ioh                ioh
+5220    724007     dpy-4000           dpy-4000
+5221    640005     szf 5              szf 5
+5222    605226     jmp 5226           jmp . 4
+5223    243225     dac 3225           dac \sx1
+5224    323226     dio 3226           dio \sy1
+5225    602531     jmp 2531           jmp sq6
+5226    760005     clf 5              clf 5
+5227    203231     lac 3231           lac \scm
+5230    761000     cma                cma
+5231    243231     dac 3231           dac \scm
+5232    203232     lac 3232           lac \ssm
+5233    761000     cma                cma
+5234    243232     dac 3232           dac \ssm
+5235    203233     lac 3233           lac \csm
+5236    223234     lio 3234           lio \ssd
+5237    243234     dac 3234           dac \ssd
+5240    323233     dio 3233           dio \csm
+5241    203235     lac 3235           lac \ssc
+5242    223236     lio 3236           lio \csn
+5243    243236     dac 3236           dac \csn
+5244    323235     dio 3235           dio \ssc
+5245    604527     jmp 4527           jmp c2m</pre>
+<p>&nbsp;</p>
+
+<p>The actual advance over the outline data for each of the spaceships can also be investigated in the <a href="#spacewar_outlines">illustration</a> at the top of this page.</p>
+
+<p>In case you would have cleared your <em>internal program flag 5</em> and would be skipping this full loop, there's no more left, but to resort to a final &quot;Stay tuned &hellip;&quot;</p>
+<p>&nbsp;</p>
+<p class="noindent"><span class="author">Norbert Landsteiner</span><br />
+Vienna, July 2014<br />
+<a href="https://www.masswerk.at/" target="_top">www.masswerk.at</a></p>
+<p>&nbsp;</p>
+<p class="noindent"><em>In case you would have found any errors or inconsistencies, or would have additional information,<br />please <a href="https://www.masswerk.at/contact.php">contact me</a>.</em></p>
+<p class="endex">*****</p>
+
+<p class="noindent"><span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9664;</span> Previous: &nbsp; <a href="insidespacewar-pt3-objects.html">Part 3: Objects!</a><br />
+<span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9654;</span> Next: &nbsp; <a href="insidespacewar-pt5-ships.html">Part 5: Maneuvering in Space</a><br /><br />
+<span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9650;</span> Back to the <a href="./">index</a>.</p>
+
+</article>
+
+<section id="related">
+	<p>References / Related Links:</p>
+	<ul>
+		<li><a href="https://www.masswerk.at/spacewar/sources/spacewar3.1_complete.txt">Spacewar! 3.1 source code</a> (PDP-1, Macro assembler code)</li>
+		<li><a href="https://www.masswerk.at/spacewar/SpacewarOrigin.html">&quot;The Origin of Spacewar&quot; by J. M. Graetz</a> (redacted copy, incl. additional text and images)</li>
+		<li><a href="pdp1-instructions.html" target="_blank">PDP-1 Instruction List</a> (opens in a new window)</li>
+		<li><span style="font-family:sans-serif; font-size: 80%;color: #555;">&#9654;</span> <a href="https://www.masswerk.at/spacewar/" title="Play Spacewar! online">Play Spacewar! online</a> (html5 emulation of a PDP-1 running Spacewar!)</li>
+	</ul>
+	<p>&nbsp;</p>
+	<p>&lt;<a href="https://www.masswerk.at/" target="_top">www.masswerk.at</a>&gt;</p>
+</section>
+
+</body>
+</html>

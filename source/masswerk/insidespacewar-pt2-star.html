@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<title>Inside Spacewar! &mdash; Part 2: To Draw a Star</title>
+	<meta name="description" content="A software archeological approach to Spacewar!, the first digital video game. Part 2: To Draw a Star" />
+	<meta name="keywords" content="Spacewar!,Spacewar! 1962,PDP-1,Gravitational Star,software archeology,computer history,DEC Type 30 display" />
+	<meta name="format-detection" content="telephone=no" />
+	<link rel="stylesheet" href="insidespacewar.css" type="text/css" />
+	<link href="https://fonts.googleapis.com/css?family=Lato:300" rel="stylesheet" type="text/css" />
+	<link rel="shortcut icon" type="image/x-icon" href="../favicon-bw.ico" />
+	<script type="text/javascript" src="instructionlist.js"></script>
+	<script type="text/javascript" src="layoutselector.js"></script>
+</head>
+<body>
+
+<article id="main">
+<a href="./" title="Inside Spacewar! &mdash; Index" class="indexLink">Go to the Index</a>
+<h1>Inside Spacewar!<br />Part 2: To Draw a Star</h1>
+
+<div class="top_nav"><a href="insidespacewar-pt1-ep.html">Prev. <span style="font-family:sans-serif; font-size: 80%;">&#9664;</span></a>
+&mdash;
+<a href="insidespacewar-minskytron-hyperspace.html"><span style="font-family:sans-serif; font-size: 80%;">&#9654;</span> Next</a></div>
+
+<p class="page_toc">(<a href="#main">Introduction</a> &middot; <a href="#thecode">The Code</a> &middot; <a href="#whodoneit">To Catch a Coder &ndash; A Who Done It on the PDP-1</a> &middot; <a href="#swapping_myths">Swapping Myths</a> &middot; <a href="#star_code">The Code, Again</a> &middot; <a href="#twin_stars">The Mystery of the Twin Stars</a>)</p>
+
+<p class="noindent">In the second part of this software archeological approach to Spacewar!, the earliest known digital video game, we're going to inspect the second of the celestial apparitions on Spacewar!'s screen, the <em>gravitational star</em> at its very center. (An investigation of Peter Samson's &quot;Expensive Planetarium&quot;, drawing the background starfield, may be found in the <a href="insidespacewar-pt1-ep.html">first part</a> of this series.)</p>
+
+<figure id="spacewar_screen" class="img"><img src="images/spacewar-emulation.jpg" width="555" height="555" alt="Spacewar! (Emulation)" style="padding: 14px;" /><p>The gravitational star at the very center of Spacewar!'s concentric setup (Emulation, Spacewar! 3.1)<br />Credits: Norbert Landsteiner 2014</p></figure>
+
+<p>BTW: <span style="font-family:sans-serif; font-size: 80%;color: #555;">&#9654;</span> You can <a href="https://www.masswerk.at/spacewar/" target="_top" title="Play the original Spacewar! in a JS/HTML5 emulator of a PDP-1"> play here</a> the original code of Spacewar! running in an emulation.</p>
+
+
+<p>While just a single short spinning line, the gravitational star (or the <em>heavy star</em>, or just <em>the Star</em>, sometimes also called <em>the sun</em>), was maybe the most important visual element of Spacewar!. In order to understand this, we have to recall the actual setup, in which the game would have been experienced: While the PDP-1's scope, the DEC Type 30 CRT display (initially named <em>&quot;Type 30 Visual CRT Display&quot;</em>, but soon called the <em>&quot;Type 30 Precision CRT Display&quot;</em>) would paint any content on a perfectly square display area, it exposed a circular tube, which was contained in a distinctive hexagonal housing. A concentric layout that would be further emphasized by the circumference of the bright metal border of the central extrusion of its bezel. Further, the Type 30 CRT featured a P7 compound phosphor that sported dual characteristics, a bright blue activation and a long sustain in a dimm yellowish green, which would provide for the iconic trails that were drawn by any moving objects. (P7 phosphor was a characteristic feature of the <a href="http://en.wikipedia.org/wiki/Plan_position_indicator" target="_blank">PPI scopes</a> of mechanical scan radar &mdash; which had also been the original purpose of the Type 30 CRT's tube.)</p>
+
+<figure id="spacewar_watching" class="img"><img src="images/dec_pdp-1_people_watching_spacewar.jpg" width="500" height="364" alt="People watching Spacewar! on a PDP-1 (DEC/CHM)" /><p>The wonders of Spacewar! on a DEC PDP-1's Type 30 CRT display.<br />Credits: Publicity photograph; Computer History Museum (CHM), Catalog No <a href="http://www.computerhistory.org/collections/catalog/102652458" target="_blank">102652458</a></p></figure>
+
+<p>This essentially concentric setup was echoed by the game itself: Emphasized by the fading trails, the ships would be drawn by gravity to the very center, just to explode in a pictoresque cloud of pixel-dust, or would swirl around the center thanks to the wonders of Netwon's law. And in the very midst of it, there would be the Star, not just a bare line, but a mysterious bunch of fading, pulsating, spinning flashes, quite like a magic eye, the very embodiment of the natural magic of gravity, Spacewar!'s governing feature of game play, &mdash; by this providing both a visual focus and the very glue between the game's appearance and its internal mechanics. Reason enough to make this a prominent number two in our journey through the realms of Spacewar! code.</p>
+
+<p>As usual, before providing some actual code, we'll include the standard credits first, which are also providing some important historical data:</p>
+
+<blockquote>Spacewar! was conceived in 1961 by Martin Graetz, Stephen Russell, and Wayne Wiitanen. It was first realized on the PDP-1 in 1962 by Stephen Russell, Peter Samson, Dan Edwards, and Martin Graetz, together with Alan Kotok, Steve Piner, and Robert A Saunders. Spacewar! is in the public domain, but this credit paragraph must accompany all distributed versions of the program.</blockquote>
+
+<h2 id="thecode">The Code</h2>
+
+<p>The code for drawing the gravitational star is to be found near the end of the first of the two main parts of Spacewar! (the &quot;library part&quot;), just between the code of Dan Edwards' outline compiler for displaying the spaceships and Peter Samson's Expensive Planetarium. (As usual, we are referring to version 3.1.)</p> 
+
+<pre>/display a star
+
+define
+	starp
+	add \bx
+	swap
+	add \by
+	swap
+	ioh
+	dpy-4000
+	terminate
+
+blp,	dap blx		/star
+	szs 60
+	jmp blx
+	random
+	rar 9s
+	and (add 340
+	spa
+	xor (377777
+	dac \bx
+	lac ran
+	ral 4s
+	and (add 340
+	spa
+	xor (377777
+	dac \by
+	jsp bpt
+	ioh
+blx,	jmp .
+
+bpt,	dap bpx
+	random
+	sar 9s
+	sar 5s
+	spa
+	cma
+	sal 3s
+	add (bds
+	dap bjm
+	cla cli clf 6-opr-opr
+	dpy-4000
+bjm,	jmp .
+bds,	repeat 20, starp
+	szf 6
+bpx,	jmp .
+	stf 6
+	cma
+	swap
+	cma
+	swap
+	jmp bjm</pre>
+
+<p>This would be called at the end of the main loop of the program, in the second line of this short piece of code, just after calling the Expensive Planetarium to draw the background:</p>
+
+<pre>mq3,	background	/ display stars of the heavens
+	jsp blp		/ display massive star
+	count \mtc, .	/ use up rest of time of main loop
+	jmp ml0		/ repeat whole works</pre>
+
+<p>Further, the code above makes use of two macro definitions, one to be found in the common MIT macros (<code>swap</code>), the other (<code>random</code>) being defined near the top of the first part of Spacewar!:</p>
+
+<pre>	define swap
+	rcl 9s
+	rcl 9s
+	term</pre>
+
+<pre>	define
+random
+	lac ran
+	rar 1s
+	xor (355670
+	add (355670
+	dac ran
+	term</pre>
+
+<p>where the location labeled <code>ran</code> (used by macro <code>random</code>) is located prominently at the end of the heading table of &quot;constants&quot; (at the octal address <code>31</code>):</p>
+
+<pre>ran, 31,	0	/ random number</pre>
+
+<p class="noindent"><em>(For the basics of PDP-1 instructions and Macro assembler code, please refer to <a href="insidespacewar-pt1-ep.html#instructions">part 1</a>. We'll repeat the semantics of the instructions as we're encountering them.)</em></p>
+
+<h2 id="whodoneit">To Catch a Coder &mdash; A Who Done It on the PDP-1</h2>
+
+<p>Before actually diving into the code, there are some things which can be addressed at a more general level before. The most thrilling one of these is probably the question, who actually was the contributor of this piece of code. Like the &quot;Expensive Planetarium&quot;, we've seen before, this is quite an isolated piece of logic, and it's in the same part of the listings, directly neighboring other pieces of code that could be qualified as &quot;contributions&quot;. So, who was it?</p>
+
+<p>We can tell at first sight that this is not another contribution by Peter Samson, whom we met before. It's in a totally different coding style. So, could this be a piece by Steve Russell? Hardly. Steve Russell is generally showing himself as a master of tables and vectorized approaches all over the code. This shouldn't be of much suprise, since this is the same Steve Russell who made Lisp an actual programming language, rather than just the mathematical notation it was before. It's true, there's some kind of an vectorized approach in this code, too, namely the part actually drawing the line by a table of commands rather than by a loop (we'll see later), but it's not really Russell's style. Also, there's this outcoupled code in a macro, a thing we never see in those parts of the code that can be attributed to Steve Russell without doubt. The parts closest in style are the outline compiler for drawing the spaceships (located in the listing immediately before this) and the code for calculating the gravity. We know from the writings of J.M. Graetz that these were done by Dan Edwards, who was also the &quot;heavy numbers&quot; guy of the Hingham Institute Study Group on Space Warfare. (We know of Steve Russell's reluctance on this side of the job, who didn't feel like doing numerical analysis &mdash; <em>&quot;I pleaded innocence of numerical analysis and other things&quot;</em> &mdash; and Dan Edwards was the man to the rescue.) For this, the parts by Dan Edwards are also exhibiting, what may be called the densest logic to be found in any of the parts of Spacewar!. And in deed, this piece of code is showing some similarities to the one of the outline compiler. But we're left with very few display code that could be attributed to Steve Russell exclusively, so there isn't much for comparison. Also, before there was the outline compiler, there would have been probably some kind of an outline interpreter, presumingly by Steve Russsell, and there might be traces left in the code of compiler. But there's an instruction that could turn into some evidence for the authorship of Dan Edwards on the star drawing code, nameley the &quot;<code>dpy-4000</code>&quot; instruction, followed by an &quot;<code>ioh</code>&quot;, a construct which is ocurring else only in the outline compiler directly above.</p>
+
+<h3 id="dpy-400">The Ominous <code>dpy-4000</code> Instruction</h3>
+<p>The PDP-1's <code>dpy</code> instruction, used for displaying a dot on its scope, was one of the most complex one that could be deployed in numberous ways. This was owed to the concept of a single <code>iot</code> <em>(i/o transfer)</em> instruction that would manage all in- and output passing from the PDP-1 to any peripheral device or back from these into the computer respectively. The two lowest nibbles (the two lowest octal numbers representing bits 12-17) would specify the device and the two middle one (bits 6-11) would be used to pass any parameters to the device. The presence of the <code>i</code>-bit (bit 5) would instruct the computer to pass a signal to the device that would demand a <em>completion signal</em> to be sent back to it as soon as the device had finished the task. With some commands, the computer would halt and wait for the device to send the signal, with others, the program was expected to check and clear this signal by an &quot;<code>iot i</code>&quot; instruction (commonly referred to as <code>ioh</code>, octal <code>730000</code>) anywhere in the following code. In case the device would have returned the completion signal at this time, this would be without effect to the program. But, if the device wouldn't have returned the signal yet, the computer would halt its operations to wait for the signal to be returned.</p>
+
+<p>As for the <code>dpy</code> instruction, this was encoded in the Macro assembler including the <code>i</code>-bit. For this, there are two distinctive flavors of the basic <code>dpy</code> instruction: &quot;<code>dpy -i</code>&quot;, octal <code>720007</code>, and the bare <code>dpy</code> instruction, octal <code>730007</code>. With &quot;<code>dpy-i</code>&quot; displaying a dot was essentially a <em>fire and forget</em> operation &mdash; issue the command and the display will do all the rest. But with the <code>i</code>-bit set, the computer would halt and wait for the completion pulse, returned by the Type 30 CRT display approx. 50 microseconds later (at which point any input from the light pen would have been processed, too). Waiting for the display to have actually activated the dot made sense for an interactive application using the light pen, else it was generally recommended to use the &quot;<code>dpy -i</code>&quot; instruction (or the synonymous &quot;<code>iot 7</code>&quot;).</p>
+
+<p>As for the 6 control bits (or <em>x-bits</em>) passed to the display, there is suprisingly few documentation on the actual workings of the <code>dpy</code> instruction. (Which is really startling, given that the DEC manuals and documentations were of a quality that was setting standards for the whole industry.) In fact, we have to fast-forward to August 1968, until we may find an extensive memo <a href="https://archive.org/details/bitsavers_mitrlepdp1aug68_4111482" target="_blank">&quot;PDP-35 / PDP-1 Instruction List&quot;</a> <cite>(DEC, Aug 1968)</cite> and as far as September 1971 &mdash; a full decade after the release of the machine &mdash; for a revised version of this memo, namely <a href="https://archive.org/8/items/bitsavers_mitrlepdp1_894137/pdp35-2_sep71.pdf" target="_blank">&quot;PDP-35-2 / PDP-1 Instruction Manual / Part 3 -- iot Operated I/O Devices&quot;</a> <cite>(DEC, Sep 1971)</cite>, for some definitive information. And this is, was the revised memo <cite>(PDP-35-2, pt. 3, p.5)</cite> has to say on the <code>dpy</code> instruction regarding the x-bits and the i-bit:</p>
+<blockquote class="code">The dpy instruction (73cb07) causes one point to be displayed on the scope. (...) The three &quot;b&quot; bits control the brightness -- 4 is visible to photomultiplier tubes only, 7 is barely visible in a dark room, 0 is normal, and 3 is brightest. The &quot;c&quot; bits control the centering. 0 makes the origin in the center of the scope. 1 puts it at a the center of the bottom edge. 2 makes the origin be half way up the left edge, while 3 puts it at the lower left corner.<br /><br />
+A dpy (that is with the i-bit on) takes 50 microseconds to complete. dpy-i (iot 7) does not wait for the scope to complete. Since it is impossible to activate the scope too fast, one normally executes iot 7 instructions. This allows the program to continue while the scope is running.</blockquote>
+
+<p>So, what does this mean for deciphering &quot;<code>dpy-4000</code>&quot;? As we already <a href="insidespacewar-pt1-ep.html#macro">know</a>, the Macro assembler was simply adding up all expressions in a line to make the resulting instruction code. For this, &quot;<code>dpy-4000</code>&quot; is &quot;<code>730007-4000</code>&quot; or <code>724007</code>, or, in other words: no <code>i</code>-bit, a <code>4</code> in the <code>c</code>-bits, and a <code>0</code> for the default brightness in the <code>b</code>-bits. Since only the two lower bits of the <code>c</code>-bits are of relevance, this should be whithout any effect on the centering, and for all we know, this should be just a rather extravagant way of issuing a &quot;<code>dpy-i</code>&quot; or <code>720007</code> instruction. Emprically we know that &quot;<code>dpy-4000</code>&quot; has no effect on the origin of the display, since the gravitational star is displayed at the center of the screen. But we also know from empirics that this instruction is causing the display to return a completion pulse, otherwise the following &quot;<code>ioh</code>&quot; would cause the machine to halt and wait for ever and there would not be a Spacewar! at all.</p>
+
+<p>But, we may ask, why is this construct using <code>ioh</code> at all, since the computer would either be waiting just after having sent the command to the display (as with the <code>i</code>-bit set) or would commence and ignore the display (as without the <code>i</code>-bit) &mdash; at least, based on what the documentation is telling?</p>
+
+<p>To our rescue, there is the arcane  <a href="http://www.bitsavers.com/pdf/dec/pdp1/F25_PDP1_IO.pdf" target="_blank">&quot;PDP-1 Input-Output Systems Manual (Preliminary Manual)&quot;</a> <cite>(FP-25, DEC, date unknown)</cite>, providing finally specific information on bit 6, set by &quot;<code>dpy-4000</code>&quot;. While there isn't much information specific to the usage of the x-bits regarding the <code>dpy</code> instruction in the Preliminary Manual, it makes a more general statement <cite>(FP-25, p.8)</cite> on the combined usage of bits 5 and 6 with the <code>iot</code> instruction, a usage that appears to be specific to the various tape commands in later manuals:</p>
+
+<pre><em><u>TABLE I</u>
+In-Out Transfer       Wait for Completion Pulse     Enable/Disable-
+Command Bits          for Restart/Continue          Completion (Done
+5         6           without wait                  Pulse Signal
+&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;&ndash;
+
+0         0           Continue, no wait             Disable
+0         1           Continue, no wait             Enable
+1         0           Wait, then continue           Enable
+1         1           Wait, then continue           Disable
+
+
+   Bits 5 of the in-out transfer command designates whether the program
+is to wait for a completion pulse before continuing. The exclusive
+or of bits 5, 6 of the command specify whether the completion pulse
+return signal is to be enabled or disabled.</em></pre>
+
+<p>A bit later, the Preliminary Manual provides a small demonstration program for the use of the display instruction, including the following lines to draw a line from inside a loop (comments are here started by comma):</p>
+<pre>loop	730000	,dummy - halt till previous completion
+	724007	,display a point/computer proceeds
+	...</pre>
+<p>This is followed by the commenting statements <cite>(FP-25, p.9)</cite>,</p>
+<blockquote class="code">(...) The program commands a point to be displayed, (without disabling the completion pulse), proceeds with the calculations, then finally gives a syncronizing &quot;wait&quot; instruction which synchronizes the display.<br /><br />
+The only case not included above, but mentioned in Table I, is the case of bits 5 and 6 both zero. Here, the program does not halt the and the completion pulse of the device is enabled. Thus, the program must only refrain from giving the display commands too frequently.<br /><br />
+The technique of inhibiting completion is used when several devices are operating concurrently. The inhibit command completion is used with the sequence break system.</blockquote>
+<p>So, finally, we know by definition what the &quot;<code>dpy-4000</code>&quot; / &quot;<code>ioh</code>&quot; construct is doing and where this pattern of usage originated, even, if the Preliminary Manual isn't in line with later documention regarding recommendations on general usage.</p>
+<p><em>Note: A careful reader may have observed an inconsistency in the specs as provided in the Preliminary Manual, <nobr>Table I</nobr>: An instruction <code>734007</code> with both bits 5 and 6 set, would cause the computer to halt and wait, but would not command the display to return a completion pulse &mdash; a PDP-1 equivalent to &quot;<code>halt and catch fire</code>&quot; (but without actually burning any circuits).</em></p>
+
+<p class="endex">*****</p>
+
+<p>But &mdash; wait &mdash; isn't this just vasting some precious CPU-cycles, waiting to synchronize, here, where there is no light pen involved at all? At least, in the light of later documentation, recommending a &quot;<code>dpy-i</code>&quot; in general, as used elsewhere in the Spacewar!-code?</p>
+
+<p>In order to provide an answer to this, we have to dig a little deeper, right to the dirty, noisy low levels of analog equipment. The Type 30 CRT display was some serious piece of hardware that was operating on a considerable speed: &quot;Discrete points may be plotted in any sequence at a 20 kilocycle rate (one point every 50 microseconds).&quot; <cite>(DEC brochure &quot;Precision CRT Display / Type 30&quot;, F-13(30) 5/64, DEC, 1964, p. 2)</cite>. In order to do so, it had to drive high voltages to position the magnetic deflections at the required speed and at some accuracy (+/- 3% of the raster size), and this had some serious effects (not at least to the price, as the Type 30 CRT came at USD 35,000 &mdash; more than a quater of the price of a standard PDP-1 &mdash;, but also, the manual is unmistakable in its warning not to ever operate the scope without its cooling fans on, since this would inevitably burn its expensive deflection circuits).</p>
+<p>Investigating the maintenance manual <a href="http://bitsavers.trailing-edge.com/pdf/dec/graphics/Type_30E_Precision_CRT_Display_Dec63.pdf" target="_blank">&quot;Precision CRT Display / Type 30E&quot;</a> <cite>(F-15(30E) DEC, Dec. 1963)</cite>, which is in fact covering the types 30A, 30E and 30M, we find the following details on the display procedure: The display would take a digital signal, would convert the 10-bit coordinates to analog levels to drive the magnetic deflectors to position the beam, would decode the brightness information to the accurate analog level, and would then open its gates to fire (unblank) its cathode beam for a precise 10 microseconds to activate a spot of 0.015 inches size at the front facing phospor, followed by the DDP <em>(Display Done Pulse)</em> pulse, triggering any completion signal. Since we're dealing with analog processes, altering the display location equaled to a step in analog address voltage, and, with the voltage levels involved, the abrupt change would cause some ringing in the deflection coils, resulting in an oscillation of the intensified spot. In order to address this, the deflection coils were damped by a compensation network circuit. But this would not stabilize the final output value used to address the beam completely, rather, it would purposely overshoot the address by a fixed amount or undershoot it by a quantity that was dependant on the previous address value. (This was due to the coupling of the focus coils and the deflection coils, resulting in a bit of hysteresis.) The manual even provides a timing diagram, giving the characteristics of the compensation network:</p>
+
+<figure id="dec_type30_timing" class="img"><img src="images/dec_type30-compensation.gif" width="460" height="435" alt="DEC Type 30 display - compensation timing diagram" /><p>DEC Type 30 CRT display deflection compensation characteristics</p></figure>
+
+<p>We may assume that this might have had some effect, when it came to drawing the tiny line segements of the spaceships that were drawn in rapid succession in some sharp angles to produce the outlines. It would have made some sense for the code produced by the outline compiler to wait in order to allow the compensation circuits to cool and to get the most accurate image of the tiny spaceships by avoiding the uncertainty of the over- and undershoots. At least, this is the only reason, I could think of, for using the combined &quot;<code>dpy-4000</code>&quot; and &quot;<code>ioh</code>&quot; instructions. (Further, I would have to stress that this is an assumption based on an interpretation of the manual only.) But, as for the code drawing the star, which is advancing the beam at a constant speed in a constant direction most of the time (as we'll see), this wouldn't have much effect. Also, there are some instructions in between the <code>dpy</code> and the <code>ioh</code> and this wouldn't cause much of an extra delay (in fact about 10 microseconds). So, regarding the star-code, it's much more like a friendly idiosyncrasy of the code, and, while being based on early documentation, much more on the style side than on the functional side, making this a first class evidence in our case.</p>
+
+<p>(Opposed to the above attempt to explain this usage, we may argue that the deflection coils would have been loaded anyway, regardless of how much time was passing between display commands, and that the timing of the compensation network would rather give the reason for the maximum display rate of 50 microseconds or 20,000 dots a second. But, at least, there would have been <em>some</em> reason for the Preliminary Manual recommending to control the rate of display commands. If this wasn't related to through-put &mdash; <em>&quot;it is impossible to activate the scope too fast&quot;</em> &mdash;, it would have probably been related to performance. Anyway, we may conclude that the author of the outline-compiler and of the star-display was referring to the Preliminary Manual and the others weren't neccessarily doing so.)
+
+<p><em>EDIT:</em> On second thought, what does, <em>&quot;it is impossible to activate the scope too fast&quot;,</em> really mean? Sure, it means you can't ruin the display, but what will happen to the dots to be drawn? Since there's no notion of any I/O buffers for the display, firing <code>dpy</code> instruction in rapid succession would probably mean skipping those display commands that were executed while the display was still busy. Thus the construct <code>dpy-4000</code> &mdash; <code>ioh</code> would make sure that all the dots would be actually drawn. (And thanks to the timing diagram above, we also know, why we would have to wait.)<br />But, according to latest informations, the display is just likely to be blurry, when addressed too fast, due to the ringing of the deflection coils.</p>
+
+<h3 id="whodoneit_conclusions">Conclusions</h3>
+
+<p>So, returning to our <em>Who Done It,</em> was it Peter Samson in the library using the candle stick? No way. (See his use of &quot;<code>dpy-i</code>&quot;.) Was it Steve Russell in the conservatory using the wrench? Probably not. (In the few places, where Steve Russell's code is issuing display commands, it makes use of a macro resulting in the insertion of a &quot;<code>dpy-i</code>&quot; instruction.) So, was it Dan Edwards using the Flexowriter in the Kluge Room? Quite plausible. (Various parallels to the outline compiler code and especially the use of the &quot;<code>dpy-4000</code>&quot; &ndash; &quot;<code>ioh</code>&quot; construct render him the prime suspect.) &mdash; That much about our Code-Cluedo.</p>
+<p>&nbsp;<br />Incidentially, our findings are seconded by an article in <em>MIT Technology Review</em> from June 2005 by Corie Lock:</p>
+<blockquote>Dan Edwards programmed a sun in the middle of the screen that exerted gravitational pull on the ships.<br /><em class="cite">(Lock, Corie, <a href="http://www.technologyreview.com/article/404233/the-start-of-computer-games/!" target="_blank">&quot;The Start of Computer Games&quot;</a>, MIT Technology Review, 1 June 2005)</em></blockquote>
+<p>But most of the information provided in this article seems to be drawn from the writings of J.M. Graetz &mdash; and these are apparently addressing the code for calculating gravity only:</p>
+<blockquote>This star has a strong effect (which approximates gravitation) on the two spaceships. The program for this was also written by Daniel Edwards. In the final version of SPACEWAR! he is going to provide an improved integration to eliminate some of the more unexpected, albeit interesting, properties of the &quot;heavy star.&quot;<br /><em class="cite">(Graetz, J.M., <a href="https://www.masswerk.at/spacewar/decus1962/">&quot;Spacewar! Real-Time Capability of the PDP-1&quot;</a>, Decus Proceedings 1962)</em></blockquote>
+<p>(The &quot;final version&quot; containing a new code for gravity advertised in this passage would eventually be Spacewar! 4.0.)</p>
+
+<p class="noindent">In <a href="https://www.masswerk.at/spacewar/SpacewarOrigin.html">&quot;The Origin of Spacewar&quot;</a> <em>(Creative Computing, 1981)</em> J.M. Greatz provides some details on the social interaction involved:</p>
+<blockquote>Russell: &quot;Dan Edwards was offended by the plain spaceships, and felt that gravity should be introduced. I pleaded innocence of numerical analysis and other things&quot; &mdash; in other words, here's the whitewash brush and there's a section of fence&mdash; &quot;so Dan put in the gravity calculations.&quot;<br /><br />
+The star blazed forth from the center of the screen, its flashing rays a clear warning that it was not to be trifled with. Its gravity well encompassed all space; no matter where you were, if you did not move you would be drawn into the sun and destroyed. (As a gesture of good will towards less skillful or beginning players, a switch option turned annihilation into a sort of hyperstatial translation to the &quot;anti-point,&quot; i.e., the four corners of the screen.)</blockquote>
+<p>At least, J.M. Graetz isn't that clear, if this contribution by Dan Edwards would have also included the display code, or would merely have been the code for the influence of gravity on the spacships. With a bit of conservative caution, we'll have to admit, that there might have been some generalization involved in the <em>MIT Technology Review's</em> account, suggesting that Dan Edwards would have done <em>all</em> the coding related to the sun.</p>
+
+<p>In fact, the part in the  <em>MIT Technology Review</em> appears to be a rephrasing of a passage in Steven Levy's &quot;Hackers &ndash; Heros of the Computer Revolution&quot; (1984/2010, p.53):</p>
+<blockquote>Another programmer named Dan Edwards was dissatisfied with the unanchored movement of the two dueling ships. It made the game merely a test of motor skills. He figured that adding a gravity factor would give the game a strategic component. So he programmed a central star a sun in the middle of the screen; you could use the sun's gravitational pull to give you speed as you circled it, but if you weren't careful and got too close, you'd be drawn into the sun. Which was certain death.</blockquote>
+<p>Again, we might not be too sure about this, especially, if this would be based solely on the writings of J.M. Graetz. Without knowledge of any additionaly sources, we would have to consider to stick to a conservative view.</p>
+
+<p>So, in conclusion, is there hard evidence of Dan Edward being the author of this piece of code?<br />To quote the authors of Spacewar!, <em>*mumble*.</em><br /><cite>(Various sources, originally regarding the absence of any influence of gravity on the torpedoes.)</cite><br />But we may put on record that a comparative reading of the source is at least suggesting it.</p>
+
+<h3 id="update_apr2021">Update, April 2021</h3>
+<p>Dan Edwards recounted at the <a href="https://invention.si.edu/about/events/innovative-lives-pioneers-spacewar" target="_blabk" rel="noopener">Smithsonian presentation</a> on the occasion of the Spacewar! team recieving the AIAS Pioneer Award on November 29, 2018:</p>
+<blockquote>As I looked at the game essentially it had this star in the middle, while it had no effect on the gameplay itself. I thought it would be better to use that to provide the gravity and put something out of the immediate, direct control of the game player (&hellip;)</blockquote>
+<p>So there was a central star quite early on, before gravity had been introduced to the game. However, it had been added for purely aesthetic reasons, as a perfect ornament!</p>
+<h3 id="update_may2021">Update, May 2021</h3>
+<p>Moreover, according to Peter Samson, the central star was created by Don Eastlake (citing Don Eastlake as the source). Steve Russell, on the other hand, recalls that he and <em>&ldquo;and many other people tinkered with the star and the explosions to make them better&rdquo;</em>, and would <em>&ldquo;hesitate to ascribe authorship to an one person, but happy to accept all as contributors.&rdquo;</em></p>
+<p>Personally, I think, considering the persons involved, when these had been admitted to MIT (Spacewar had been conceived and programmed before this), and the rather basic design of that star given in the description (a composition of static lines at an angle, much like on the LINC port, for which this may have provided an example), that this may have rather been related to the PDP-4 port that happened a year later. (Notably, the PDP-4 looks much like the PDP-1 and it may be easy to confuse them.)<br />So the authorship of the central star remains a bit of a mystery.</p>
+
+<h2 id="swapping_myths">Swapping Myths</h2>
+
+<p>Another topic that might be addressed here, before jumping right into the code, which is of more general interest than just regarding to this single piece of code, is the common notion of resources being that scarce on the PDP-1 that various nifty tricks had to be employed to get the code running at all, like using the same address to contain two separate values and swapping them in and out. But there isn't any evidence for this in the actual code. The notion of swapping values is probaly due to the use of the macro <code>swap</code>, which we'll encounter here for the first time and which is frequently used in the context of display operations. (Or it might be owed to the use of other shift and rotate instructions all over the code for scaling values. Another canditate would be the code for parsing the control-input that was in deed encoded as a bit-vector. But <code>swap</code> is the prime suspect for having caused these rumors.)</p>
+
+<pre>	define swap
+	rcl 9s
+	rcl 9s
+	term</pre>
+
+<p>In order to understand this, we have to know that the PDP-1 lacked an instruction to exchange the values of the accumulator (AC) and the i/o-register (IO). Instead, it provided a set of shift and rotate instructions which coupled the two registers to form a single 36-bit register and would manipulate its conentents. &quot;<code>rcl 9s</code>&quot; rotates the contents of this meta-register 9 bits to the left (&quot;<code>9s</code>&quot; being a predefined constant representing 9 bits set, as in octal <code>777</code>). Since a rotate or shift by 9 bits in any direction was also the maximum amount, this instruction had to be repeated in order to perform a full swap of the register's contents by a 18-bits rotation. That's all what <code>swap</code> actually did, and it came handy, when there would have been any arithmetics to be applied to the y-coordinate of a <code>dpy</code> instruction (to be supplied in the IO register). By a swap, the registers would exchange their values and the y-value would be processed in the accumulator. Another swap would transfer it back to IO, with AC being ready to provide the x-value.</p>
+
+<h3 id="memory">PDP-1 Memory</h3>
+
+<p>So, how scarce were the resources of PDP-1 in reality? How tight were the memory conditions?<br />Let's have a look at the memory map of Spacewar! 3.1 (addresses are octal):</p>
+<pre>0000 - 0002	reserved for sequence break system
+0003        	jump vector to sequence break flush (0061)
+0004       	default start address (jump to configure to use control boxes)
+0005       	alternative start address (jump to configure to use the test-word)
+0006 - 0031	table of essential game constants (for hacking)
+0032 - 0037	free, space for patches (dedicated to alternative control input)
+0040         	instruction vector for alternative control input
+0041 - 0060	free, space for patches
+0061 - 0065	routine to flush sequence breaks
+0066 - 0155	sine-cosine subroutine
+0156 - 0245	BBN multiply subroutine
+0246 - 0305	integer square root subroutine
+0306 - 0403	BBN divide subroutine
+0404 - 0647	outline compiler
+0650 - 1127	display routine for gravitional star
+1130 - 1443	Expensive Planetarium (display routine)
+1444 - 2734	Spacewar! main code
+2735 - 2744	outline data spaceship 1
+2745 - 2751	free
+2752 - 2761	outline data spaceship 2
+2762 - 2765	free
+2767 - 3111	constants
+3112 - 3222	unused (space left by assembler)
+3223 - 3275	variables
+3276 - 3475	free, space for patches
+3476 - 3772	space reserved for the objects table
+3773 - 5245	code produced by the outline compiler goes here
+5246 - 6077	free (unused)
+6077 - 7750	Expensive Planetarium (star-map data)
+7751 - 7777	free (used by bin-loader)</pre>
+
+<p>As we can see, there's ample of free space left, about a quater of the PDP-1's standard memory of 4096 18-bit words. There's no chance of actually running low on space for the code or the various variables. Memory wasn't a tight resource, the scarce article being runtime. &mdash; There was definitely no need for spending CPU cycles on swapping operations, just to store two or more values in a single memory register. In fact, there was that much memory left that you could run another program, the <code>ddt</code> debugger, in parallel. (You would had have to configure the game to use a single outline for both of the ships by setting the contsant <code>ddd</code> to zero &mdash; as we will see in a later episode &mdash; in order to preserve some space, but it could be done.)</p>
+
+<p>In order to give some idea of the resources actually available on the PDP-1, let's compare a simple operation, as the subtraction of two values and storing the result, with the operations of an 8-bit CPU, like the late 1970s/early 1980s 6502 CPU, popular on the Apple II and (in its 6510 flavor) on the C64. To not to be unfair to the 6502, we won't go for 18 bit values, but use a real world example, like proccessing a 10-bit coordinate.</p>
+
+<p>Let's have this done by the PDP-1 (all values octal):</p>
+<pre>2000   lac 2003      / 2 cycles
+2001   sub 2004      / 2 cycles
+2002   dac 2005      / 2 cycles
+2003   507           / operand 1
+2004   412           / operand 2
+2005   0             / result</pre>
+<p>This adds up to 6 addresses in total and 6 CPU cycles at 5 microseconds, to be completed in a total of 30 microseconds.</p>
+<p>Enter the 6502 (all values hex):</p>
+<pre>$2000   lda $2013    ;3 bytes, 4 cycles
+$2003   sec          ;1 byte,  2 cycles
+$2004   sbc $2015    ;3 bytes, 4 cycles
+$2007   sta $2017    ;3 bytes, 4 cycles
+$200A   lda $2014    ;3 bytes, 4 cycles
+$200D   sbc $2016    ;3 bytes, 4 cycles
+$2010   sta $2018    ;3 bytes, 4 cycles
+$2013   $47          ;operand 1 lo-byte
+$2014   $01          ;operand 1 hi-byte
+$2015   $0A          ;operand 2 lo-byte
+$2016   $01          ;operand 2 hi-byte
+$2017   $00          ;result lo-byte
+$2018   $00          ;result hi-byte</pre>
+<p>In comparison the 6502 requires 25 memory locations for the same operations and will spend 26 CPU cycles on this, equalling (at a clock speed of 1 MHz) 26 microseconds. (Doing the same with the full 18-bit values of the PDP-1, would require a total of 37 memory locations and 38 cycles/microseconds for the 8-bit CPU.) In case we would extend the example to multiplications and divisions, the PDP-1 would be running circles around the 6502, thanks to its high-precision multiply/divide steps.</p>
+
+<p>Extrapolating this, the 4096 18-bit addresses equaled much more 17 or 18 K on a 8-bit machine than just a mere 4 K, with a runtime performance that was much like the microchips' performance. Considering the space required to maintain a bitmap (another 8K at least on the C64 at a much lower resolution, not to mention any off-screen bitmaps for a flicker-free display) and that there wasn't a ROM or any space reserved by the system, this effictively equaled like 24 - 32 K of memory (quite like the amount of RAM available to the user on the Aplle II or the C64 respectively). And as we know from the prospering video games industry of the late 70s and early 80s, this is plenty for driving a video game written in assembler code. (At least, if you know the tricks to squeeze some runtime out of the machine &mdash; and Spacewar! pioneered some of these.)</p>
+<p>This said, there was still a limiting factor, namely the time required for a display command to complete (50 &mu;sec), making tensely timed display code <em>the</em> decisive factor in Spacewar!-programming.<br />(With the costs of memory required to maintain a display bitmap then amounting to astronomic ranges, we face the classic time-versus-space dilemma on the hardware side. While the x/y point plotting displays were the obvious solution to the memory problem, they came at a price in terms of completion time for each single dot to be displayed.)</p>
+<p>Whith a <em>phew!</em> we now may have a look at the code, finally.</p>
+
+<h2 id="star_code">The Code, Again</h2>
+
+<p>Let's start with the main routine, to be called as a subroutine at label <code>blp</code>:</p>
+
+<pre>blp,	dap blx		/star
+	szs 60
+	jmp blx
+	random
+	rar 9s
+	and (add 340
+	spa
+	xor (377777
+	dac \bx
+	lac ran
+	ral 4s
+	and (add 340
+	spa
+	xor (377777
+	dac \by
+	jsp bpt
+	ioh
+blx,	jmp .</pre>
+
+<p>As usual, the code starts with a <code>dap</code> <em>(deposit AC in address part)</em> which will store the return address (placed in the contents of the accumulator by the previous jump-sub instruction) in the location labeled <code>blx</code>, leaving the instruction part (the highest 6 bits) as is. When executed, this instruction will cause a jump to the return address, what ever this might be.</p>
+
+<p>The instruction &quot;<code>szs 60</code>&quot; <em>(skip on sense switch zero)</em> conditionally skips the next instruction, if sense switch 6 (the number of the sense switch to be specified in the second lowest nibble, hence <code>60</code>) is not set. If sense switch 6 is set, the jump to <code>blx</code> immediately following to this will cause an early return. Thus, if sense switch 6 is deployed, there is no sun.</p>
+
+<p>The pseudo instruction <code>random</code> is inserting the macro with this name in place. We'll have a look at this later, the important part being that this is recalculating a 18-bit random number in location <code>ran</code> which is also left in the accumulator. The instruction &quot;<code>rar 9s</code>&quot; rotates the fresh random number in the accumulator by 9 bits to the right, and the following instruction &quot;<code>and (add 340</code>&quot; performs a logical AND with the value of the constant given in the expression &quot;<code>add 340</code>&quot; (octal value <code>400340</code>) on this.</p>
+<p>The following <code>spa</code> <em>(skip on accumulator plus)</em> skips, if the result would be positive (meaning the sign-bit in bit-0 not set). Else, the next instruction &quot;<code>xor (377777</code>&quot; will be executed, performing a logical exclusive-or by the value of the constant <code>377777</code> on this. &quot;<code>dac \bx</code>&quot; then stores the result of the previous operations in the variable <code>bx</code>.</p>
+
+<p>The next instructions load the radom number back from location <code>ran</code> to the accumulator (by &quot;<code>lac ran</code>&quot;) and repeat the operation, with the only difference of the value now being rotated 4 bits to left (by &quot;<code>ral 4s</code>&quot;) and finally being stored in the variable <code>by</code>.</p>
+<p>This is followed by the a jump to the soubroutine at label <code>bpt</code>, a final, sole <code>ioh</code> to wait for the display (apparently there's some &quot;<code>dpy-4000</code>&quot; executed at <code>bpt</code>) and exits at label <code>blx</code> with a jump to the return address.</p>
+
+<p>Let's recapitulate:</p>
+
+<p>Obviously this piece of code is preparing and scaling a random value to be used for some x- and y-value, stored in the variables <code>bx</code> and <code>by</code> respectively. The heavy work is done by the subroutine at <code>bpt</code>, and after last synchronizing by <code>ioh</code> (obviously cleaning up a pending display wait state), we're done and return.</p>
+
+<p>But how are these two factors scaled? They are not scaled by the <code>rar</code> and <code>ral</code>, these are just making sure that different parts of the same random value are used, making these independant factors. The scaling is done by the <code>and</code>. &mdash; Let's have a closer look:</p>
+
+<p>The expression &quot;<code>add 340</code>&quot; is a nifty way of saying, we're just interested in bits 10-12 (counting from the most significant bit at the left) and the sign bit. Since the bare instruction <code>add</code> is octal <code>400000</code> with only the highest bit set, it is representing the sign bit. In fact, this expression may seem arcane, but it is perfectly expressing what is meant, even better than the full numerical representation of <code>400340</code>. At least, if we would speak PDP-1-ish.</p>
+<p>So, we have reduced the random value to three bits in a somewhat odd position and preserved the sign bit. But, if the sign bit would be set, this isn't a well-formed 1's compliment negative number, as used by the PDP-1. This is, what the two following instructions are cleaning up: The instruction &quot;<code>xor (377777</code>&quot; flips all bits, but the sign bit, transforming this into a perfect negative number to be used by the PDP-1's arithmetics.</p>
+
+<p>Since we're really courious, what this factors would be for, we're quickly scanning the rest of the code for <code>bx</code> and <code>by</code> and are finding them both in the macro <code>starp</code>:</p>
+<pre>define
+	starp
+	add \bx
+	swap
+	add \by
+	swap
+	ioh
+	dpy-4000
+	terminate</pre>
+
+<p>First, the contents of <code>bx</code> is added to the value in the accumulator. Then, the macro <code>swap</code> is inserted. We know already, what this one is doing, it exchanges the values of the accumulator and the IO register. Then the value in <code>by</code> is added to the value that has previously been in the IO register and the two registers are swapped again. This is followed by the combination &quot;<code>ioh</code>&quot; &ndash; &quot;<code>dpy-4000</code>&quot;, the very combination we know from the Preliminary Manual, from the example code for drawing a line from inside a loop. The <code>ioh</code> will wait for the completion pulse following a previous &quot;<code>dpy-4000</code>&quot;, but the time passing is used to do the calculations on the two registers. The final &quot;<code>dpy-4000</code>&quot; will actually display the point, at the locations provided in bits 0-9 of the accumulator (for X) and bits 0-9 in IO (for Y) and will commence with the completion pulse pending.</p>
+
+<p>This is obviously a piece of code for displaying a single dot, which is advanced by the two factors <code>bx</code> and <code>by</code> along the x-axis and the y-axis respectively. This also provides the explanation for the specific scaling of the two factors: Bits 10-12 are the three highest bits immediately below the bits used to communicate the display coordinates. This is equal to scaling the factors to a decimal range of <code>-0.9</code> to <code>+0.9</code> and using the integer part of the result of the addition. The display coordinate will advance by an amount that is just less than a single coordinate step. The reminder in the lower 8 bits is simply ignored for the display purpose and the coordinates will advance along a constant slope at less than 45&deg; (mirrored by any of the two axes).</p>
+
+<p>So, we already know, how a dot is drawn as a part of a line and how the slope is set up. Let's see, which kind of logic is driving the whole thing:</p>
+
+<pre>bpt,	dap bpx
+	random
+	sar 9s
+	sar 5s
+	spa
+	cma
+	sal 3s
+	add (bds
+	dap bjm
+	cla cli clf 6-opr-opr
+	dpy-4000
+bjm,	jmp .
+bds,	repeat 20, starp
+	szf 6
+bpx,	jmp .
+	stf 6
+	cma
+	swap
+	cma
+	swap
+	jmp bjm</pre>
+
+<p>Since this is called as a subroutine, the initial <code>dap</code> is depositing the return address, as usual, in the address part of the jump to return, in this particular case at <code>bpx</code>. Then the macro <code>random</code> is inserted another time, calculating a fresh random value and putting it in location <code>ran</code> and also leaving it in the accumulator. The two <code>sar</code> are shifting this (decimal) 14 bits to the right (this have two be two instructions, because the maximum amount of a single shift is 9 bits). By this, the random value is reduced to the 3 lowest bits with the sign-bit preserved. So there's currently a value in the range of <code>-7</code> to <code>+7</code> in the accumulator. The two following instructions, <code>spa</code> and <code>cma</code> equal to making this an absolute value: <code>spa</code> skips on a positive value, in case the value would be negative, the following <code>cma</code> <em>(compliment AC)</em> flips the bits in the accumulator for a 1's compliment. Thus, there is now a positive 3-bit random number in the accumulator.</p>
+<p>This value is then shifted 3 bits to the left, multiplying the value by <code>2^3</code> (or decimal 8), to which is then added the constant expression &quot;<code>(bds</code>&quot;.</p>
+<p>Wait, what was this? Let's see: <code>bds</code> is simply a label, designating the location, at which there will be inserted (octal) <code>20</code> (decimal 16) incarnations of the macro <code>starp</code>. We just calulated an offset in the decimal range <code>0..7</code> multiplied it by 8 and added this as an offset to the address of label <code>bds</code>. This is now inserted into the address part of the instruction at <code>bjm</code> by &quot;<code>dap bjm</code>&quot;. Since the op-code of the instruction is a <code>jmp</code> and the macro <code>starp</code> happens to be exactly 8 instructions long, executing the jump at <code>bjm</code> will skip any of up to 7 of this array of <code>starp</code>s. Seems, we've just set up a random length of the line to be drawn, anything from 9 to 16 advances by <code>bx</code> and <code>by</code> long.</p>
+
+<p><em>(Note: Veteran C programmers might recognize <a href="http://en.wikipedia.org/wiki/Duff's_device" target="_blank">Duff's device</a> in this construct.)</em></p>
+
+<p>Fine, but what is &quot;<code>cla cli clf 6-opr-opr</code>&quot;? The various instructions of the <em>operate group</em>, sharing a common op-code in the highest 6 bits, could be combined to be executed as a union in a single step (or CPU cycle). This is simply 3 operations in a single instruction, and since each of them had the bits for the op-code set and the assembler was performing an addition, the redundant parts, as given by <code>opr</code>, the bare op-code common to this group, had to subtracted for any of the exceeding ones. This adds up to the numeric instruction <code>764206</code>, but all we have to keep in mind is that this is performing a <code>cla</code> <em>(clear AC)</em>, a <code>cli</code> <em>(clear IO)</em>, and a &quot;<code>clf 6</code>&quot; <em>(clear program flag 6)</em> at once. Thus, we reset both AC and IO to zero, or rather, in the context of the <code>dpy</code> instruction, we set them to the center of the screen, and we clear flag 6, probably to be checked later in the code. (As mentioned in Part 1, the program flags were an array of user addressable flags that were also used as state indicators with some I/O devices.)</p>
+
+<p>The following &quot;<code>dpy-400</code>&quot; is both putting an initial dot in the very center of the screen and is demanding the pending completion pulse, the first of the incarnations of <code>starp</code> will be waiting for. Finally, the jump at <code>bjm</code> jumps right into the row of <code>starp</code>s at our previously calculated offset in order to draw the line.</p>
+
+<p>After executing all the <code>starp</code>s, we will have drawn a nice random line, pointing in any direction from the very center of the screen, notably whithout the help of any loop construct. Thanks to this vectorized jump, the code will speed as fast as possible through the <code>starp</code>, without any further checks. (Remember, memory was not the scarce article)</p>
+
+<p>But we're not finished by now. To repeat the remaining part (just to have it at a screen's length):</p>
+<pre>	szf 6
+bpx,	jmp .
+	stf 6
+	cma
+	swap
+	cma
+	swap
+	jmp bjm</pre>
+
+<p>In case program flag 6 would not be set, &quot;<code>szf 6</code>&quot; <em>(skip on flag zero)</em>, we would skip the jump to the return address. Since we made sure that this would be cleared before, we're not done yet. After setting program flag 6 by &quot;<code>stf 6</code>&quot;, the following <code>cma</code> <em>(compliment AC)</em> flips the bits in the accumulator, thus performing a 1's compliment. The <code>swap</code> rotates AC and IO, just to compliment the value previously in IO by the next <code>cma</code>, and the final <code>swap</code> rotates both registers in place.</p>
+<p>In order to understand this, let's recollect what was done before: By drawing the line, the coordinates in the AC and IO registers were now pointing to some spot less than 16 display location away in any direction from the center. Since the origin is located at the center, inverting the coordinates (thus changing the sign) will now have them pointing to a spot exactly in the opposite direction. We're now placed, were we would have ended up, when drawing the line with the signs flipped. Thus, when we do another run using the same factors in <code>bx</code> and <code>by</code>, we're drawing the line back to the center, but mirrored by the two axes. We're actually complimenting the line at the other side of the origin, using the same slope and length. This is exactly what we'll do, when jumping back to <code>bjm</code>, the instruction with jump vector including the offset for the line length. Since we've program flag 6 set this time, this will be our second and last run and we'll take the jump to return address at <code>bpx</code>.</p>
+
+<h3 id="random">Random</h3>
+
+<p>The only piece of code, we haven't inspected yet, is the random number generator, as defined by the macro <code>random</code>:</p>
+<pre>	define
+random
+	lac ran
+	rar 1s
+	xor (355670
+	add (355670
+	dac ran
+	term</pre>
+
+<p>I'm not qualified to express an educated opinion on this (or on any in the vast fields of numerical analysis). So I really can't say, how well this is performing as a random number generator. But the requirements for the purpose of the game aren't that high, anyway. Obviously, it does its job quite well. Let's see, how it does that well:</p>
+
+<p>First, &quot;<code>lac ran</code>&quot; loads the contents of location <code>ran</code> into the accumulator, where it is rotated 1 bit to the right by <nobr>&quot;<code>rar 1s</code>&quot;.</nobr> Essentially, this is rotating the sign-bit out of position and we'll start the iteration with a new bit in the sign position. &quot;<code>xor (355670</code>&quot; flips most of the remaining bits, but the lowest 3 of them. Finally &quot;<code>add (355670</code>&quot; adds the the same constant to this and the result is stored back in location <code>dap</code>.</p>
+
+<p>(<em>Update:</em> Since the difference between an addition and an XOR operation is just in the application of the ripple carry by combining both operations, we end up with just this isolated application of the carry. As it turns out, this piece of code came straight from a memo on the TX-0, where the application of the carry was a separate instruction, &quot;<code>cry</code>&quot;. Compare <a href="http://bitsavers.org/pdf/mit/tx-0/memos/M-5001-19-1_macros_Aug61.pdf" target="_blank">TX-0 Computer, M-5001-19-1, &ldquo;Some Useful Micro- and Macro Instructions&rdquo;</a>, MIT, Aug. 23, 1961, p. 4 &mdash; Thanks to Peter Samson for pointing this out!)</p>
+
+<p class="noindent">And here is the sequence as produced by the macro &quot;<code>random</code>&quot;, starting from an initial seed value of zero:</p>
+
+<pre style="background-color: inherit;"><em>States of ran over 8 consecutive runs starting from 0:</em>
+
+                           binary        octal
+
+     ran (seed)      000000000000000000 (000000)
+
+(1)  rar (&gt;&gt; 1)  =&gt;  000000000000000000 (000000)
+     xor 355670  =&gt;  011101101110111000 (355670)
+     adc 355670  =&gt;  111011011101110000 (733560)
+
+(2)  rar (&gt;&gt; 1)  =&gt;  011101101110111000 (355670)
+     xor 355670  =&gt;  000000000000000000 (000000)
+     adc 355670  =&gt;  011101101110111000 (355670)
+
+(3)  rar (&gt;&gt; 1)  =&gt;  001110110111011100 (166734)
+     xor 355670  =&gt;  010011011001100100 (233144)
+     adc 355670  =&gt;  110001001000011100 (611034)
+
+(4)  rar (&gt;&gt; 1)  =&gt;  011000100100001110 (304416)
+     xor 355670  =&gt;  000101001010110110 (051266)
+     adc 355670  =&gt;  100010111001101110 (427156)
+
+(5)  rar (&gt;&gt; 1)  =&gt;  010001011100110111 (213467)
+     xor 355670  =&gt;  001100110010001111 (146217)
+     adc 355670  =&gt;  101010100001000111 (524107)
+
+(6)  rar (&gt;&gt; 1)  =&gt;  110101010000100011 (652043)
+     xor 355670  =&gt;  101000111110011011 (507633)
+     adc 355670  =&gt;  000110101101010100 (065524)
+
+(7)  rar (&gt;&gt; 1)  =&gt;  000011010110101010 (032652)
+     xor 355670  =&gt;  011110111000010010 (367022)
+     adc 355670  =&gt;  111100100111001010 (744712)
+
+(8)  rar (&gt;&gt; 1)  =&gt;  011110010011100101 (362345)
+     xor 355670  =&gt;  000011111101011101 (037535)
+     adc 355670  =&gt;  100001101100010101 (415425)
+</pre>
+
+<p>We may observe that this leaves (besides the simple shift, except rare occasions where an overflow occurs on the addition) the lowest 3 bits as-is. This also gives an explanation for the &quot;<code>ral 4s</code>&quot;, right at the beginning, when we were preparing the y-factor in <code>by</code>. What seemed to be a bit of a luxury (since the bits used to set up the x-factor were located in the upper half of the bits, as made sure by the &quot;<code>rar 9s</code>&quot;, why would we want to shift this just by a nibble?), is actually a necessity in order to get some valid random bits.</p>
+
+<h4><em>Note / Update</em></h4>
+<p>I guess, the macro &quot;<code>random</code>&quot; qualifies as a polynomial counter or LSFR (Linear Feedback Shift Register), meaning, it cycles over a fixed, but nonlinear sequence of values starting from a known seed value (mind that the value in &quot;<code>ran</code>&quot; is initialized to zero at the beginning of the code). This will be true for any code shifting and scrambling an input value which is consequentially fed back to it in the next call, as long as it doesn't &quot;fall into the pit&quot; of a minor cycle, which may consist in the worst case of just a single value. &mdash; A quick test shows that there's no such &quot;pit&quot; for the code to fall in, when starting with a value of plus zero. (However, investigating some out-of-sequence numbers for seeds, we find one with a value of octal <code>225241</code>, resulting in the worst case scenario of a period of 1, and a handful of other &lsquo;problematic&rsquo; seeds, which result in periods in the single digit range.)</p>
+
+<p>Starting from zero, the sequence will run over a period 261,654 unique values until it eventually returns to the 2<sup>nd</sup> iteration with a value of octal <code>355670</code> &mdash; the modifying constant thus being also the reset value! &mdash; from a second-to-last value of <code>044217</code>, skipping the inital seed of <code>0</code>. This means, there are just 490 out of the 262,144 unique 18-bit values not included in this sequence.</p>
+
+<h3 id="variations">Variations</h3>
+
+<p>In Spacewar! 4 the Star would see a small variation. It would be drawn by a dotted (or, depending on the slope, a dashed) line, rather than a solid one. This was achieved by setting the factors <code>bx</code> and <code>by</code> to a value that could actually advance the line by a full coordinate-step (the three bits in <code>700</code> are shifted 1 bit to the left, as compared to version 3.1, doubling the value of the two factors):</p>
+
+<pre>
+	<span style="color:#666;">random
+	rar 9s</span>
+	and (400700
+	<span style="color:#666;">spa
+	xor (377777
+	dac \bx
+	lac ran
+	ral 4s</span>
+	and (400700
+	<span style="color:#666;">spa
+	xor (377777
+	dac \by</span></pre>
+
+<p>As a compensation for this, there were only (decimal) 8 repitions of the macro <code>starp</code> (with 16 of them in the original version of the code):</p>
+<pre>bds,	repeat 10, starp</pre>
+
+<p>So, the star could be reduced to just to a mere dot, by skipping all, but one of them, while the maximum length would be about the same as in the 3.1. Besides the introduction of another bit of modualtion (the line would probably blend by the bleeding of the activated phosphor), it also squeezed some runtime out of the routine, by reducing the steps required to draw the line to 50% of the previous amount.</p>
+
+<p>We could close here, but there's another mystery waiting, which also shows, how nifty this little piece of code for drawing the star actually was.</p>
+
+<h2 id="twin_stars">The Mystery of the Twin Stars</h2>
+
+<p>There is a version of Spacewar! 4, namely version 4.3, featuring a somewhat mysterious special mode to be activated by deploying sense switch 2. (You may explore this by this short-cut to the emulator with <a href="https://www.masswerk.at/spacewar/?version=spacewar4.3&amp;sense=2" target="_blank">Spacewar 4.3! preselected and sense switch 2 set</a>.) There is actually no historical reference to this, other than the source code to be found in a bunch of <a href="http://www.computerhistory.org/collections/catalog/102664173" target="_blank">assorted listings</a>. For this, we may start with a small description.</p>
+
+<figure id="spacewar_screen_twinstars" class="img"><img src="images/spacewar-emulation-twinstars.jpg" width="555" height="555" alt="Spacewar! Twin-Star Mode (Emulation)" style="padding: 14px;" /><p>The mysterious &quot;Twin-Star&quot; in Spacewar! 4.3 (Emulation)<br />Credits: Norbert Landsteiner 2014</p></figure>
+
+<p>In this mode, Spacewar! isn't the same anymore, but this is all accomplished by some offsets in the display code: The Needle is tied to the center in the screen between a double sun. The Wedge is starting right at the lower left corner, drawn by gravity to the very center and the stars are moving somewhat oddly. When we explore this a little further, we'll see, that the Needle is rather pushing the whole universe, than being accelerated itself, when its thrusters are fired. Also, the center of gravity isn't at the center of the screen anymore, but is forming an odd pool in the space-time continuum at an apparently moving random spot. We may also observe that the exhaust flames of a thrusting ship are displayed at some odd location, the very spot, at which any torpedoes will appear, when fired. This location is giving in fact the true position of the spaceships, which are dislocated visually. For the hit detection, the display location is used, providing us the wierd experience of inhabiting to locations at the same time.</p>
+
+<p>This displacement is achieved simply by subtracting the position of the Needle from the display position of the two spaceships, but not for the exhaust flames or torpedoes. Also, the Needle is moving the background starfield, too, by the same subtraction applied to the individual stars.</p>
+
+<p>But how is the sun doubled to a twin-star system, located at the left and right of the screen's origin? Let's see:</p>
+
+<pre>	<span style="color:#666;">cla cli clf 6-opr-opr</span>
+	szf i 20
+	jmp bjm-1
+	sub ny1
+	swap
+	sub nx1
+	<span style="color:#666;">dpy-4000
+bjm,	jmp .</span></pre>
+	
+<p>This version is actually inserting only a mere 5 instructions for this, right before the jump into the array of <code>starp</code>s! How could this be?</p>
+
+<p>For the benefit of historians, let's state first, that this is the code of Spacewar! 4.3, signed &quot;<code>5/17/63 ddp</code>&quot; (with &quot;<code>ddp</code>&quot; probably being Diamantis Drakos Preonas aka Monty Preonas). Another feature of these variants of Spacewar! is that these are picking up the approach to the intensities of the Expensive Planetarium, like it was initially coded in Spacewar! 2b, by modulating the apparent brightness by how often the stars were displayed. Also, this particular version featured a score display, quite similar to the one known from the <em>scorer patch</em> for Spacewar! 4.8, also to be seen in the patched version 4.1f, running at the CHM on the restored PDP-1. (But the code used for the score display differs somewhat from the code of the 4.8-scorer, also there are visual differences, like a separator line right in the middle of the screen.)</p>
+
+<p class="noindent" style="margin-top: 1.5em; margin-bottom: 1.5em;"><em>Note on the identity of &quot;ddp&quot: While Joe Morris recalls ddp's full name as &quot;Demitrios D. Peronas&quot; (compare <cite>Joe Morris, <a href="https://groups.google.com/d/msg/alt.folklore.computers/T7Oduo-ljgI/rfHKNZgVXkMJ" target="_blank">alt.folklore.computers</a>, 5 April 2001</cite>), Peter Samson is confident of it being &quot;Diamantis Drakos Preonas&quot; &mdash; We're going here with Peter Samson.<br />As an alternative/complementary source the <a href="http://tmrc.mit.edu/members.html" target="_blank">TMRC members list</a> shows an entry for &quot;Monty Preonas&quot; as a member since 9/1960. Compare also &quot;D. D. 'Monty' Preonas&quot; mentioned as a computer programmer in <a href="http://www.dtic.mil/cgi-bin/GetTRDoc?AD=AD0748358" target="_blank">&quot;Experimental Investigation of Initial Surface Particle Motion Resulting From Small Subsurface Explosions in Dry Ottawa Sand&quot;</a>, thesis by Major Floyd V. Kimberly (USAF), 1972; p. 6 and 7 (thanks to Devin Monnens for discovering the latter).</em></p>
+
+<p>But back to our <em>twin-star mystery:</em></p>
+
+<p>The instruction &quot;<code>szf i 20</code>&quot; checks, if sense switch 2 would be set (the &quot;<code>i</code>&quot; inverting the condition). If not set, the following &quot;<code>jmp bjm-1</code>&quot; will take us to the <code>dpy</code> instruction, which is in the address just before <code>bjm</code>, and the star display will perform as usual. (An attentive reader may have observed that the <code>szf</code> is actually the instruction for checking a program flag. But, since both the <code>szf</code> and the <code>szs</code> instructions were in the <em>operate group</em>, they shared the same op-code and differed only in the bit position used to specify the switch or flag. If in the lowest nibble, it would be checking the flag with the given number, if in the second lowest nibble, it would be checking the according sense switch.)</p>
+
+<p>If sense switch 2 is set, we're entering the just 3 instructions that are performing the modifications: The first <code>sub</code> subtracts the value in <code>ny1</code> from the accumulator, which is then swapped to now contain the value of IO. From this, the value of <code>nx1</code> is subtracted. Since both registers were cleared before, this is just adding an offset to the origin. Thus, the star will not be drawn in the center, but in the (compliment of the) position given in <code>nx1</code> and <code>ny1</code>. Since we know that the two stars are drawn in a fixed position right and left of the center, we also know that <code>nx1</code> is containing a fixed value and <code>ny1</code> must be zero.</p>
+
+<p>So we know, why there is an offset, but why are there two stars? The answer to this is to be found in the part after drawing the line by the array of <code>starp</code>s: Since the code is inverting the display coordinates, it is also inverting the horizontal offset. So, the second part of the star, the part drawn outside in, will be drawn at the opposing side of the origin. And in deed, the two stars do not show the normal appearance: They are drawn by just half of the normal line, spinning around their respective centers at a random angle, but one being the mirror image of the other.</p>
+
+<figure id="spacewar_screen_twinstars_detail" class="img"><img src="images/spacewar-emulation-twinstars-closeup-b.jpg" width="500" height="200" alt="Spacewar! Twin-Star Mode, Closeup (Emulation)" style="padding: 14px;" /><p>Closeup of the twin stars in Spacewar! 4.3 / sense switch 2 set (emulation)<br />Credits: Norbert Landsteiner 2014</p></figure>
+
+
+<p style="margin-bottom: 3em;"><em>Note/update: For a detailed analysis of Spacewar! 4.3 and its &quot;Twin-Star Mode&quot;, see <a href="insidespacewar-pt9-spacewar4hacks.html#twinstars">Part 9</a>.</em></p>
+
+<h4 id="assorted_listings_provenance">Note on the provenance of the &quot;assorted listings&quot; <small>(<a href="http://www.computerhistory.org/collections/catalog/102664173" target="_blank">CHM Catalog No 102664173</a>)</small>:</h4>
+<p><em>These might be identical to the listings mentioned by Joe Morris in a Usenet <code>alt.sys.pdp10</code> thread (&quot;Re: KA10, PDP-1, museum&quot;, <a href="https://groups.google.com/forum/#!msg/alt.sys.pdp10/cNG89mmlbK0/V0JPyn3Mg7sJ" target="_blank">alt.sys.pdp10/cNG89mmlbK0/V0JPyn3Mg7sJ</a>, in response to Al Kossow):</em><p>
+<pre style="background: #fff;" class="cite"><em>Late-breaking news: I found the listing binder in my office.  The
+versions I've got are:
+
+4.0, dated 2/2/63<br/>
+4.2, dated 5/11/63 (with a torn scrap of greenbar where I
+     scribbled notes about which buttons set which bits on
+     the taper pin block (for the IOT instruction) from the
+     drone controller someone bought from Eli's to run
+     Spacewar on the PDP-1 on the first floor of building 20)
+4.3, dated 5/17/63
+4.4, dated 5/17/63 which still shows Monte's[sic] initials (ddp) but
+     which vague memory says wasn't his update.  It may have
+     been my hack, but I hadn't yet learned the tao of marking
+     changed lines in programs  8-(
+
+And, of course, Pete Sampson's[sic] STARS.</em></pre>
+<p><em>At least, we may note that this is identical to the contents of the &quot;assorted listings&quot;. (The &quot;assorted listings&quot; are also containing a title punch routine for the paper tapes and a &quot;spacewar game saver patch&quot;, apparently recording a game by continously saving the controls inputs and the contents of the pseudo-random number &quot;<code>ran</code>&quot;.)<br />The listed programs, Spacewar! 4.0, 4.2, 4.3, 4.4, are signed <code>ddp</code> (D. D. &quot;Monty&quot; Preonas), and <a href="insidespacewar-pt10-dualspacewar.html">version 4.4</a> is still a work in progress.<br />(Please note that the provenance of the &quot;assorted listings&quot; is not confirmed by the CHM.)</em></p>
+
+<p class="endex">*****</p>
+
+<p class="noindent">With all the mysteries solved, we may close for today.<br /><strike>Next time, we'll encounter finally some of Steve Russell's code. &mdash; Stay tuned.</strike><br />Next: A small intermission, regarding a recent update.</p>
+
+<p>&nbsp;</p>
+<p class="noindent"><span class="author">Norbert Landsteiner</span><br />
+Vienna, June 2014<br />
+<a href="https://www.masswerk.at/" target="_top">www.masswerk.at</a></p>
+<p>&nbsp;</p>
+<p class="noindent"><em>In case you would have found any errors or inconsistencies, or would have additional information,<br />please <a href="https://www.masswerk.at/contact.php">contact me</a>.</em></p>
+<p class="endex">*****</p>
+
+<p class="noindent"><span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9664;</span> Previous: &nbsp; <a href="insidespacewar-pt1-ep.html">Part 1:  The &quot;Expensive Planetarium&quot;</a><br />
+<span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9654;</span> Next: &nbsp; <a href="insidespacewar-minskytron-hyperspace.html">Intermission &mdash; Digging up the Minskytron Hyperspace</a><br /><br />
+<span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9650;</span> Back to the <a href="./">index</a>.</p>
+
+</article>
+
+<section id="related">
+	<p>References / Related Links:</p>
+	<ul>
+		<li><a href="https://www.masswerk.at/spacewar/SpacewarOrigin.html">&quot;The Origin of Spacewar&quot; by J. M. Graetz</a> (redacted copy, incl. additional text and images)</li>
+		<li><a href="https://www.masswerk.at/spacewar/decus1962/">&quot;Spacewar! Real-Time Capability of the PDP-1&quot; by J.M. Graetz</a> (Decus Proceedings 1962)</li>
+		<li><a href="https://www.masswerk.at/spacewar/sources/spacewar3.1_complete.txt">Spacewar! 3.1 source code</a> (PDP-1, Macro assembler code)</li>
+		<li><a href="https://archive.org/details/bitsavers_mitrlepdp1aug68_4111482" target="_blank">&quot;PDP-35 / PDP-1 Instruction List&quot;</a> (DEC, Aug 1968)</li>
+		<li><a href="https://archive.org/8/items/bitsavers_mitrlepdp1_894137/pdp35-2_sep71.pdf" target="_blank">&quot;PDP-35-2 / PDP-1 Instruction Manual / Part 3 -- iot Operated I/O Devices&quot;</a> (DEC, Sep 1971)</li>
+		<li><a href="http://www.bitsavers.com/pdf/dec/pdp1/F25_PDP1_IO.pdf" target="_blank">&quot;PDP-1 Input-Output Systems Manual (Preliminary Manual)&quot;</a> (FP-25, DEC, date unknown)</li>
+		<li>Manual <a href="http://bitsavers.trailing-edge.com/pdf/dec/graphics/Type_30E_Precision_CRT_Display_Dec63.pdf" target="_blank">&quot;Precision CRT Display / Type 30E&quot;</a> (F-15(30E), DEC, Dec 1963)</li>
+		<li>Brochure <a href="http://www.computinghistory.org.uk/userdata/files/digital-precision-crt-display-type-30.pdf" target="_blank">&quot;Precision CRT Display / Type 30&quot;</a> (F-13(30) 5/64, DEC, May 1964)</li>
+		<li><a href="http://www.computerhistory.org/collections/catalog/102664173" target="_blank">DEC.pdp_1.102664173.pdf, assorted listings of Spacewar! 4.x</a> (CHM, Catalog No 102664173)</li>
+		<li><a href="pdp1-instructions.html" target="_blank">PDP-1 Instruction List</a> (opens in a new window)</li>
+		<li><span style="font-family:sans-serif; font-size: 80%;color: #555;">&#9654;</span> <a href="https://www.masswerk.at/spacewar/" title="Play Spacewar! online">Play Spacewar! online</a> (html5 emulation of a PDP-1 running Spacewar!)</li>
+	</ul>
+	<p>&nbsp;</p>
+	<p>&lt;<a href="https://www.masswerk.at/" target="_top">www.masswerk.at</a>&gt;</p>
+</section>
+
+</body>
+</html>

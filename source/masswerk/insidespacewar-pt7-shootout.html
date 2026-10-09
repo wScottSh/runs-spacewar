@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<title>Inside Spacewar! &mdash; Part 7: Shootout at El Cassiopeia</title>
+	<meta name="description" content="A software archeological approach to Spacewar!, the first digital video game. Part 7: Shootout at El Cassiopeia" />
+	<meta name="keywords" content="Spacewar!,Spacewar! 1962,PDP-1,torpedoes,particle explosions,software archeology,computer history" />
+	<meta name="format-detection" content="telephone=no" />
+	<link rel="stylesheet" href="insidespacewar.css" type="text/css" />
+	<link href="https://fonts.googleapis.com/css?family=Lato:300" rel="stylesheet" type="text/css" />
+	<link rel="shortcut icon" type="image/x-icon" href="../favicon-bw.ico" />
+	<script type="text/javascript" src="instructionlist.js"></script>
+	<script type="text/javascript" src="layoutselector.js"></script>
+
+<style type="text/css">
+span.code2 { color: #800 !important; }
+span.code3 { color: #160 !important; }
+</style>
+</head>
+<body>
+
+<article id="main">
+<a href="./" title="Inside Spacewar! &mdash; Index" class="indexLink">Go to the Index</a>
+<h1>Inside Spacewar!<br />Part 7: Shootout at El Cassiopeia</h1>
+
+<div class="top_nav"><a href="insidespacewar-pt6-gravity.html">Prev. <span style="font-family:sans-serif; font-size: 80%;">&#9664;</span></a>
+&mdash;
+<a href="insidespacewar-pt8-hyperspace.html"><span style="font-family:sans-serif; font-size: 80%;">&#9654;</span> Next</a></div>
+
+<p class="page_toc">(<a href="#main">Introduction</a> &middot; <a href="#torpedoes">Shootout: Torpedoes</a> &middot; <a href="#windsofspace">The Winds of Space</a> &middot; <a href="#explosions">Now Go Bang: Explosions</a> &middot; <a href="#crockexplosions">Spacewar 2b and the Crock Explosion</a>)</p>
+
+<p class="noindent">So far, we've covered all kinds of things in our software archeological journey through Spacewar!, like, how to put a lovely moving <a href="insidespacewar-pt1-ep.html">star-map</a> onto the screen, or even a pulsing <em><a href="insidespacewar-pt2-star.html">heavy star</a></em>, how to draw little <a href="insidespacewar-pt4-oc.html">spaceships</a> by compiling configureable outlines, how to <a href="insidespacewar-pt5-ships.html">move</a> them over the screen, and how to loop over and to handle the <a href="insidespacewar-pt3-objects.html">objects</a> of this tiny universe, and even, how to pervade this world by <a href="insidespacewar-pt6-gravity.html">gravity</a> &mdash; and especially, how to do all this, if no one had ever attempted to do so before. Near all of this was related to space and how to navigate it, but there's still some major part painfully missing, the part related to the <em>war</em> in &quot;Spacewar!&quot;. So let's have there some weapons, and maybe even some little pyrotechnics &mdash; like torpedoes and explosions.</p>
+
+<figure id="spacewar_warfare" class="img borderless"><img src="images/spacewar_warfare.png" width="529" height="528" alt="Spacewar: Two generations of space enthusiasm meeting for a Shootout-at-El-Cassiopeia, imagined according to a quote by Steve Russell." /><p>Space-war as in Spacewar!, joining two eras of space enthusiasm.<br />Illustration: Norbert Landsteiner, 2014<br /><br />&quot;[The rockets] were rather crude cartoons. But one of them was curvy like a Buck Rogers 1930s spaceship.<br />And the other one was very straight and long and thin like a Redstone rocket.&quot; &mdash; <cite>Steve Russell<br />(quoted from Kent, Steven L. The Ultimate History of Video Games. Roseville, CA: Prima Publishing, 2001).</cite></p></figure>
+
+<p>Let's start with the torpedoes or <em>&quot;mumblemumble photon bombs mumblemumble&quot;</em> <cite>(J.M. Graetz, <a href="https://www.masswerk.at/spacewar/SpacewarOrigin.html">The Origin of Spacewar</a>, Creative Computing, 1981)</cite>.</p>
+
+<figure id="spacewar_warfare1" class="img borderless"><img src="images/spacewar_warfare1.jpg" width="530" height="530" alt="Space warfare in Spacewar! (emulation)" /><p>Space warfare in Spacewar! (emulation).</p></figure>
+
+<p style="margin-bottom: 2em; margin-top: 2em;">BTW: <span style="font-family:sans-serif; font-size: 80%;color: #555;">&#9654;</span> You can <a href="https://www.masswerk.at/spacewar/" target="_top" title="Play the original Spacewar! in a JS/HTML5 emulator of a PDP-1"> play here</a> the original code of Spacewar! running in an emulation.</p>
+
+<h2 id="torpedoes">Shootout</h2>
+
+<p>Spacewar! is essentially a duel in space, or a shootout, as Peter Samson put it when dubbing Spacewar! <em>&quot;Shootout-at-El-Cassiopeia&quot;</em> <cite>(Levy, Steven, Hackers, 1984/2010, p.53)</cite>. &mdash; There's some irony in this in more than one sense, since Cassiopeia is actually off to the virtual north of the aspect of the <em>Expensive Planetarium</em> and no one would have known this better than its autor, Peter Samson. (Compare the star-map of the <em>EP</em> in <a href="insidespacewar-pt1-ep.html#ep_starmap">Part 1</a>.) So, with no Cassiopeia in Spacewar!, it would be more like a <em>Shootout-at-High-Orion</em>. &mdash; Anyway, no shootout without any weaponry, and the original Spacewar!'s arsenals contained only a single sort of weapon: torpedoes. To be exact, 32 of them for each of the two ships.</p>
+
+<p>Martin Graetz put it more directly in his DECUS paper on Spacewar!, resisting any urge to glorify this as a duel in some past-century sunset: <em>&quot;The object of the game is to destroy the opponent's ship by blasting him out of space with torpedos.&quot;</em> <cite>(J. M. Graetz, &quot;<a href="../decus1962/" target="_blank">Spacewar! Real-Time Capability of the PDP-1</a>&quot;, DECUS Proceedings 1962, p.37)</cite></p>
+
+<p>And continuing on the more technical aspects of space warfare: <em>&quot;Both ships are armed with ballistic missiles (torpedos) which are released from the nose of the ship with a velocity equal to the ship's velocity plus that imparted to the missile by the launcher. From then on, the torpedos are in true ballistic flight. [...] The torpedos have two types of fuze: one is a proximity fuze which causes the torpedo to explode when it comes within a certain critical distance of any other collidable object which will also be caused to explode. The other is a time fuze which causes the torpedo itself to explode if it has not encountered another object after a given length of time.&quot;</em> <cite>(ibidem)</cite></p>
+
+<p>We've already seen in <a href="insidespacewar-pt5-ships.html">Part 5</a>, how the trigger was parsed and how the murderous projectiles were launched: First, the torpedo reload time is checked by a count-up (if, positive, the tubes would be still cooling and we would jump to label <code>sr5</code> to check the hyperspace trigger). Then, the control input is checked for the third bit from the left being set. If so, we're checking the remaining torpedoes, and if there are any left, we'll search for an unused slot in the objects table. If all went well, a jump takes us to label <code>sr2</code> for the actual setup.</p>
+
+<h3>The Torpedo Code</h3>
+
+<blockquote>Spacewar! was conceived in 1961 by Martin Graetz, Stephen Russell, and Wayne Wiitanen. It was first realized on the PDP-1 in 1962 by Stephen Russell, Peter Samson, Dan Edwards, and Martin Graetz, together with Alan Kotok, Steve Piner, and Robert A Saunders. Spacewar! is in the public domain, but this credit paragraph must accompany all distributed versions of the program.</blockquote>
+
+<pre>tno,  6,	law i 41 	/ number of torps + 1
+tvl,  7,	sar 4s		/ torpedo velocity
+rlt, 10,	law i 20	/ torpedo reload time
+tlf, 11,	law i 140	/ torpedo life
+...
+the, 21,	sar 9s		/ amount of torpedo space warpage
+
+...
+
+define count A,B
+	isp A
+	jmp B
+	term
+
+	define
+dispt A,Y,B
+	repeat 6, B=B+B
+	lio Y
+	dpy-A+B
+	term
+
+	define
+diff V,S,SF
+	add i V
+	dac i V
+	xct SF
+	add i S
+	dac i S
+	term
+
+...
+
+sr2,	lac (tcr	/ set up torpedo calc
+	dac i sr1
+	law nob
+	add sr1
+	dap ss3
+	lio \stx
+ss3,	dio .
+	add (nob
+	dap ss4
+	lio \sty
+ss4,	dio .
+	add (nob
+	dap sr6
+	add (nob
+	dap sr7
+	add (nob
+	dap sr3
+	add (nob
+	dap sr4
+	lac \sn
+	xct tvl
+	cma
+	add i \mdx
+sr3,	dac .
+	lac \cs
+	xct tvl
+	add i \mdy
+sr4,	dac .
+	xct rlt
+	dac i ma1	/ permit torp tubes to cool
+trf,	xct tlf		/ life of torpedo
+sr6,	dac .
+	law 20
+sr7,	dap .		/ length of torp calc.
+
+...
+
+/ torpedo calc routine
+
+tcr,	dap trc
+	count i ma1, tc1
+	lac (mex 400000
+	dac i ml1
+	law i 2
+	dac i ma1
+	jmp trc
+
+
+tc1,	lac i mx1
+	sar 9s
+	xct the
+	diff \mdy, my1, (sar 3s
+	sar 9s
+	xct the
+	diff \mdx, mx1, (sar 3s
+	dispt i, i my1, 1
+trc,	jmp .</pre>
+
+<p class="noindent"><em>(Code as in version 3.1. For the basics of PDP-1 instructions and Macro assembler code, please refer to <a href="insidespacewar-pt1-ep.html#instructions">Part 1</a>.)</em></p>
+
+<h3>Setup</h3>
+
+<p>To begin with, let's have a look at the torpedo setup at label <code>sr2</code>.</p>
+
+<p>When we arrive here, we have already identified the address of the next free slot in the objects table, currently in the address part of location <code>sr1</code>. We may recall from <a href="insidespacewar-pt3-objects.html">Part 3</a>, how this <em>table of colliding objects</em> is organized: It's a stack of properties with the properties of a kind lined up for each of the objects followed by the next array of properties. So, the properties of any object are stored in locations separated by a number of addresses that equals the <em>total number of objects</em> as in <code>nob</code>. The locations describing the current object are usually aliased by labeled pointers and addressed indirectly (or <em>deferred</em>) by the use of the <code>i</code>-bit. The code starting at <code>sr2</code> is setting up a new object by initializing the corresponding properties with suitable values:</p>
+<p><em>(As usual, comments starting with a double slash are mine; N.L.)</em></p>
+
+<pre>sr2,	lac (tcr	/ set up torpedo calc
+	dac i sr1	<span class="comment">// store address tcr as the object routine</span>
+	law nob		<span class="comment">// load number of objects into AC</span>
+	add sr1		<span class="comment">// add sr1 (object's base address to it)</span>
+	dap ss3		<span class="comment">// store it in ss3</span>
+	lio \stx	<span class="comment">// load current x into IO</span>
+ss3,	dio .		<span class="comment">// store it as torpedo x</span>
+	add (nob	<span class="comment">// add number of objects (next property)</span>
+	dap ss4		<span class="comment">// store it in s4</span>
+	lio \sty	<span class="comment">// now set up y</span>
+ss4,	dio .
+	...</pre>
+
+<p>Generally, the code is following the same pattern, we've already seen for the setup of the spaceships, suggesting it was done by the same author, Steve Russell. First, the start address of the torpedo routine <code>tcr</code> is stored as the torpedo's object routine. Since there isn't a set sign-bit (as in &quot;<code>(tcr 400000</code>&quot;) the object is collidible and any collisions with other objects will be checked by the main loop. By adding <code>nob</code> to the address of this first property, we advance to the next property, the x-position. This is set up and stored at label <code>ss3</code>. The same procedure is applied for the y-position, set up and stored at label <code>ss4</code>. The position in variables <code>\stx</code> and <code>\sty</code> was already computed in the spaceship routine while setting up the factors for drawing the outline and happens to be just in front of the tip of the firing ship.</p>
+
+<pre>	add (nob
+	dap sr6
+	add (nob
+	dap sr7
+	add (nob
+	dap sr3
+	add (nob
+	dap sr4
+	lac \sn		<span class="comment">// load sine</span>
+	xct tvl		<span class="comment">// scale it (sar 4s)</span>
+	cma		<span class="comment">// complement it (reverse the angle)</span>
+	add i \mdx	<span class="comment">// add current delta x</span>
+sr3,	dac .		<span class="comment">// store it as torpedo dx</span>
+	lac \cs		<span class="comment">// same for cosine and dy</span>
+	xct tvl
+	add i \mdy
+sr4,	dac .
+	xct rlt		<span class="comment">// get torpedo reload time (-20)</span>
+	dac i ma1	/ permit torp tubes to cool
+trf,	xct tlf		/ life of torpedo //(-140)
+sr6,	dac .
+	law 20
+sr7,	dap .		/ length of torp calc.</pre>
+
+<p>Now, the adresses of the next properties are set up in the address parts of locations <code>sr6</code>, <code>sr7</code>, <code>sr3</code>, and <code>sr4</code>. Time to setup the direction of the torpedo. Obviously we would want it to move in the direction the spaceship is currently heading to, and obviously, we would want it's <em>eigen</em>-velocity to add to the base velocity of the ship. (Otherwise, a fastly moving ship would be prone to overtake it, just to be destroyed by its own torpedo. Not to speak of simulating Newton's laws.) Fortunately we've the sine and cosine of the ship's current turning angle ready in variables <code>\sn</code> and <code>\cs</code> respectively. We just have to scale this unit vector in order to arrive at an appropriate <em>eigen</em>-vector. This scaling is done by &quot;<code>xct tvl</code>&quot;, which will execute the instruction &quot;<code>sar 4s</code>&quot;, a right-shift by 4 bits (divide by 16). To this we add the current movement of the ship, as in <code>\mdx</code> <em>(delta x)</em> and <code>\mdy</code> <em>(delta y)</em>. The resulting quantities are then stored as properties of the torpedo, when executing <code>sr3</code> <em>(dx)</em> and <code>sr4</code> <em>(dy)</em> respectively.</p>
+
+<p>Since our torpedo will be just displayed as a tiny dot, there's no need to store a turning angle, since, a dot is a dot is a dot is a dot. <em>(Thank you once more, Gertrude Stein.)</em> So, we've just to deal with the timing issues before we're actually finsihed: There are two different kind of intervals involved (both involving negative values to be used in a count up), the torpedo reload time (or <em>torp tubes cooling</em>) and the life of the torpedo, the number of frames to be passed before it will be destructed by its virtual time fuse.</p>
+
+<p>The first one is loaded by executing &quot;<code>xct rlt</code>&quot;. This will execute the instruction &quot;<code>law i 20</code>&quot; (defined in the <em>table of constants</em> at the top of the source, just like <code>tvl</code>), loading the number <code>-20</code> into the accumulator. The cooling time is actually a property of the firing ship and stored in the address currently in pointer <code>\ma1</code>. The torpedo life is obtained by executing &quot;<code>law i 140</code>&quot; (loading <code>-140</code>) by the instruction &quot;<code>xct tlf</code>&quot; and stored in the according property at label <code>sr6</code>. Finally, the estimated cycle count (<code>20</code>) of the torpedo routine is stored in the last property at label <code>sr7</code>, to be used to stabilize the frame rate.</p>
+
+<p>Thus, we've just initilized a fresh torpedo with the following properties:</p>
+
+<pre style="background-color: #fff;"><em>addr     property           value                            common alias</em>
+base     object routine     address tcr                           ml1
++nob     x                  just in front of the ship             mx1
++nob     y                  --&quot;--                                 my1
++nob     dx                 sine of ship / 16   + ship dx        \mdx
++nob     dy                 cosine of ship / 16 + ship dy        \mdy
++nob     torpedo life       -140 (140 frames)                     ma1
++nob     cycle count        20 (actually decimal 16&times;4 = 64)       mb1</pre>
+
+<p>Since the spaceships are occupying the very first two slots of the objects table, our fresh torpedo is located at some higher slot and will be found and handled by the main loop in the same frame by calling its object routine:</p>
+
+<h3>Movement</h3>
+
+<p>Handling a torpedo involves basically three tasks: Moving it through space (and displaying it), having an eye at the time fuse, and checking any collisions. With the latter one already handled by the main loop, the torpedo routine has just to take care of the two other ones. Just like we've seen it for the spaceships, all the essential properties are already aliased by some pointers, when our object routine is called, with the <em>current object</em> now being the torpedo:</p>
+
+<pre>tcr,	dap trc			<span class="comment">// store return address</span>
+	count i ma1, tc1	<span class="comment">// check life time</span>
+	lac (mex 400000		<span class="comment">// oops, expired - set up an explosion</span>
+	dac i ml1		<span class="comment">// store explosion code as the new object routine</span>
+	law i 2			<span class="comment">// load -2</span>
+	dac i ma1		<span class="comment">// store it as the new life time</span>
+	jmp trc 		<span class="comment">// return</span></pre>
+
+<p>As usual, our first task is to store the return address (currently in the accumulator), here in the address part of location <code>trc</code>. Next, we increment the life count by calling the macro &quot;<code>count i ma1, tc1</code>&quot; and if still negative, we'll continue at label <code>tc1</code>.</p>
+<p>If the increment would result in a positive value, our torpedo expired and its time to <em>&quot;go bang&quot;</em>. To set up the explosion, we're loading the address of the explosion code &quot;<code>(mex 400000</code>&quot; (since we're adding a set sign-bit, the exploding torpedo won't collide with any other objects) and store this as the new object routine in the address in pointer <code>ml1</code> (pointing to the very first property of the torpedo). Since our explosion will be just a short one, <code>-2</code> is stored as the new life time in <code>ma1</code> for the benefit of the explosion code. Then, looking farward to watching a neat explosion in the next frame, we'll jump to the return at label <code>trc</code>.</p>
+
+<p>Otherwise, we still have to move and display the torpedo.</p>
+
+<p>As we may recall from <a href="insidespacewar-pt6-gravity.html">Part 6</a>, gravity calculations are an hefty business, taking something in the range of 4800 to 4955 microseconds for a single object. No way, we could do this for each of the torpedoes &mdash; thus the <em>&quot;mumblemumble photon bombs&quot;</em>. Therefor we could expect the movement routine to be fairly simple, just adding the <em>dx</em> and <em>dy</em> values to the positional vector and putting this location onto the screen. But there's a little extra that is usually going unnoticed with the default settings:</p>
+
+<pre>tc1,	lac i mx1			<span class="comment">// load mx1 (x)</span>
+	sar 9s				<span class="comment">// shift right 9 bits</span>
+	xct the				<span class="comment">// apply warpage constant (sar 9s)</span>
+	diff \mdy, my1, (sar 3s		<span class="comment">// update \mdy (+AC) and my1 (+ \mdy&gt;&gt;3)</span>
+	sar 9s				<span class="comment">// my1 (y) now in AC, repeat for \mdx, mx1</span>
+	xct the
+	diff \mdx, mx1, (sar 3s
+	dispt i, i my1, 1		<span class="comment">// display a blip</span>
+trc,	jmp .</pre>
+
+<p>This is loading the x-position into the accumulator to be scaled by a shift to the right by 9 bits. Then, another scaling is applied to this, executed from location <code>the</code> in the constant table. Finally, the position is updated by the macro <code>diff</code>, which updates the first parameter by adding the contents of the accumulator to it, then scales the updated value by applying the shift in the third parameter, and finally updates the second parameter by adding this:</p>
+
+<pre>	define
+diff V,S,SF
+	add i V
+	dac i V
+	xct SF
+	add i S
+	dac i S
+	term</pre>
+
+<p>Thus, <code>\mdy</code> <em>(delta y)</em> is summed with the contents of AC and stored, then, after applying a shift to the right by 3 bits (just the same scaling factor as with the spaceships, which makes some sense, since we copied the movement vector from the firing ship), the y-position in <code>my1</code> is updated and the torpedo actually moved. With the updated value of <code>my1</code> now in the accumulator, the same procedure is repeated for <code>\mdx</code> and <code>mx1</code>. Finally, the updated position is brought to the screen as a slightly brighter (and larger) than average blip by including the macro <code>disp</code>:</p>
+
+<pre>	define
+dispt A,Y,B
+	repeat 6, B=B+B
+	lio Y
+	dpy-A+B
+	term</pre>
+
+<p>The pseudo-instruction &quot;<code>repeat 6, B=B+B</code>&quot; is effectively a shift by 6 bits, moving the brightness parameter into the right position to be added to the <code>dpy</code> instruction. Since parameter <code>A</code> is the <em>defer bit</em> <code>i</code>, the display command is a fire and forget, without waiting for the display to send a completion pulse when displaying the dot at the location in AC (x) and IO (y), loaded from the second parameter.</p>
+
+<p>Now, whatever would have been set up in the accumulator before including the macro <code>diff</code> is clearly without effect with the default settings, since shifting this value twice by 9 bits to the right is essentially shifting out any contents of the 18-bit register, whatever it might have been. Thus, with no effect on the torpedo and the bare delta-vector added to the position, the torpedo will move in a straight line.</p>
+
+<p>But, what, if there would be a smaller scaling, something less than, say, &quot;<code>sar 8s</code>&quot;? (Since the maximum value of any screen coordinate is octal <code>777</code>, half of it is an 8-bit value. Therefor a shift by 8 bits to right would clear the accumulator as well.)</p>
+
+<p>Obviously this is a variation on the ancient art of drawing a circle in incremental steps by shifts (here in pseudo-code):</p>
+
+<pre style="background-color: #fff;">loop:	load y
+	shift right 2
+	add x
+	store x			<span class="comment">; x := x + y / 4</span>
+	complement AC
+	shift right 2
+	add y
+	store y			<span class="comment">; y := y - x / 4</span>
+	display x, y
+	jump loop</pre>
+
+<p class="noindent"><em>Note:</em> This algorithm for drawing a circle by additions/subtractions and shifts only was discovered by Marvin Minsky by a mistake that brought an unexpected circle-like ellipse onto the display instead of the expected curve. <cite>[Compare <a href="http://www.inwap.com/pdp10/hbaker/hakmem/hacks.html" target="_blank">HAKMEM</a> &quot;Item 149 (Minsky): Circle Algorithm&quot;]</cite> &mdash; A discovery that led eventually to the famous <a href="https://www.masswerk.at/minskytron/" target="_blank" title="The Minskytron and other early graphics demos at the PDP-1 (in-browser emulation)">Minskytron</a> (&quot;Three-Position Display&quot; by Marvin Minsky). We may observe that this algorithm was brand new, when it found its way into the code of Spacewar!.</p>
+
+<p>By increasing the scaling factor applied by the right-shifts, we would arrive at an increasingly neat circloid. While a divide by 16 would do for a nice cirlce, the shift by 9 bits (a divide by 512, with the extra shift by 3 bits even by 4096) is quite fine in granularity and any additional shifts in &quot;<code>the</code>&quot; would further diminish the effect. The omission of the complementing step isn't an issue here, since we are only dealing with some kind of deviation. (Also, we will never achieve at a full circle by our 140 steps, more like a quadrant at best.)<br />So, to what kind of effect would this add up?</p>
+
+<h2 id="windsofspace">The Winds of Space</h2>
+
+<p><em>Winds of Space</em> is adding another topological effect to the Spacewar-universe: While there is gravity for the ships, there is &quot;space warpage&quot; for the torpedoes. Adding the scaled inverse position in incremental steps to the position of the torpedoes works out as some sine-like modulation of the trajectories which is depending both on the current position of the torpedo and its velocity (since the same amount of deviation would add up to a smaller effect on a longer movement vector).</p>
+<p>This is, how the space is bent for the torpedoes, if no scaling at all is applied in &quot;<code>the</code>&quot; in order to achieve the maximum effect:</p>
+
+<figure id="windsofspace1" class="img"><img src="images/spacewar-torpedo-warpage1.jpg" width="650" height="470" alt="Torpedo space warpage in Spacewar!" /><p>Torpedo space warpage in Spacewar!<br />(Special purpose emulation, isometric projection, z-axis: strength of effect, orientation downwards, scaling 100:1.)</p></figure>
+
+<p>As we may observe, there's no effect at the center, with the maximum deviation being applied at the edges and corners of the screen. A shot fired from a motionless ship at the start position will produce a rather pathetic arc with the ship firing virtually &quot;uphill&quot;, while a torpedo fired from a fast moving ship will result in a trajectory which is bending away quite elegantly from the line to the initial target:</p>
+
+<figure id="windsofspace2" class="img"><img src="images/spacewar-torpedo-warpage2.jpg" width="650" height="470" alt="Torpedo space warpage in Spacewar!" /><p>Torpedo space warpage at higher speed.<br />(Special purpose emulation, isometric projection, z-axis: strength of effect, orientation downwards, scaling 100:1.)</p></figure>
+
+<p>Steven Levy provides an account of the use of <em>Winds of Space</em> as a late night party game to be engaged, when the eyes of the Spacewar-pilots would have become blurry after hours of staring at the luminous screen of the PDP-1's Type 30 CRT <cite>(Levy, Steven, Hackers &mdash; Heroes of the Computer Revolution; 1984/2010, pp. 51)</cite>:</p>
+
+<blockquote>The variations were endless. [...] [A]s the night grew later and people became locked into interstellar mode, someone might shout, &ldquo;Let&rsquo;s turn on the Winds of Space!&rdquo; and someone would hack up a warping factor, which would force players to make adjustments every time they moved.</blockquote>
+
+<p>&quot;Hack[ing] up a warping factor&quot; would have involved setting up location <code>21</code> in the address switches of the PDP-1's console for the constant &quot;<code>the</code>&quot; (the only warping factor there is), flipping the switches of the test word to set up a small scaling factor and injecting this back into memory by deploying the &quot;deposit&quot; switch. But this wasn't the only effect to be applied by modifying the constants table that even achieved a name, there's another related to torpedoes, too, involving the &quot;torpedo reload time&quot; in constant &quot;<code>rlt</code>&quot; (and possibly some other paramter(s) like the &quot;torpedo velocity&quot; in constant &quot;<code>tvl</code>&quot;):</p>
+
+<blockquote>By switching a few parameters you could turn the game into &ldquo;hydraulic spacewar,&rdquo; in which torpedoes flow out in ejaculatory streams instead of one by one. <em class="cite">(Levy, Steven, ibidem)</em></blockquote>
+
+<p>(You may experiment with these constants too, by selecting the item &quot;Hack Parameters...&quot; from the <em>options menu</em> at the top right of the <a href="https://www.masswerk.at/spacewar/">online emulator</a>. There's also a special version for <em>Winds of Space</em> already set up to its maximum effect, to be chosen from the versions menu.)</p>
+
+<p class="endex">*****</p>
+
+<p id="windsofspace_note"><em>Note:</em> There are other sources describing the <em>Winds of Space</em> as an effect exerted rather on the spaceships than on the torpedoes: <em>&quot;a 'winds of space' feature could be added which pushed spaceships in one direction, forcing players to use more thrust to go in certain directions and causing drift&quot;</em> <cite>(&laquo;ahoodedfigure&raquo;, <a href="http://www.giantbomb.com/forums/general-discussion-30/among-the-earliest-video-games-spacewar-218938/" target="_blank">The History and Impact of Spacewar! (1962)</a>, 2009 ca.,  also in <a href="http://www.giantbomb.com/spacewar/3030-21514/" target="_blank">Giant Bomb, Spacewar! wiki</a>, as of 19 Apr 2014)</cite>. &mdash; We have to stress here that there are no signs or traces of any other warping factor to be applied in the game (neither in version 2b, nor in version 3.1 or any of the variations of version 4.x) but the one affecting the trajectories of the torpedoes (to be found in version 3.1 and higher). &mdash; Another source may serve some further clue by not only attributing <em>Winds of Space</em> to Peter Samson, but also describing it as some prototype feature that would have been eventually dismissed: <em>&quot;More prototypes follow, like Peter's Winds of Space. But adding a constant force that increases as your spaceship moves away from the star, driving the ship perpendicular to its direction of movement, isn't exactly a hit either.&quot;</em> <cite>(Zarembsky, Ilya, <a href="http://killscreendaily.com/articles/behind-spacewar-one-worlds-first-digital-games-primer-creative-design/" target="_blank">Mother</a>, 2013)</cite>. While it is quite unclear, what the source for the first of these two passages would have been, the second one seems to be drawn directly from the Q&amp;A session &quot;<a href="http://www.movingimage.us/visit/calendar/2013/02/01/detail/spacewar-a-conversation-with-steve-russell-and-peter-samson" target="_blanK">Spacewar! A Conversation with Steve Russell and Peter Samson</a>&quot;, held at the <em>Museum of the Moving Image</em> on 1 Feb 2013. Considering this more closely, it appears to be at least counterintuitive to introduce an antigravitational force to counteract the determinant property of the Spacewar-universe. We might suppose some kind of missinterpretation or an error in recollection here, especially, as there is apparently no transcript of this session. Notably, the <em>torpedo space warpage</em> is also applying a constant force increasing towards the edges that is acting perpendicular to the trajectories of the torpedoes. Also, the <em>Winds of Space</em> seem to be remembered too well to have been just a short-lived, experimental feature. On the other hand we may assume this feature to have existed for a short periode as described here and been migrated to the torpedo code later.</p>
+
+<p>However, there is an account on an other dismissed feature related to torpedoes, provided by Steve Russell in the long version of Stewart Brand's famous Rolling Stone article <a href="http://www.wheels.org/spacewar/stone/rolling_stone.html" target="_blank">&quot;Spacewar &ndash; Fanatic Life and Symbolic Death Among the Computer Bums&quot;</a> <cite>(Rolling Stone, Dec 1972)</cite>, published in the book &quot;Two Cybernetic Frontiers&quot; <cite>(Random House, NY, 1974)</cite> by the same author:</p>
+
+<blockquote>One of the things I experimented with was putting a little more realism in it. The torpedoes in Spacewar go plodding along very reliably. I said, &quot;Gee, that's not real. Most real-world devices have some noise in them.&quot; So I put a little random error in the torpedoes. They wouldn't always go quite the direction you aimed them, and they didn't always go quite as far as you expected, and they didn't go quite as fast as you expected. I thought it was kind of a neat idea, but everybody just hated it. And if you think about it, you'll see that people take a great deal of effort to make sure that their guns and knives and other offensive weapons are the best they can have. That variation died very quickly. <em class="cite">(Steve Russell quoted in &quot;Two Cybernetic Frontiers&quot;, p. 56)</em></blockquote>
+
+<p>Steve Russell's recount not only provides some insight in Spacewar! &mdash; as we know it &mdash; being a rather distilled and refined version that has undergone a number of probing iterations, but also illustrates the fine line between the realism of a simulation and the rather reduced, reliable set of features contributing to its qualities as a satisfying game.</p>
+
+
+<h2 id="explosions">Now Go Bang!</h2>
+
+<p>Fireworks have been always appealing to humans, so how could Spacewar! miss out on the opportunity to put some onto the PDP-1's scope? So, if a ship happens to collide with another object, like the opponents ship or a torpedo, or would be helplessly drawn to a final plunge into the <em>heavy star</em> with sense switch 5 on, we're up for a neat explosion. Actually, there are five kinds of explosions (as we have learned here and in <a href="insidespacewar-pt3-objects.html">Part 3</a>), a big one resulting from the two ships colliding, a slightly smaller one for a single ship, a tiny one for an expiring torpedo falling prey to its time fuse, and just some short flicker for a torpedo colliding with another one &mdash; and finally, a last big one for a ship exploding in the star (see <a href="insidespacewar-pt6-gravity.html">Part 6</a>).</p>
+
+<p>We know from a comment by Steve Russel that Martin Graetz wasn't only the author of the original hyperspace, but also the autor of the explosion routine <cite>(<a href="http://mail.computerhistory.org/pipermail/inforoots/2005-February/001523.html" target="_blank">MIT TMRC-Talk mailinglist</a>, 31 Jan 2005)</cite>:
+
+<blockquote>J. M. (&quot;Shag&quot;) Graetz contributed the explosions, and
+Pete Samson wrote the starfield display.</blockquote>
+
+<p>Another (soft) source on this is J.M. Graetz's rather sarcastic description of the explosions in Spacewar! 2b as <em>&quot;crock explosions&quot;</em> (we'll come to those later) in his seminal article &quot;<a href="https://www.masswerk.at/spacewar/SpacewarOrigin.html">The Origin of Spacewar</a>&quot; <cite>(Creative Computing, 1981)</cite>, a tone he usually reserved for his own contributions only. But we do not know, whether the final adjustments we see in the code of Spacewar! 3.1 were done by him, too, or would have been applied by some other author (Steve Russell?).</p>
+
+<h3>The Code</h3>
+
+<pre>	/ explosion
+
+mex,	dap mxr
+	cla
+	diff \mdx, mx1, (sar 3s
+	cla
+	diff \mdy, my1, (sar 3s
+	law mst
+	dap msh
+	lac i mb1	/ time involved
+	cma cli-opr
+	sar 3s
+	dac \mxc
+ms1,	sub (140
+	sma
+	idx msh
+mz1,	random
+	and (777
+	ior (scl
+	dac mi1
+	random
+	scr 9s
+	sir 9s
+msh,	xct .
+mi1,	hlt
+	add i my1
+	swap
+	add i mx1
+	dpy-i 300
+	count \mxc, mz1
+	count i ma1, mxr
+	dzm i ml1
+mxr,	jmp .
+
+mst,	scr 1s
+	scr 3s</pre>
+
+<p>Macros used:</p>
+
+<pre>define swap
+	rcl 9s
+	rcl 9s
+	term
+
+define count A,B
+	isp A
+	jmp B
+	term
+
+	define
+dispt A,Y,B
+	repeat 6, B=B+B
+	lio Y
+	dpy-A+B
+	term
+
+	define
+diff V,S,SF
+	add i V
+	dac i V
+	xct SF
+	add i S
+	dac i S
+	term
+
+	define
+random
+	lac ran
+	rar 1s
+	xor (355670
+	add (355670
+	dac ran
+	term</pre>
+
+<p>When investigating the explosion routine we must not forget that this is just an object routine. Explosions aren't objects of their own, but these are the normal objects, spaceships and torpedoes, which are now linked to this routine. The objects have still all their properties as in their previous state, aliased by the usual pointers. The only property with a special meaning to an exploding object is the value in the general purpose counter <code>ma1</code>, controlling here the timing of the explosion. Notably, there will be two explosions at once for any collision of two objects.</p>
+
+<h3>Inertia</h3>
+
+<p>While we're separating the code here into two parts, the code for the explosion is a single strain of code. There's no setup or special coda, the code will be entered at location <code>mex</code> during each frame for each exploding object:</p>
+
+<pre>mex,	dap mxr
+	cla
+	diff \mdx, mx1, (sar 3s
+	cla
+	diff \mdy, my1, (sar 3s</pre>
+
+<p>The explosion routine <code>mex</code> starts with the obligatory storing of the return address (here in the address part of location <code>mxr</code>). The next few instructions are applying the movement vector to the current position, just as we've seen it for the torpedoes before. Thus, conforming with the laws of inertia, an exploding object will keep on moving along its trajectory. Since the accumulator is cleared by the instruction <code>cla</code> before including the macro <code>diff</code>, there's no other factor applied to this movement and the explosion will just keep the direction and velocity of the formerly solid object.</p>
+
+<h3>Particles</h3>
+
+<p>Before we have a closer look at the code for the animation, we may recall some essential properties of the objects potentially involved here:</p>
+
+<pre style="background-color: #fff;">Some essential properties of exploding objects and their values (cotal):
+
+<em>object  colliding with  ma1   mb1 (cycle count)</em>
+ship      star          -10    2000
+ship      ship           -7    2000 
+ship      torpedo        -3    2000
+torpedo   ship           -3      20
+torpedo   torpedo         1      20
+torpedo   time fuse      -2      20</pre>
+
+<p>The first part of the animation code is meant to set up the scaling or spread of the effect. There are essentially two scaling factors, a shift by 1 bit to the right (divide by 2) at label <code>mst</code> and a shift by 3 bits (divide by 3) located immediately following to it. Based on the contents of the property in pointer <code>mb1</code> (the cycle count) either the address of the single-shift or the address of the triple-shift will be set up in the address part of the <code>xct</code> instruction at label <code>msh</code>:</p>
+
+<pre>
+	law mst		<span class="comment">// load address of instruction &quot;scr 1s&quot;</span>
+	dap msh		<span class="comment">// deposit it in addr. part of msh</span>
+	lac i mb1	/ time involved
+	cma cli-opr	<span class="comment">// clear IO and compliment AC (now negative)</span>
+	sar 3s		<span class="comment">// divide it by 8</span>
+	dac \mxc	<span class="comment">// store it in \mxc</span>
+ms1,	sub (140	<span class="comment">// greater than 140?</span>
+	sma		<span class="comment">// no, skip</span>
+	idx msh		<span class="comment">// increment msh, now address of &quot;scr 3s&quot; (never seen)</span>
+
+	...
+
+msh,	xct .
+
+	...
+
+mst,	scr 1s
+	scr 3s</pre>
+
+<p>Here is actually a small bug (that never was fixed in any of the subsequent versions of Spacewar!), prohibiting the code from working as intended: What the code is meant to do, is to assign the address of a shift instruction to the location labeled <code>msh</code>, depending on the size of the explosion as derived from the instruction count in pointer <code>mb1</code>. In order to do so, first the address of label <code>mst</code> for a combined single-bit shift to the right (&quot;<code>scr 1s</code>&quot;) is set up in the address part of <code>msh</code>. Then the cycle count in property <code>mb1</code> is loaded and processed: This is a positive number and is first complemented to a negative number to be used in a count up. Then, a shift to the right by 3 bits (a divide by 8) is applied and the result is stored in variable <code>\mxc</code>, giving the number of particles. (For a spaceship with an instruction count of <code>2000</code> this will now be <code>-200</code>, for a torpedo of an instruction count of <code>20</code> this will be <code>-2</code>.)</p>
+
+<p>The next instructions are comparing this to threshold of octal <code>140</code>: After subtracting the constant <code>140</code>, the instruction <code>sma</code> <em>(skip on minus AC)</em> skips, if the result would be negative (<code>\mxc &lt; 140</code>). Otherwise the contents of <code>msh</code> is incremented by the instruction <code>idx</code> and the address part is now pointing to the shift to a combined right-shift by 3 bits (&quot;<code>scr 3s</code>&quot;). &mdash; But this instruction will be never visited!</p>
+
+<p>Since <code>\mxc</code> is holding a negative value already, the result of the subtraction will be always negative and the modification of the pointer to the shift instruction (&quot;<code>idx msh</code>&quot;) will be always skipped. Thus, the shift will be always &quot;<code>scr 1s</code>&quot;. What's missing here, is another <code>cma</code> instruction to revert the contents of AC to a positive number before the comparision is done. However, the resulting explosions are still pretty and we're not missing much.</p>
+
+<p>With the scaling set up in the address part of location <code>msh</code>, we're ready to apply it, to whatever this might be:</p>
+
+<pre>mz1,	random		<span class="comment">// put random number in AC</span>
+	and (777	<span class="comment">// apply 9s as a mask</span>
+	ior (scl	<span class="comment">// add opcode scl to it</span>
+	dac mi1		<span class="comment">// deposit this instruction in mi1</span>
+	random		<span class="comment">// get a new random number</span>
+	scr 9s		<span class="comment">// split it into AC 9 lower bits and IO 9 lower bits</span>
+	sir 9s
+msh,	xct .		<span class="comment">// execute shift to the right (AC and IO, either mst or mst+1)</span>
+mi1,	hlt		<span class="comment">// replaced by random shift to the left (AC and IO)</span></pre>
+
+<p>The macro <code>random</code> (we've seen this before in <a href="insidespacewar-pt2-star.html">Part 2</a> and <a href="insidespacewar-pt5-ships.html">Part 5</a>) puts a random number into the accumulator (and also stores it in the location <code>ran</code>, which is of no further interest here). This random number is now masked by the <code>and</code> instruction. The following &quot;<code>ior (scl</code>&quot; adds the opcode of the instruction <code>scl</code> to it. Since <code>777</code> is the same as the assembler constant <code>9s</code>, we just assembled an instruction on the fly that will shift both the IO register and the accumulator to the left by something in the range of 0 bits (essentially a void instruction) and the maximum shift of 9 bits. This instruction is then inserted at label <code>mi1</code>.</p>
+<p>By including the macro <code>random</code> once more, we get a fresh random number that is then split to the lower halves of the accumulator and the IO register. This is achieved by first shifting the combined registers right by 9 bits and then shifting the former lower half of the random number, now in the higher 9 bits of IO, by another 9 bits to the right. Currently, the two registers are containing some values in the range of <code>-377 .. +377</code> and both are of the same sign.</p>
+<p>Now we're finally applying our carefully prepared shift instructions: The first one will be executed by the <code>xct</code> instruction at label <code>msh</code>. As we've seen above, this was meant to exute either the instruction at label <code>mst</code> or the next instruction following to it, dependending on the cycle count in property <code>mb1</code>, thus applying either a shift to the right by 1 bit to AC and IO as a combined 36-bit register or a shift by 3 bits. Effectively, we inserted the address of location <code>msh</code> in the address part of the <code>xct</code> instruction in any case and therefor we'll execute a right-shift by single bit. (This shift &mdash; by whatever number of bit-positions &mdash; is not only a division: since <code>scr</code> applies a shift to AC and IO as a combined register, this may have some crucial effect on the contents of IO, notably by shifting in a new sign bit. In rare cases, where this bit isn't shifted out again in the next step, we'll see some artifacts for IO is then converted to a quite high value, resulting in a considerable offset on the effective x-position of the following display instruction.) The next instruction at label <code>mi1</code> is an entirely random shift to the left that we've just assembled and injected here previously. Notably, this is the shift that will move any bits in the two registers into the range of the highest 10 bits that is used for any display coordinates.</p>
+
+<pre>	add i my1		<span class="comment">// add y</span>
+	swap			<span class="comment">// swap AC and IO</span>
+	add i mx1		<span class="comment">// add x</span>
+	dpy-i 300		<span class="comment">// display it at brightness 3</span>
+	count \mxc, mz1		<span class="comment">// count up on \mxc, jump to mz1 while negative</span>
+	count i ma1, mxr	<span class="comment">// increment ma1, jump to mxr, while negative</span>
+	dzm i ml1		<span class="comment">// over, remove object</span>
+mxr,	jmp .			<span class="comment">// return</span></pre>
+
+<p>By adding the y-coordinate of the object to the accumulator, we get the effective display coordinate for our blip. The macro <code>swap</code> (see <a href="insidespacewar-pt2-star.html">Part 2</a>) exchanges the contents of the IO register and the accumulator (by applying &quot;<code>rcl 9s</code>&quot; twice), making this the y-parameter of the display command. After adding the x-coordinate (in property <code>mx1</code>), we are finally ready to bring something onto the screen: The instruction &quot;<code>dpy-i 300</code>&quot; displays a dot at the given coordinates at the highest available intensity of <code>3</code> (provided in the third lowest nibble).</p>
+
+<p>But this was not the only blip to be displayed, the count up on variable <code>\mxc</code> (the one we prepared near the entrance of the routine), repeats this sequence by a jump to label <code>mz1</code> (the first inclusion of the macro <code>random</code>) until the value would have become zero (and thus positive).</p>
+
+<p>The final count increments the contents of property <code>ma1</code>. If still negative, we jump to the return at label <code>mxr</code>. Otherwise we're done and the instruction &quot;<code>dzm i ml1</code>&quot; resets the <em>control word</em> in property <code>ml1</code> to zero, thus effectively removing the object from the display list. (Since <code>ma1</code> was pointing to a memory register that contained <code>1</code> for a torpedo colliding with another one, this will be the shortest of all explosions, to be displayed just in a single frame. Due to the afterglow of the P7-phosphor of the Type 30 CRT, this will be still visible as a fading flick on the scope.)</p>
+
+
+<p>We may now complete our table describing the various types of explosions (all values octal):</p>
+
+<pre style="background-color: #fff;"><em>object  colliding with  ma1    mb1   particles     scr        scr     frames
+                                               (intended) (effective)</em>
+ship      star          -10   2000      200        3s         1s        10
+ship      ship           -7   2000      200        3s         1s         7
+ship      torpedo        -3   2000      200        3s         1s         3
+torpedo   ship           -3     20        2        1s         1s         3
+torpedo   torpedo         1     20        2        1s         1s         1
+torpedo   time fuse      -2     20        2        1s         1s         2</pre>
+
+<p>While the routine isn't exactly about a particle animation as in particle physics, it puts a nice cloud of flashing pixel dust on the Type 30's screen, where it will fade slowly away due to the P7-phosphor's long sustain. The stronger scaling applied to bigger explosion might be counter-intuitive at first sight, but it provides for a high-density center for an exploding solid object with just enough chance left for some stray particles reaching out into space.</p>
+
+<p>Generally the algorithm is producing a random deviation to be added to the object's position for each of the particles, and it seems to do so symmetrically along the two axes. But there is more to it. It's true for the value in the accumulator, destined to become the offset along the y-axis, that there is a scaling applied to limit the amount of the deviation and that there's another random scaling to the left producing the visible offset. But it's a different affair for the value in IO, ultimately becoming the x-offset: Since the two shift instructions (<code>scr</code> and <code>scl</code>) are not only a shift on both of the two registers, but on the two registers as a <em>combined</em> one, the shifts instructions will put a random bit in the sign-position and by this will also convert a previously small number into a big one (as any leading zeros are becoming ones in 1's complement). Moreover, a shift to the right by 3 bits may also put something into the next two highest bits, depending on the contents and sign in AC. Therefor, especially true for an exploding ship, the horizontal spread will be a utterly random one and will not be confined by the first scaling shift to the right. Occasionally, it may also produce some artifacts in the form of stray pixels displayed at some location off to either side, if this would coincide with a rather high random shift to left.</p>
+
+<p>(We will see below that there was even an attempt made to get rid of these artifacts by changing the value of the modifier constant in the macro <code>random</code> from <code>335671</code> to <code>355670</code> with the lowest 3 bits set to zero. But since there is always a new bit shifted in from the left &mdash; and in the absence of any other masking operation, like applying an <code>AND</code> &mdash;, this is essentially without effect. Moreover, the lowest nibble is in that part of the of the random number that will be moved into IO and won't matter anyway.)</p>
+
+<p>And there is yet a last issue, as an attentive reader might have observed already: While the original estimated cycle count in <code>mb1</code> is used to determine the size of the object and hence of the explosion, there are no means to adjust the runtime for the time spent in the explosion routine. Will there be any difference? Since the explosion routine isn't that long, we can do the math: For a spaceship, there are about 43 CPU cycles spent in the animation loop for each of the 128 (octal 200) particles, making a total of 5504 cycles, plus another 50 one in front and after the loop. Thus, we arrive at a sum of decimal 5554 (octal 12662) CPU cycles spent over the entire routine. Since any extra cycles are spent in a loop consuming 4 cycles, we'll have to divide this by 4 in order to arrive at an equivalent of a <code>mb1</code>-cycle-estimate of octal 2554. Since the base value for a spaceship is octal 2000 and the explosion is rather short, there won't be much of a difference to be perceived by the players. Chances are, the players would be rather caught by the attractive effect on the scope than distracted by a small delay for a fraction of a second, if there would be any at all. (We haven't done the math on the standard spaceship routine for comparison, rather relying on the estimated cycle count. But we might be confident that it would yield a rather similar result.)</p>
+
+<h2 id="crockexplosions">Spacewar 2b and the Crock Explosion</h2>
+
+<p>The code we've just inspected wasn't the originally one. Before, there was the boxy &quot;crock explosion&quot; of Spacewar 2b. Martin Graetz gives a rather sarcastical description in his account of how Spacewar! came into being <cite>(J.M. Graetz, <a href="https://www.masswerk.at/spacewar/SpacewarOrigin.html">The Origin of Spacewar</a>, Creative Computing, 1981)</cite>:</p>
+<blockquote>It's hardly surprising, then, that we had to let a few unsatisfactory (all right, inelegant) bits go by.<br /><br />
+The most irritating of these (and the first to be improved in later versions) was the appropriately-named Crock Explosion. Something dramatic obviously had to happen when a ship was destroyed, but we were dealing with a plain dot-matrix screen. The original control program produced a random-dot burst confined within a small square whose outlines were all too discernible (Figure 5).<br /><br />
+This explosion was intended merely as a place-holder until something more plausible could be worked out, but after all the other features had been &quot;inhaled,&quot; there wasn't room or time for a fancier calculation.</blockquote>
+
+<p class="noindent">And here is <em>Figure 5</em>, showing the self-accusingly dubbed &quot;crock explosion&quot;:</p>
+
+<figure class="img"><img src="images/spacewarorigin-fig5.jpg" alt="Origin of Spacewar: Crock explosion of Spacewar 2b (nobody is perfect)" width="417" height="422" /><p>Origin of Spacewar, Figure 5.<br />Image credits: J. M. Graetz, 1962/1981<br />Original caption: <em>The Crock Explosion. Nobody's perfect.</em></p></figure>
+
+<p class="noindent">And here, for comparison, is the explosion as rendered by Spacewar! 3.1:</p>
+
+<figure class="img"><img src="images/spacewar-3_1-explosion.jpg" alt="Explosion in Spacewar 3.1 (emulation)" width="417" height="422" /><p>Spacewar 3.1: Two ships exploding in a collision (emulation).</p></figure>
+
+<p><em>Note:</em> Peter Samson's <a href="http://www.gricer.com/tmrc/dictionary1959.html" target="_blank">TMRC Dictionary 1<sup>st</sup> Ed. (June, 1959)</a> helpfully provides a definition of the term &quot;crock&quot; as used in a MIT-related environment: <em>&quot;1)&nbsp;something which fails the purpose of its design from the  moment of its conception on; 2)&nbsp;something which by normal or accelerated decay is utterly worthless; 3)&nbsp;(by acrophony) a Coca-Cola.&quot;</em><br />(Let's put it this way, no, we're not facing a <del>can</del> bottle of Coke, but &quot;accelerated decay&quot; might actually be involved in the thermodynamics of an explosion &hellip;)<br />&nbsp;</p>
+
+<p>So, what went wrong, and, how has this been fixed without adding much of a &quot;fancier calculation&quot; that would overburden the tightened ressources of &quot;room and time&quot;?</p>
+
+<p>Let's have a look at the diff of Spacewar 3.1 and Spacewar 2b (this being the original source that has been rediscovered recently):</p>
+
+<pre>Spacewar 3.1  24 Sep 62                    Spacewar 2b  25 Mar 62
+
+      define                                     define
+random                                     random <span class="code2">N</span>
+      lac <span class="code3">ran</span>                                    lac <span class="code2">N</span>
+      rar 1s                                     rar 1s
+      xor (3<span class="code3">5</span>567<span class="code3">0</span>                                xor (3<span class="code2">3</span>567<span class="code2">1</span>
+      add (3<span class="code3">5</span>567<span class="code3">0</span>                                add (3<span class="code2">3</span>567<span class="code2">1</span>
+      dac <span class="code3">ran</span>                                    dac <span class="code2">N</span>
+      term                                       term
+
+...                                        ...
+
+      / explosion                                / <span class="code2">crock</span> explosion
+
+mex,  dap mxr                              mex,  dap mxr
+      cla                                        cla
+      diff \mdx, mx1, (sar 3s                    diff \mdx, mx1, (sar 3s
+      cla                                        cla
+      diff \mdy, my1, (sar 3s                    diff \mdy, my1, (sar 3s
+      law mst                                    law mst
+      dap msh                                    dap msh
+      lac i mb1      / time involved             lac i mb1      / time involved
+      cma cli-opr                                cma cli-opr
+      sar <span class="code3">3s</span>                                     sar <span class="code2">2s</span>
+      dac \mxc                                   dac \mxc
+ms1,  sub <span class="code3">(140</span>                             ms1,  sub <span class="code2">(500</span>
+      sma                                        sma
+      idx msh                                    idx msh
+mz1,  random                               mz1,  random <span class="code2">\ran</span>
+      <span class="code3">and (777</span>
+      <span class="code3">ior (scl</span>
+      <span class="code3">dac mi1</span>
+     <span class="code3"> random</span>
+      scr 9s                                     scr 9s
+      sir 9s                                     sir 9s
+msh,  xct .                                msh,  xct .
+<span class="code3">mi1,  hlt</span>
+      add i my1                                  add i my1
+      swap                                       swap
+      add i mx1                                  add i mx1
+      dpy-i <span class="code3">300</span>                                  dpy-i
+      count \mxc, mz1                            count \mxc, mz1
+      count i ma1, mxr                           count i ma1, mxr
+      dzm i ml1                                  dzm i ml1
+mxr,  jmp .                                mxr,  jmp .
+
+mst,  <span class="code3">scr 1s</span>                               mst,  <span class="code2">scl 5s</span>
+      <span class="code3">scr 3s</span>                                     <span class="code2">scl 2s</span></pre>
+
+<p>First of all, we may notice the self-accusing term &quot;crock explosion&quot; being even in the source, a manifest of the merely assuaged pains of its developer. (Although, as for the aesthetic side of things, it worked out quite nicely together with the Minskytron-effect of the original hyperspace routine. &mdash; It is quite interesting that, if we <a href="../mods.html?v=spacewar2o" target="_blank">replace</a> the explosion routine of Spacewar! 2b by the one of version 3.1, there's something missing. The two effects do not go together that well. This might be one of the reasons, why the <em>warp-induced photonic stress emission</em> hyperspace signature was ulimately dismissed, with a priority on the explosions.)</p>
+
+<p>Second, there isn't that much change, only a mere 5 instructions were added and the values of a few constants were modified. (Also, in Spacewar! 2b, the random number generator isn't working on a fixed, labeled memory location for the random number to be stored in, but is rather fed with the variable <code>\ran</code> as a parameter. But this isn't making much of a difference.)</p>
+
+<p>So, what's different? First, the number of particles is reduced to the half by applying a shift by 3 bits to the right to the contents of property <code>mb1</code> rather than a shift by 2 bits. For this, the comparision to the constant <code>500</code> to identify the big ones, is also reduced to <code>140</code>. (Again, this comparison is ineffective for the same reasons we've observed obove. Thus, a shif by 5 bits, see below, will be used in any case.) Second, and more importantly, the shifts for the confining box are reduced and the additional random shift to the left at label <code>mi1</code> has been added, as well as the 4 instructions for setting it up. (We may observe in Spacewar! 2b that the scaling shift  at <code>mst</code> is a shift to the left and that it is intended to be a greater one for the smaller explosions than for the bigger ones.) Moreover, the not so perfect symmetry provided by the various shifts applied to the x- and y-deplacements adds to a more &quot;natural&quot; spread of the particles in Spacewar! 3.1.</p>
+
+<p>Putting it the other way round, what went wrong in Spacewar! 2b?</p>
+<p>Let's have a look: Like in Spacewar! 3.1, there's a random number split into two halves, each of them in the lower bits of IO and AC in the range of <code>-377 .. +377</code>, when we arrive at label <code>msh</code> to execute the scaling shift. Since the resulting value will be added to a screen coordinate (to be considered as a frational value with the fractional point placed after the 10<sup style="line-height:normal;">th</sup> bit from the left), only the highest 10 bits will be of interest here. With <code>377</code> equaling all of the 8 lowest bits set, the shifts will produce a visible effect only for the amount of bit positions the contents is moved, at best. Thus, the left-shift by 5 bit positions effects in a maximum displacement of decimal 31 screen locations in any direction (or 32 locations with the inclusion of a possible carry). Moreover, the original algorithm is producing a perfectly symmetrical result along the two axes, since this is a shift to the left with the higher part of the two registers cleared. Since there are also twice as many particles (e.g., octal 400 for a big explosion), we meet a fair chance to see the confining box filled by a random pattern.</p>
+
+<p>Another difference is not to be found in the explosion routine itself, but in the macro <code>random</code> for the random number generator. Here, there's this change to the modifier constant, we've alread addressed above. Since the random number is else used for the display of the central <em>heavy star</em> and for the random length of the exhaust blasts &mdash; and both of them remained essentially unchanged &mdash;, we may conclude that this was done to address an issue with the explosions, namely the occasional stray particles produced by the modified animation algorithm. This might also provide a clue about the authorship of the modifications we see in version 3.1: Both the straight forward style of this intervention and the change of the RNG modifier may hint at Steve Russell. &mdash; At least: Who else would have dared to mess around with the random number generator? (Opposed to this, we do not see the use of a <code>hlt</code> instruction as a placeholder anywere in the code that might be attributed to Steve Russell with some certainty.)</p>
+
+<p class="endex" id="constants">*****</p>
+
+<p>While speaking of Spacewar! 2b, this might also be the place to note some of the major changes applied to the game in version 3.1: Generally, Spacewar! 3.1 appears to be a consolidated version of Spacewar! 2b, with most of the code unchanged, but with the various patches now integrated into the main source. Prominent changes are the start position of the EP and the introduction of modulated display intensities, a new hyperspace routine, the double length rocket blasts, and the changes to the explosion routine, we've investigated here. But there are also some other changes under the hood, namely the extraction of some modifier constants and their integration in a common table on top of the program to be easily accessed by the operator's console. Moreover, some of these values were adjusted in favor for a more fluent and a bit faster game. We don't know, if the introduction of the constants table would have been motivated by the need to rework these values, or if the refined values would have been rather a result of the experiments made on them. Anyway, we may observe some shift in emphasis, from Spacewar! representing a <em>simulation</em> towards an emphasis on the play value of the program as a <em>game</em>. &mdash; A slight shift in perspective that might be attributed to the flaring pixel dust explosions of Spacewar! 3.1 as well.</p>
+
+<p>The most important of these changes, besides the addition of fuel consumption and the new, integrated hyperspace (see the <a href="insidespacewar-pt8-hyperspace.html">next episode</a>), was the adjustment of the velocity and the reload time of the torpedoes, effecting in an over-all faster paced gaming experience.</p>
+
+<p>Here are the respective constants of Spacewar! 3.1 (shifts are scaling factors, lower shifts effect in greater velocity, counts give delays in frames):</p>
+<pre>Spacewar! 3.1:
+
+tno,  6,	law i 41   / number of torps + 1
+tvl,  7,	sar 4s     / torpedo velocity
+rlt, 10,	law i 20   / torpedo reload time
+tlf, 11,	law i 140  / torpedo life</pre>
+
+<p class="noindent">and as extracted from Spacewar! 2b (the values are rather inlined in the code than placed in a constants table like in Spacewar! 3.1):</p>
+
+<pre>Spacewar! 2b:
+
+tno,    	law i 40   / number of torps + 1
+tvl,    	sar 5s     / torpedo velocity
+rlt,    	law i 40   / torpedo reload time
+tlf,    	law i 300  / torpedo life</pre>
+
+<p>As we may observed, the torpedo speed is doubled in version 3.1 (accordingly, the life time is now the half of what it was before, thus preserving the effective range) and the reload time is also shortened by a magnitude. Also new in Spacewar! 3.1 is the <em>amount of torpedo space warpage</em>, we explored above. By this, the most notable adoptions that were made in Spacewar! 3.1 attribute to the torpedoes, their behavior, and the consequent explosion of any collidible articles on the screen.</p>
+
+<p>&nbsp;</p>
+<p class="noindent"><span class="author">Norbert Landsteiner</span><br />
+Vienna, September 2014<br />
+<a href="https://www.masswerk.at/" target="_top">www.masswerk.at</a></p>
+<p>&nbsp;</p>
+<p class="noindent"><em>In case you would have found any errors or inconsistencies, or would have additional information,<br />please <a href="https://www.masswerk.at/contact.php">contact me</a>.</em></p>
+<p class="endex">*****</p>
+
+<p class="noindent"><span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9664;</span> Previous: &nbsp; <a href="insidespacewar-pt6-gravity.html">Part 6: Fatal Attraction &mdash; Gravity</a><br />
+<span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9654;</span> Next: &nbsp; <a href="insidespacewar-pt8-hyperspace.html">Part 8: Hyperspace!</a><br /><br />
+<span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9650;</span> Back to the <a href="./">index</a>.</p>
+
+</article>
+
+<section id="related">
+	<p>References / Related Links:</p>
+	<ul>
+		<li><a href="https://www.masswerk.at/spacewar/sources/spacewar3.1_complete.txt">Spacewar! 3.1 source code</a> (PDP-1, Macro assembler code)</li>
+		<li><a href="https://www.masswerk.at/spacewar/sources/spacewar_2b_25mar62.txt">Spacewar! 2b source code</a> (PDP-1, Macro assembler code)</li>
+		<li><a href="https://www.masswerk.at/spacewar/SpacewarOrigin.html">&quot;The Origin of Spacewar&quot; by J. M. Graetz</a> (redacted copy, incl. additional text and images)</li>
+		<li><a href="https://www.masswerk.at/spacewar/decus1962/">&quot;Spacewar! Real-Time Capability of the PDP-1&quot; by J.M. Graetz</a> (Decus Proceedings 1962)</li>
+		<li><a href="pdp1-instructions.html" target="_blank">PDP-1 Instruction List</a> (opens in a new window)</li>
+		<li><span style="font-family:sans-serif; font-size: 80%;color: #555;">&#9654;</span> <a href="https://www.masswerk.at/spacewar/" title="Play Spacewar! online">Play Spacewar! online</a> (html5 emulation of a PDP-1 running Spacewar!)</li>
+	</ul>
+	<p>&nbsp;</p>
+	<p>&lt;<a href="https://www.masswerk.at/" target="_top">www.masswerk.at</a>&gt;</p>
+</section>
+
+</body>
+</html>

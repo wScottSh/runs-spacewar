@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<title>Inside Spacewar! &mdash; Part 8: Hyperspace!</title>
+	<meta name="description" content="A software archeological approach to Spacewar!, the first digital video game. Part 8: Hyperspace!" />
+	<meta name="keywords" content="Spacewar!,Spacewar! 1962,PDP-1,hyperspace,J.M. Graetz,software archeology,computer history" />
+	<meta name="format-detection" content="telephone=no" />
+	<link rel="stylesheet" href="insidespacewar.css" type="text/css" />
+	<link href="https://fonts.googleapis.com/css?family=Lato:300" rel="stylesheet" type="text/css" />
+	<link rel="shortcut icon" type="image/x-icon" href="../favicon-bw.ico" />
+	<script type="text/javascript" src="imgembedder.js"></script>
+	<script type="text/javascript" src="instructionlist.js"></script>
+	<script type="text/javascript" src="layoutselector.js"></script>
+<script type="text/javascript">
+
+var hsAnimation = (function() {
+	var animation= new Image(), poster=new Image(), active=false;
+	animation.src='images/sw2hyperspace-animation.gif';
+	poster.src='images/sw2hyperspace-poster.png';
+	
+	function toggle() {
+		active=!active;
+		var img=document.getElementById('hyperspace_anim_gif');
+		if (img) {
+			img.src= (active)? animation.src:poster.src;
+			img.title= (active)? 'Click to stop the animation':'Click to play';
+		}
+	}
+	
+	return { toggle: toggle };
+})();
+
+</script>
+</head>
+<body>
+
+<article id="main">
+<a href="./" title="Inside Spacewar! &mdash; Index" class="indexLink">Go to the Index</a>
+<h1>Inside Spacewar!<br />Part 8: Hyperspace!</h1>
+
+<div class="top_nav"><a href="insidespacewar-pt7-shootout.html">Prev. <span style="font-family:sans-serif; font-size: 80%;">&#9664;</span></a>
+&mdash;
+<a href="insidespacewar-pt9-spacewar4hacks.html"><span style="font-family:sans-serif; font-size: 80%;">&#9654;</span> Next</a></div>
+
+<p class="page_toc">(<a href="#main">Introduction</a> &middot; <a href="#semantics">Semantics of Interaction</a> &middot; <a href="#spacewar_3_1">Hyperspace As-We-Know-It: Spacewar! 3.1</a> &middot; <a href="#hyperspace_patch">Spacewar! 2b and the &quot;Minskytron&quot; Hyperspace</a> &middot; <a href="#autorestart">The Auto-Restart Patch for Spacewar! 2b</a>)</p>
+
+<p class="noindent">Spacewar! is a sporty game for young ladies and gentlemen who happen to have access to a DEC PDP-1 with a scope attached to it (favorably some kind of Type 30 CRT). Like in every noble, sporty game, there is some kind of provision to equalize a missmatch of mastership in order to provide a fair and interesting game: Golf has a handicap, chess has extra time or even extra moves and odds, and Spacewar! has hyperspace. This is also the subject of today's episode of our walk through the internals of Spacewar!, the earliest known digital video game.</p>
+
+<figure id="playingspacewar" class="img"><img src="images/chm_people_at_console_102652460_c1964.jpg" width="500" height="346" alt="People playing Spacewar! at the PDP-1 console, ca 1964" /><p>Young ladies and gentlemen enjoying a game of Spacewar!<br />at the AFIPS Fall Joint Computer Conference, ca. 1964.<br />
+Image courtesy of the Computer History Museum (CHM), Catalog No <a href="https://www.computerhistory.org/collections/catalog/102652460" target="_blank">102652460</a>.<br /><br />
+<em>(Notably, we are not suggesting here that any of the distinguished players<br />depicted on this photograph would have required to resort to hyperspace.)</em><br /><br /><em>Update:</em> According to an updated image description at the CHM site<br />the image shows Barbera Stephenson, the first female engineer at DEC.</p></figure>
+
+<p style="margin-bottom: 2em; margin-top: 2em;">BTW: <span style="font-family:sans-serif; font-size: 80%;color: #555;">&#9654;</span> You may <a href="https://www.masswerk.at/spacewar/" target="_top" title="Play the original Spacewar! in a JS/HTML5 emulator of a PDP-1">play Spacewar! here</a>, too (original code running in an online emulation).</p>
+
+
+<h2 id="semantics">Semantics of Interaction</h2>
+
+<p>For anyone who has encountered the term &quot;HYPERSPACE&quot; for the first time as a button-label at an Atari&trade; arcade machine this is maybe one of the most artificial words of all and indispensably linked to electronic gaming. It might be surprising that this term was actually a no-brainer, when it was officially introduced to the world of games in 1962:</p>
+
+<blockquote>Each ship has one other means of getting from one place to another, namely &quot;hyperspace,&quot; which allows him to get out of the way quickly.<br /><em class="cite">(J. M. Graetz, &quot;<a href="decus1962/" target="_blanK">Spacewar! Real-Time Capability of the PDP-1</a>&quot;, DECUS Proceedings 1962: Papers and Presentations of the Digital Equipment Computer Users Society; Maynard, Massachusetts, 1962. p. 37-39)</em></blockquote>
+
+<p>And going a bit more into detail:</p>
+
+<blockquote>HYPERSPACE<br />This is an emergency device. It frequently happens that a ship cannot accelerate fast enough to get out of the way of an approaching torpedo. The player may send the ship into hyperspace then. The ship then will disappear and very shortly will reappear somewhere else on the scope. Since this is a way of getting from one place to another without traveling the distance between, the method used must be hyperspace! <em class="cite">(J. M. Graetz, ibidem.)</em></blockquote> 
+
+<p class="noindent">Apparently there is no need to introduce the term at all. &mdash; How comes?</p>
+
+<p>When it comes to the cultural background of Spacewar!, the references to E. E. &quot;Doc&quot; Smith and especially the <a href="http://en.wikipedia.org/wiki/Lensman_series" target="_blank"><em>Lensman</em> series</a> are ubiquitous &mdash; a notion that has been fed by Spacewar's authors themselves in a number of articles and interviews. But, if we investigate this a bit more thoroughly, we might have to broaden our view on the subject.</p>
+
+<p>Spacewar! features a quite distinctive vocabulary, both in the source comments and in the various accounts on it and recollections. On the other hand, the <em>Lensman</em> series exhibits a distinctive wording of its own, and there isn't that much of an intersection here. It's true that torpedoes are not an uncommon thing in the <em>Lensman</em> series, and there's even a rare notion of <em>hyper-spatial tubes.</em> But more often, we will encounter <em>projectors, rays,</em> and <em>beams.</em> Especially, E. E. Smith seams to have been fond of the word &quot;ether&quot;, as in <em>ether-waves, sub-ether, ether-wall, ether-defense,</em> and even <em>sub-ether-drives.</em> Had Spacewar! really been staged in a <em>Doc-Smith-universe</em> exclusively, then there would have been some shields of sorts <em>(ahem: &quot;ether-walls&quot;)</em>, there would have been no need for &quot;mumbling&quot; about &quot;photon bombs&quot; (for the lack of gravity), since these would have clearly been <em>projetor beams,</em> and, if there wouldn't have been <em>sub-ether-drives</em> or <em>enigmatic N<sup style="line-height: normal;">th</sup> space</em>, it would have been &quot;hyper-space&quot; at least &mdash; notably with a hyphen in it.</p>
+
+<p>Now, I'm not an expert on the subject of SF literature, but <a href="http://en.wikipedia.org/wiki/Hyperspace_(science_fiction)" target="blank">Wikipedia</a> credits John Campbell for using the term &quot;hyperspace&quot; as early as 1931 <em>(Islands of Space)</em> and describes a frequent use of the term ever thereafter. With a well established Science Fiction Society at MIT, copies of various specimens of the genre were probably circulating frequently and were not difficult to find. While Martin Graetz's DECUS paper makes an implicit reference to written SF literature and the origin of this term as an artifice of story telling by classifying hyperspace as one of the means of transportation in Spacewar!, there is probably more to it. Books were still a major reference at the mid-century, but there's more to consider in terms of media references, especially, when it comes to the low and mid brow field of rather ephimeral culture.</p>
+
+<p>While Steve Russell once described Spacewar's spaceship as &quot;crude cartoons&quot; and the outlines of the <em>Wedge</em> as &quot;curvy like a Buck Rogers 1930s spaceship&quot; <cite>(quoted in: Kent, Steven L, The Ultimate History of Video Games. Roseville, CA: Prima Publishing, 2001)</cite>, Martin Graetz recollects the bunch of future Spacewar authors frequently visiting &quot;one of Boston's seedier cinemas to view the latest trash from Toho&quot; in &quot;breaks between books&quot; <cite>(J. M. Graetz, <a href="https://www.masswerk.at/spacewar/SpacewarOrigin.html">&quot;The Origin of Spacewar&quot;</a>; in: Creative Computing, Aug. 1981)</cite>. Probably we'll have to consider visual media as well: We might well imagine a scene in a now forgotten, nameless Japanese SF movie, where a ship would magically disappear &mdash; <em>Whizz &ndash; Swoosh &ndash; Blip</em> &mdash; in an amazingly crude effect amidst the smokey clouds of exploding space granades &mdash; and probably there was as much smoke in front of the screen as in the flickering images projected onto it. At least, this seams to be a more credible source when it comes to the role of hyperspace in the game mechanics as an &quot;emergency device&quot; <cite>(J. M. Graetz, 1962, ibidem)</cite>, or, as Wikipedia puts it, &quot;Hyperdrive may also allow for dramatic escapes as the pilot 'jumps' to hyperspace in the midst of battle to avoid destruction.&quot; <cite>(Wikipedia, &quot;Hyperspace (science fiction)&quot;, as of Sep. 2014)</cite>.</p>
+
+<p>But hyperspace was more than just a non-Newtonian, non-Euclidian element in the simulation, more than another feature of the <em>game mechanics.</em> With computer games being altogether turn-based before, Spacewar! not only introduced game mechanics all by itself, it also introduced an entirely new situation for the players in front of the screen by its taxing, ever demanding realtime interaction*). Hyperspace had also a social side, as a stress relief: &quot;You were gone for a discernible period of time, which gave your opponent a bit of a breather (&hellip;)&quot; <cite>(J. M. Graetz, 1981, ibidem)</cite>. By this, hyperspace allowed the players to resurface for a glimpse of time from the hypnotic, virtual realm of the Type 30 display, before submering again and resuming the epic battle of the <em>Needle</em> and the <em>Wedge</em>. On the other hand, this would not only provide a break, it would be also breaking the magic bond to the simulation and the addictive scene exhibited on the PDP's scope, presumingly another reason for its use being rather frowned at, aside from the prey thus escaping its due fate. &mdash; In deed, Spacewar! was a sporty game.</p>
+
+<p><span style="letter-spacing: -0.3em; color: #222;">&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;&mdash;</span><br/>
+*) &quot;They were absolutely out of their bodies, like they were in another world. Once you experienced this, nothing else would do. This was beyond psychedelics. It impressed the heck out of me.&quot; (Stewart Brand on Spacewar! gaming as observed at Stanford's computer center in the early 1960's, quoted in: <cite>Markoff, John, <a href="http://www.nytimes.com/2002/02/28/technology/a-long-time-ago-in-a-lab-far-away.html" target="_blank">&quot;A Long Time Ago, in a Lab Far Away . . .&quot;</a>; New York Times, February 28, 2002)</cite>. Compare also the following conjuncture in the same NYT-story: &quot;Spacewar was the original 'twitch' game, requiring lightning reflexes. (&hellip;) Before long a 'hyperspace' option was added so that a player could make his ship vanish and reappear at a random place on the screen, avoiding certain death.&quot; <cite>(John Markoff, ibidem)</cite>.</p>
+
+<h2 id="spacewar_3_1">Hyperspace As-We-Know-It: Spacewar! 3.1</h2>
+
+<p>While we're commonly referring here to J. M. Graetz's writings as an authorized source on the background of Spacewar!, we'll have to consider in this context that the passages on hyperspace (both in the DECUS paper and in the <em>Cerative Computing</em> story) are describing the hyperspace patch for Spacewar! 2b. Was this driven by the &quot;Mark One Hyperfield Generators&quot; <cite>(J. M. Graetz, 1981, ibidem)</cite>, the spaceships in Spacewar! 3.1 feature a revised hyperdrive that could be called &quot;Mark I, Series B&quot;:</p>
+
+<blockquote>It's a little controversial. Some people deplore it, and it's fairly common to play games without it.... It was of course vital to put in problems with hyperspace. You know, when you come back into normal space from hyperspace, there is initially a small energy-well which looks amazingly like a star; if a torpedo is shot into that energy well, lo and behold the ship blows up. There is also a certain probability of blowing up as you finally break out of hyperspace. Our explanation was that these were the Mark One hyperfield generators and they hadn't done really a thorough job of testing them &mdash; they had rushed them into the fleet. And unfortunately the energies that were being dissipated in the generators at breakout were juuust barely what they could handle. So the probability of the generator flying apart and completely killing the spaceship was noticeable on the first couple of uses, and after four uses it was only an even chance of surviving hyperspace. So it was something that you could use but it wasn't something that you wanted to use.<br/><em class="cite">Steve Russell on hyperspace (quoted in: Brand, Stewart, &quot;<a href="http://www.wheels.org/spacewar/stone/rolling_stone.html" target="_blank">&quot;SPACEWAR &mdash; Fanatic Life and Symbolic Death Among the Computer Bums&quot;</a>; Rolling Stone magazine, Dec. 1972.)</em></blockquote>
+
+<p>While the tubes and coils would still require some time to cool and relaod, once the hyperfield generators were ready, they would be reponsive on the spot, sending the ship reliably to the voids of &quot;N<sup style="line-height: normal;">th</sup> space&quot; ether each time the trigger was deployed. The tricky part became the re-entry: There was an increasing chance of the ship breaking, with a pixel dust explosion being a certainty on the 8<sup style="line-height: normal;">th</sup> attempt. Besides of not only displacing the ship to a random location (as in the original hyperspace patch), the ships were now reset to a random direction and velocity, as well. And there was also another little extra, namely the addition of a re-entry or break-out phase, in which the ship's position would be heralded by a bright, star-like spot on the screen.</p>
+
+<p>We may note some important differences to the original implementation (which we will investigate a little later): First, the cluncky, unreliable feeling of the interaction with the original hyperspace device was gone, like the breaking animation as well. Second, the additional changes applied to the ship's parameters were not only adding some randomness, but were also adding some more information to be quickly processed and reacted to, making the re-entry an even more encompassing phase of the game. And finally, the introduction of the &quot;energy well&quot; would not only add another risk for the player who made the jump &mdash; as the ship would be sitting like a lame duck on the screen, ready to be shot by an alert opponent &mdash;, it would also make an end to the breaking of the flow by making this rather a phase of increased and intensified concentration. &mdash;  Had hyperspace been an outstanding feature in Spacewar! 2b and the original patch, it had now become an integrated part of the game, not only in terms of code, but even more so in terms of gameplay.</p>
+
+<p>Also, we may observe, once more, the notion of hyperspace being &quot;for noobs&quot; and the game commonly played without it. What's interesting here, is that this was left as a convention to the players and there was no provision to disable the feature. (This could have been easily assigned to sense switch 6, which was disabling the <em>heavy star</em> and by this gravity. This would have been a nice feature for Spacewar! as a demonstration object <em>&mdash; see, this is how Newton's laws govern flight in the voids of space; see, this is, what it's like, if we add a star and gravity &mdash;,</em> but as soon as Spacewar! had become a <em>game</em>, nobody would have probably done without it.) Thus, the various sense switches and parameters were only configuring the simulation, but where not intended to set up any rules of the games. You had to trust the word of your opponent, with the steady risk of your prey escaping all the same.</p>
+
+<p><em>Note: A somewhat similar risk and dependancy on human conduct was added by a later modification to the program that would send the PDP-1 into debug mode by bringing up DDT on the press of a key of the console typewriter: &quot;After the drum was delivered one of
+its 32 tracks was dedicated to Spacewar, and the program changed
+to respond to any keypress on the typewriter by invoking DDT ... the
+most common purpose of which was to change one of the low-memory
+constants.&quot; <cite>(Joe Morris, <a href="https://groups.google.com/d/msg/alt.folklore.computers/T7Oduo-ljgI/a9AddenssZsJ" target="_blank">alt.folklore.computers/T7Oduo-ljgI</a>, 4 Nov. 2001.)</cite> As a result, anyone near the Flexowriter was watched with eagle's eyes, since there was always the risk of someone imposing an arbitrary stop to the game, either by accident or as a hoax. (There's a source on this, too, but I'm momentarily not able to find it.)</em></p>
+
+<p class="noindent">Anyway, time to investigate the code and insert the standard credits:</p>
+
+<blockquote>Spacewar! was conceived in 1961 by Martin Graetz, Stephen Russell, and Wayne Wiitanen. It was first realized on the PDP-1 in 1962 by Stephen Russell, Peter Samson, Dan Edwards, and Martin Graetz, together with Alan Kotok, Steve Piner, and Robert A Saunders. Spacewar! is in the public domain, but this credit paragraph must accompany all distributed versions of the program.</blockquote>
+
+<h3>The Code</h3>
+
+<p>First, there are some constants/parameters related to hyperspace at the top of the source:</p>
+
+<pre>spacewar 3.1  24 sep 62  pt. 1
+...
+
+/ interesting and often changed constants
+...
+mhs, 22,	law i 10	/ number of hyperspace shots
+hd1, 23,	law i 40	/ time in hyperspace before breakout
+hd2, 24,	law i 100	/ time in hyperspace breakout
+hd3, 25,	law i 200	/ time to recharge hyperfield generators
+hr1, 26,	scl 9s		/ scale on hyperspatial displacement
+hr2, 27,	scl 4s		/ scale on hyperspatially induced velocity
+hur, 30,	40000		/ hyperspatial uncertancy</pre>
+
+<p>Second, there is the trigger for hyperspace in the spaceship routine at label <code>sr5</code>:</p>
+
+<pre>sr5,	count i \mh3, st3	/ hyperbutton active?
+	dzm i \mh3
+	lac i \mh2
+	sza i
+	jmp st3
+	lac \scw
+	cma
+	ior i mco
+	and (600000
+	sza
+	jmp st3
+	lac i ml1
+	dac i \mh1
+	lac (hp1 400000
+	dac i ml1
+	xct hd1
+	dac i ma1
+	law 3
+	dac i mb1</pre>
+
+<p>And finally, there are the hyperspace routines themselves:</p>
+
+<pre>	/ hyperspace routines 
+
+/ this routine handles a non-colliding ship invisibly
+/ in hyperspace
+
+hp1,	dap hp2
+	count i ma1, hp2
+	law hp3		/ next step
+	dac i ml1
+	law 7
+	dac i mb1
+	random 
+	scr 9s
+	sir 9s
+	xct hr1
+	add i mx1
+	dac i mx1
+	swap
+	add i my1
+	dac i my1
+	random
+	scr 9s
+	sir 9s
+	xct hr2
+	dac i \mdy
+	dio i \mdx
+	setup \hpt,3
+	lac ran
+	dac i mth
+hp4,	lac i mth
+	sma
+	sub (311040
+	spa
+	add (311040
+	dac i mth
+	count \hpt,hp4
+	xct hd2
+	dac i ma1
+hp2,	jmp .
+
+/ this routine handles a ship breaking out of
+/ hyperspace.
+
+hp3,	dap hp5
+	count i ma1,hp6
+	lac i \mh1
+	dac i ml1
+	law 2000
+	dac i mb1
+	count i \mh2,hp7
+	dzm i \mh2
+
+hp7,	xct hd3
+	dac i \mh3
+	lac i \mh4
+	add hur
+	dac i \mh4
+	random
+	ior (400000
+	add i \mh4
+	spa
+	jmp hp5
+	lac (mex 400000
+	dac i ml1
+	law i 10
+	dac i ma1
+	law 2000
+	dac i mb1
+hp6,	lac i mx1
+	dispt i, i my1, 2
+hp5,	jmp .</pre>
+
+<p>Further, the code makes use of the following macro definitions:</p>
+
+<pre>define setup A,B
+	law i B
+	dac A
+	term
+
+define count A,B
+	isp A
+	jmp B
+	term
+
+	define
+dispt A,Y,B
+	repeat 6, B=B+B
+	lio Y
+	dpy-A+B
+	term
+
+	define
+random
+	lac ran
+	rar 1s
+	xor (355670
+	add (355670
+	dac ran
+	term</pre>
+
+<p class="noindent"><em>(Code as in version 3.1. For the basics of PDP-1 instructions and Macro assembler code, please refer to <a href="insidespacewar-pt1-ep.html#instructions">Part 1</a> or bring up the instruction list available at the tab at the bottom of the page.)</em></p>
+
+<h3>The Trigger</h3>
+
+<p>We've already investigated how the hyperspace trigger was parsed and the hyperspace routine was replaced for a spaceship's standard object routine in <a href="insidespacewar-pt5-ships.html#hyperspace">Part 5</a>, but it might be suitable to recapitulate this here in context:</p>
+
+<pre>sr5,	count i \mh3, st3	<span class="comment">// count up cooling, jump to return, if still counting</span>
+	dzm i \mh3		<span class="comment">// reset cooling counter (prevent count around)</span>
+	lac i \mh2		<span class="comment">// load number of remaining jumps</span>
+	sza i			<span class="comment">// is it not zero?</span>
+	jmp st3			<span class="comment">// no (zero), jump to return (st3)</span>
+	lac \scw		<span class="comment">// load current control word</span>
+	cma			<span class="comment">// complement it</span>
+	ior i mco		<span class="comment">// inclusive or with old control word</span>
+	and (600000		<span class="comment">// apply mask for bits 0 and 1</span>
+	sza			<span class="comment">// is it zero?</span>
+	jmp st3			<span class="comment">// no, jump to return</span>
+	...			<span class="comment">// (hyperspace setup here)</span>
+st3,				<span class="comment">// end of spaceship routine</span>
+srt,	jmp .			<span class="comment">// return</span></pre>
+<p><em>(As usual, comments starting with a double slash are mine; N.L.)</em></p>
+
+<p>Before we start, we may recall how the objects are stored and referred to: The objects are stored in arrays of their properties right at the end of the code and the addresses of the current object's properties are set up in various pointers by the main loop, both in labeled locations and variables. By including the <em>defer bit</em> or i-bit, as in &quot;<code>lac i \mh2</code>&quot;, we are rather refering to the property itself than to the pointer in which's address part the location of this property is stored for a deferred memory lookup.</p>
+
+<p>We start with a combined count up and check of the hyperspace cooling in pointer <code>\mh3</code> (pointing to the the third of four hyperspace properties of a spaceship). If the value would be negative after the increment and we would still be counting, we skip the rest and are jumping to the return at label <code>st3</code> (see the macro <code>count</code>). Otherwise, we reset the counter to not eventually end up at a value of <code>400000</code> (the maximum negative number), thus accidentially starting a <em>very</em> long cooling phase.</p>
+<p>The next three instructions are checking the second of the four hyperspace properties in pointer <code>\mh2</code>. If zero (please mind the negating i-bit in the <code>sza</code> or <em>skip on zero accumulator</em> instruction), we take the jump to the return address at <code>st3</code> again and skip the rest. The property in <code>\mh2</code> has been initialized during the setup phase of the game, when the spaceships acquire their initial properties like start positions, by executing the instruction in constant <code>msh</code>. Since this contains the instruction &quot;<code>law i 10</code>&quot; (load decimal -8), and since it will be incremented inside the hyperspace routine for each jump, it does what's indicated by the comment to <code>msh</code>, namely limitting the &quot;number of hyperspace shots&quot;. Therefor, any attempts of jumping to hyperspace will be blocked after the eighth one, if we weren't exploding on re-entry earlier.</p>
+<p>If we've taken the hurdles so far, we're finally parsing the control input: The <em>control word</em> is stored in variable <code>\scw</code>, which is now loaded into the accumulator by the instruction &quot;<code>load \scw</code>&quot;. Next, this value is complemented (&quot;<code>cma</code>&quot;) and an inclusive OR is applied with the last control word stored in <code>\mco</code>. (At least a comment in an other part of the source told us it would be the old control word.) Then, a bit-mask for the two highest bits is applied by an AND, as in &quot;<code>and (600000</code>&quot;. If the resulting value would be zero, we're skipping the jump to the return and are finally setting up for hyperspace.</p>
+<p>What is happening here? As we've seen in the <a href="insidespacewar-pt5-ships.html">Part 5</a>, the highest bit in <code>\scw</code> is for counter-clockwise rotation and the second one is for clockwise rotation. So the mask in the constant <code>600000</code> is isolating the bits for left and right turn. But what might this complementing and or-ing be all about?<br />Let's ignore <code>\mco</code> for a moment and consider both the bits for left and right being set: The complement will flip the bits to zero and the <em>skip on zero</em> will successfully skip the jump to return and continue with the setup-part.<br />So, what could the OR with <code>\mco</code> be adding to this?<br />If any of the two bits would have been set in the previous frame, the bits won't be zero anymore, thus inhibiting hyperspace. Since we would have taken the jump to hyperspace in the previous frame, if both of them would have been set, we've just to consider the case of only one of them being set: Apparently, this was intended to prevent an accidential jump to hyperspace, when an overlap of turn commands would occur while maneuvering with the test word controls. (With hyperspace being wired up to a distinctive lever position in the control boxes, this would not have been an issue with them.) But this is dead code, because, as we've already seen in <a href="insidespacewar-pt5-ships.html">Part 5</a>, the variable <code>\mco</code> is never set in Spacewar! 3.1. &mdash; And this is actually a good thing, because this would have made the use of hyperspace nearly inhumanly difficult, since you would have to activate the two test word switches exactly at the same time, during the very same frame. It is probably because of this, why this piece of code was eventually discarded in Spacewar! 4 in favor for a much simpler method for testing bits 0 and 1.</p>
+
+<p>But, we may ask, why was the control input encoded in a 4-lines signal at all, if this would impose such problems? Considering the wide use of 5-bit encodings (like Baudot code), a 5-lines signal would have been the more natural option to go with from the beginning. So, why introduce an encoding scheme at all? I would guess, this was related both to human factors and to the secrecy and stealth of operations. Fiddling with the tiny test word switches was probably complex enough with four of them to handle, but by adding another one, you would have to move and reposition your hand(s) in order to reach it. Moreover, there was put some importance to the secrecy of the players, like by carefully choosing such types of levers and switches for the control boxes that would provide a silent operation, in order to not to disclose any void attempts of operation. (<em>&quot;They were switchboard type switches, so they didn't click; [&hellip;] one of the problems with clicking switches, which is what people tend to start with, is you could tell when your opponent is out of torpedoes or rockets because you hear the switch clicking and nothing is happening on the screen.&quot;</em> <cite>Oral History of Steve Russell, interviewed by Al Kossow, rec. 9 Aug 2008, <a href="http://www.computerhistory.org/collections/catalog/102746453" target="_blank">CHM catalog no. 102746453</a>, p. 16</cite>) Analogously, having to reposition or move a hand wouldn't only add some discomfort to the players, it would also disclose their intentions to the opponent.</p>
+
+<p>Eventually, in case the trigger was successfully parsed, we arrive at the setup of the hyperspace-routine:</p>
+
+<pre>
+	lac i ml1		<span class="comment">// load address of spaceship routine</span>
+	dac i \mh1		<span class="comment">// and store it in \mh1</span>
+	lac (hp1 400000		<span class="comment">// address of hyperspace routine, non-collidable</span>
+	dac i ml1		<span class="comment">// store it as new object routine</span>
+	xct hd1			<span class="comment">// execute &quot;law i 40&quot; (load -40)</span>
+	dac i ma1		<span class="comment">// store it in ma1 (duration in frames)</span>
+	law 3			<span class="comment">// load 3 and store it as the instruction count</span>
+	dac i mb1</pre>
+
+<p>Compared to the tests before, this is rather straight forward: First, we load the address of the current spaceship routine (the code exected just now) from pointer <code>ml1</code> and store it in <code>\mh1</code>, the pointer to the first of the four hyperspace properties. Then we set up a new control handler, by loading a constant expression into the accumulator which is assembled from the address of the hyperspace routine and the value <code>400000</code> added to it. The value <code>400000</code> is representing a set sign-bit, thus any collision detection will be disabled for a ship in hyperspace. (See <a href="insidespacewar-pt3-objects.html">Part 3</a> for details.) The instruction &quot;<code>dac i ml1</code>&quot; installs this as the new handler code and the spaceship will from now on be handled by the hyperspace routine at <code>hp1</code>. The instruction &quot;<code>xct hd1</code>&quot; executes the instruction stored at label <code>hd1</code>. Since this happens to be &quot;<code>law i 40</code>&quot;, the value <code>-40</code> will be loaded into the accumulator and then deposited in the pointer <code>ma1</code>, as the duration in frames, readily prepared for a count-up. Finally, we load the value <code>3</code> and store it in the property <code>mb1</code>, representing the estimated instruction count of the routine. (As we've seen in <a href="insidespacewar-pt3-objects.html">Part 3</a>, this reduces the number of extra cycles spent in an empty counting loop at the end of the main loop in order to stabilize the frame rate.) The next instrucion will be the jump to the return address at label <code>srt</code> / <code>sr3</code>, which is also marking the end of the entire spaceship routine.</p>
+
+<p class="noindent">So far, we've seen the following properties and pointers involved:</p>
+
+<pre style="background-color: #fff;">\mh1 .... backup of the address of the spaceship routine
+\mh2 .... counter for remaining jumps
+\mh3 .... hyperspace cooling
+\mh4 .... remaining probability of breaking (not seen yet)
+
+ ml1 .... current object routine (sign-bit set: non-collidable)
+ mb1 .... instruction count
+ ma1 .... general purpose counter, here: duration in frames</pre>
+ 
+ <h3>The Thrills of Hyperspace</h3>
+ <p>How difficult would it be to navigate in N<sup style="line-height: normal;">th</sup> dimensional hyperspace? As we may have already guessed by the instruction <code>count</code> in <code>mb1</code> of only <code>3</code>, this is surprisingly unspectular, because &mdash; let's face it &mdash; there isn't much to do at all:</p>
+ 
+ <pre>/ this routine handles a non-colliding ship invisibly
+/ in hyperspace
+
+hp1,	dap hp2
+	count i ma1, hp2
+	...				<span class="comment">// (initialize next step)</span>
+hp2,	jmp .</pre>
+
+<p>We just deposit the return address in the address part of <code>hp2</code> and then increment property <code>ma1</code> in a <code>count</code> loop. As long as the contents of the counter is still negative (this will be so for decimal 31 frames), we jump to the return at label <code>hp2</code>. &mdash; That's all folks!</p>
+
+<p>Eventually the counter will overflow to zero and we'll continue at the code following immediately to the insertion of the macro <code>count</code>:</p>
+
+<pre>	law hp3		/ next step
+	dac i ml1	<span class="comment">// store address of hp3 as new object routine</span>
+	law 7
+	dac i mb1	<span class="comment">// instruction count: 7</span>
+	random 		<span class="comment">// get a random number (in AC)</span>
+	scr 9s		<span class="comment">// split it: highest 9 bits in AC, lower 9 bits in IO</span>
+	sir 9s		<span class="comment">// both registers aligned to the right</span>
+	xct hr1		<span class="comment">// scale it (scl 9s)</span>
+	add i mx1	<span class="comment">// add it to pos x, store new position</span>
+	dac i mx1
+	swap		<span class="comment">// swap register</span>
+	add i my1	<span class="comment">// add it to pos y, store new position</span>
+	dac i my1
+	random		<span class="comment">// get a new random number</span>
+	scr 9s		<span class="comment">// split it</span>
+	sir 9s
+	xct hr2		<span class="comment">// scale it (scl 4s)</span>
+	dac i \mdy	<span class="comment">// store as new velocity in dx, dy</span>
+	dio i \mdx</pre>
+
+<p>First, this is setting up a new start address for the object routine to be used during the breakout phase: &quot;<code>law hp3</code>&quot; loads the address in the accumulator and &quot;<code>dac i ml1</code>&quot; stores it as the new object routine. Since there is no sign-bit, the ship will be collidable during the breakout. The instrcuction count will be <code>7</code>, so we're loading the number by &quot;<code>law 7</code>&quot; and store it in property-pointer <code>mb1</code>.</p>
+<p>Second, we're setting up the new positional properties. We'll start with the breakout position, which we'll have to prepare here in order to display the heralding spot. The macro <code>random</code> (we've seen this one a couple of times before) loads a fresh random number into the accumulator. This value is now splitted in twos by the next to instructions: &quot;<code>scr 9s</code>&quot; performs a right-shift by 9 bit positions on the combined AC and IO registers. The lower half of the value will be now in the higher part of IO and the formerly 9 highest bits in the lower half of the accumulator. The instruction &quot;<code>sir 9s</code>&quot; applies another shift to the right by 9 bits, but this time to IO only. (We may note that any previous contents of IO would be shifted out by now.)</p>
+<p>We may recall, how positions are stored in Spacewar!: These are screen-coordinates, ready to be applied by the <code>dpy</code> instruction, with the screen location in the 10 highest bits. (We may think of this as a fractional number with a sign-bit, 9 integer digits and a binary point to the right of bit 9.) Since our splitted random number is now aligned to the right, this would hardly add anything to the display position, if we would think of this as an offset vector. The instruction &quot;<code>xct hr1</code>&quot; now applies the appropriate scaling, by executing the instruction in the constant <code>hr1</code> (in the constants table right at the beginning of the source). As this is a &quot;<code>scl 9s</code>&quot;, we are moving the random vector by a combined shift by 9 bits to the left for a full-scale effect, anything from the same spot to half a screen width in any direction. Then we're adding the x-value of this offset vector to x-position in <code>mx1</code> and store the updated value. After a <code>swap</code>, exchanging the contents of the AC and IO registers by two consecutive &quot;<code>rcl 9s</code>&quot; instructions, we're updating the y-position.</p>
+
+<p>Another insertion of macro <code>random</code> get's us a new random number in AC, which ist then splitted into the AC and IO registers, just as we've seen it above. The instruction &quot;<code>xct hr2</code>&quot; applies another scaling, this time a &quot;<code>scl 4s</code>&quot;, a combined shift to the left by just 4 bits. Since the next two instructions are storing this vector as the new delta x and delta y (variables <code>\mdx</code> and <code>\mdy</code> respectively), the scaling was just setting up the maximum velocity of the ship after the breakout.</p>
+
+<p>With the positional and movement vectors set up, we've another property left, namely the rotation angle in <code>mth</code>:</p>
+
+<pre>	setup \hpt,3		<span class="comment">// 2 iterations</span>
+	lac ran			<span class="comment">// get last random number</span>
+	dac i mth		<span class="comment">// store it</span>
+hp4,	lac i mth		<span class="comment">// now adjust it to 0..2&pi;</span>
+	sma			<span class="comment">// is it negative?</span>
+	sub (311040		<span class="comment">// no, subtract 2&pi;</span>
+	spa			<span class="comment">// is it positive?</span>
+	add (311040		<span class="comment">// no, add 2&pi;</span>
+	dac i mth		<span class="comment">// store it</span>
+	count \hpt,hp4		<span class="comment">// repeat it</span>
+	xct hd2			<span class="comment">// duration of breakout phase (law i 100)</span>
+	dac i ma1		<span class="comment">// store it</span>
+hp2,	jmp .			<span class="comment">// return</span></pre>
+
+<p>The insertion of the macro <code>setup</code> loads the number <code>-3</code> into the variable <code>\hp3</code> to be used as a counter. Then we load the last random number (stored in location <code>ran</code>) and deposit it as the new rotation angle. Now, this random number is anything from <code>0</code> to <code>777777</code> (decimal -131071 to +131071) and the angle is in the format of the sine-cosine routine, namely a signed fractional number with three integer bits in the range of <code style="white-space: nowrap;">-2&pi; .. 2&pi;</code>. To adjust the angle to the required format, we load its value at label <code>hp4</code> again (this is also the start of the adjusting loop). Would the value be positive, we subtract <code>2&pi;</code> from it (as in the constant expession &quot;<code>(311040</code>&quot;). Would it be now negative, we add <code>2&pi;</code> to it. Then we store it again. Since 2&pi; is fitting about 2 times into <code>777777</code> (decimal 262143/102944), we'll have to repeat this at least once, as provided by the next insertion of the macro <code>count</code>. We may note that there is some sort of relation between the velocity vector and the rotary angle, since they are both based on the same random number. But this will go quite unnoticed, since the wrap around for adjusting the angle to the required range won't scale that well, thus obfuscating this dependency to the eyes of the users.</p>
+<p>The last instructions are loading the &quot;time in hyperspace breakout&quot; by executing the instruction at label <code>hd2</code> in the constants table. This is &quot;<code>law i 100</code>&quot; and we store it in <code>ma1</code> (or to be precise, into the location in the address part of pointer <code>ma1</code>), thus initilizing a count up for (octal) <code>100</code> frames.</p>
+
+<p>Note: We may notice that this was a bit lengthy operation, at least a bit longer than 7 instructions, the number stored as the current instruction count. For this, there will be a small unnoticeable hick-up in the frame rate.</p>
+
+<h3>Breakout</h3>
+
+<p>The basic breakout part is nearly as easy as the in-hyperspace part, we've seen before:</p>
+<pre>hp3,	dap hp5			<span class="comment">// store return address</span>
+	count i ma1,hp6		<span class="comment">// count up on pointer ma1 (100 frames)</span>
+	... 			<span class="comment">// (re-entry code here)</span>
+hp6,	lac i mx1
+	dispt i, i my1, 2	<span class="comment">// display a dot at x/y in brightness 2</span>
+hp5,	jmp .			<span class="comment">// return</span></pre>
+<p>As we can see, we'll jump to the display code at label <code>hp6</code> as long as the counter in <code>ma1</code> is negative. At <code>hp5</code>, we're loading the x-position, we've assembled above, into the accumulator as the screen x-coordinate, suppling the y-coordinate as the second argument to the macro <code>dispt</code>. The first parameter is a value to be subtracted from the opcode of the <code>dpy</code> display command, making this a <code>dpy-i</code> instruction, basically a shoot and forget without negotiating for a completion pulse. The third parameter is the brightness, here <code>2</code> for the second brightest intensity available. (Since this is displayed in every frame, it will be visually at least as bright as the brightest of the background stars.) Thus, we're just displaying the heralding spot, a sitting target, since we didn't include a sign-bit in the link to this as the object routine.</p>
+
+<p>After octal 77 iterations we'll finally reach the breakout and setup the ship to normal cruise mode in the instructions immediately below the insertion of the macro <code>count</code>:</p>
+
+<pre>	lac i \mh1		<span class="comment">// restore object routine from backup</span>
+	dac i ml1
+	law 2000		<span class="comment">// restore instruction count (2000)</span>
+	dac i mb1
+	count i \mh2,hp7	<span class="comment">// count up number of jumps remaining</span>
+	dzm i \mh2		<span class="comment">// prevent count around</span></pre>
+
+<p>We've seen this pattern twice before: First we're setting up the object routine for the spaceship, this time restoring it from its backup in property <code>mh1</code>, and restore the default instruction count of <code>2000</code> in <code>mb1</code>. We discussed the count up on property <code>mh2</code> already in the context of parsing the trigger: The property <code>mh2</code> will be counted up from octal <code>-10</code>, blocking any further attempts after it would have reached zero at the 8<sup style="line-height: normal;">th</sup> jump. The instruction &quot;<code>dzm i \mh2</code>&quot; is the usual protection against a count around, but here of more decorative nature, since the code won't be visted again, after <code>mh2</code> became zero. Notably, both branches, the jump to label <code>hp7</code>, if still counting, and the fall through, in case we would have reached zero, are meeting at the next instruction labeled <code>hp7</code>, directly below.</p>
+
+<p>Now it's time for the critical re-entry. Since there wasn't a chance to blow up until now, this our last chance to have the thing explode, because some of the tubes of the hyperfield generators would blow under the burders of re-entry. Let's see, how it was done:</p>
+
+<pre>hp7,	xct hd3			<span class="comment">// (law i 200) load -200</span>
+	dac i \mh3		<span class="comment">// store as hyperspace cooling time</span>
+	lac i \mh4		<span class="comment">// load remaining probability of a clean return</span>
+	add hur			<span class="comment">// add hyperspatial uncertancy (40000)</span>
+	dac i \mh4		<span class="comment">// store it</span>
+	random			<span class="comment">// get a random number</span>
+	ior (400000		<span class="comment">// set sign-bit</span>
+	add i \mh4		<span class="comment">// add updated uncertancy</span>
+	spa			<span class="comment">// is it positive (abs random number &le; uncertancy)?</span>
+	jmp hp5			<span class="comment">// no, jump to return</span>
+	lac (mex 400000		<span class="comment">// oops, explode (at mex, non-colliding)</span>
+	dac i ml1		<span class="comment">// store explosion routine as object routine </span>
+	law i 10		<span class="comment">// setup explosion size</span>
+	dac i ma1
+	law 2000		<span class="comment">// setup instruction count</span>
+	dac i mb1
+hp5,	jmp .			<span class="comment">// return</span></pre>
+
+
+<p>First, we execute another setup from the contsants table, this time from label <code>hd3</code> (&quot;time to recharge hyperfield generators&quot;) loading the number <code>200</code> by the instruction &quot;<code>law i 200</code>&quot;, and store it as the cooling time in the property <code>mh3</code> (the one counted up and checked right at beginning of the trigger-parsing).</p>
+
+<P>So, will we blow up in the end?</p>
+
+<p>We begin with loading the probability-property in <code>\mh4</code> into the acummulator and by adding the constant <code>hur</code> to it. The constant <code>hur</code> is, once again, defined in the constants table and happens to be the number <code>40000</code>. After we've stored the updated probablity, we get us a fresh random number from the macro <code>random</code> and make sure that it is a negative value by applying an inclusive OR by <code>400000</code> (the equivalent of a set sign-bit) to it. The result in the accumulator is now the difference of the negative random number and the value in pointer <code>\mh4</code>. If negative, the absolute random number was greater than our propability treshold, if positive, it didn't reach the threshold and we will skip the following jump to the return to see an explosion.</p>
+
+<p>This is set up in the usual pattern: The instruction &quot;<code>lac (mex 400000</code>&quot; sets up the explosion routine at <code>mex</code> as the new object routine, notably with a set sign-bit and therefor not collidable. This is stored in pointer <code>\ml1</code> as the spaceship's new object routine. Finally, we store the number <code>-10</code> in pointer <code>ma1</code> as the  the size of the explosion (the same size as when a spaceship is colliding with the central star) and reset the instruction count in <code>mb1</code> to the standard value of <code>2000</code>.</p>
+
+<p>Let's go back to the probability check: The property in pointer <code>mh4</code> was initially set up to zero and will be octal <code>40000</code> at the first jump and it will be eventually incremented to <code>400000</code> (<code>40000&times;8</code>, or a shift by a full octal digit) at the eighth and last jump. The random number is forced to be a negative value by setting the sign-bit by an inclusive OR (we don't care about the other ones, since they are a bunch of random bits anyway). Then we add the threshold, and check for a positive result. In other words, if the threshold in pointer <code>\mh4</code> exceeds or equals the absolute value of the random number, we will get a positive result (<code><em>random</em> + \mh4 &ge; 0</code>) and the ship will break at re-entry. Since our threshold in <code>\mh4</code> increases, the likeliness of the result being a negative number decreases steadily &mdash; and by this the risk of breaking increases from jump to jump. Eventually, at the eighth jump, the value in <code>\mh4</code> will be <code>400000</code> after the increment, the equivalent of a set sign-bit and the maximum negative number to be represented in the PDP-1. Thus, the addition will overflow to a positive number, regardless of the state of the other bits in the accumulator, and the ship will break with certainty.</p>
+
+<p>Two things are interesting here: First, how this is rather working on a bunch of bits, than treating the values as numbers in an orthodox way. We could come up with some ease with an equivalent of this which would exhibit a more mathematical view, like we've seen it in other parts of the code, by using rather a combination of skips and complements (which would also perform in exactly the same cycle time).</p>
+
+<p>The other one being the fact that this renders the limit on the &quot;number of hyperspace shots&quot; rather useless, since <code>\mh2</code> will never block the hyperspace trigger by reaching zero after the 8<sup style="line-height: normal;">th</sup> jump, since the ship will break with certainty on this last shot and we will never return to see that check again.</p>
+
+<p>Anyway, these are constants to be modified <em>ad libidum,</em> so it's nice to have both of these mechanisms and not only one combining them in a single, rather obfuscated check. On the other hand, we could muse that the check for the maximum number of jumps would be some kind of legacy from a previous implementation which would have worked on an absolute limit only, like the hyperspace patch for Spacewar! 2b did it. If so, what we have just looked at, would have been rather &quot;hyperfield generators MK I, Series C&quot; &mdash; <em>&quot;C&quot;</em> at least.</p>
+
+
+<p class="endex">*****</p>
+<p>By this, believe it or not, we're actually through with Spacewar! 3.1, having inspected literally every single line of code! (Ok, we didn't inspect every single one of the starfield co-ordinates, but we had at least a look at a map of them.) &mdash; But there's still a little extra to be explored, and you wouldn't want to miss this one, for sure &hellip;</p>
+
+<h2 id="hyperspace_patch">Spacewar! 2b and the &quot;Minskytron&quot; Hyperspace</h2>
+
+<p>Time to have a closer look at the first real-life implementation of hyperspace in human history.</p>
+
+<p>Before Spacewar! 3.1, there was Spacewar! 2b and the hyperspace patch by Martin Graetz. This is also the setup described in nearly 20 years later <a href="https://www.masswerk.at/spacewar/SpacewarOrigin.html">&quot;The Origin of Spacewar&quot;</a> <cite>(Creative Computing, Aug. 1981)</cite>, by hyperspace's original author, Martin Graetz:
+
+<blockquote>
+	<strong>Hyperspace</strong><br />
+	While all this was going on, I was in my secret hideaway (then
+	known as the Electronic Systems Lab) working on the ultimate panic
+	button: hyperspace. The idea was that when everything else failed you
+	could jump into the fourth dimension and disappear. As this would
+	introduce an element of something very like magic into an otherwise
+	rational universe, the use of hyperspace had to be hedged in some
+	way. Our ultimate goal was a feature that, while useful, was not
+	entirely reliable. The machinery, we said, would be the &quot;Mark One
+	Hyperfield Generators ... hadn't done a thorough job of testing ...
+	rushed them to the fleet&quot; and so on. They'd be good for one or two
+	shots, but would deteriorate rapidly after that. They might not work
+	at all (&quot;It's not <em>my</em> fault, Chewie!&quot;) or if they did, your
+	chances of coming back out intact were rather less than even. Slug [Steve Russell; Ed.]:
+	&quot;It was something you could use, but not something you wanted to
+	use.&quot;<br /><br />
+	
+	The original hyperspace was not that elegant. &quot;MK I unreliability&quot;
+	boiled down to this: you had exactly three jumps. In each jump your
+	ship's co-ordinates were scrambled so that you never knew where you
+	would reappear &mdash; it could be in the middle of the sun. You were gone
+	for a discernible period of time, which gave your opponent a bit of a
+	breather, but you came back with your original velocity and direction
+	intact. To jump, you pushed the blast lever forward.<br /><br />
+	
+	Hyperspace had one cute feature (well, I thought it was cute). Do
+	you remember the Minskytron? One of its displays looked very much
+	like a classical Bohr atom, which in those days was an overworked
+	metaphor for anything to do with space and science-fiction. Reasoning
+	that a ship entering hyperspace would cause a local distortion of
+	space-time resulting in a warp-induced photonicstress emission (see
+	how easy this is?), I made the disappearing ship leave behind a short
+	Minskytron signature (Figure 4).
+</blockquote>
+<figure id="originofspacewar_fig4" class="img"><img src="images/originofspacewar-fig4.jpg" width="419" height="416" alt="The Minskytron Hyperspace (The Origin of Spacewar, Figure 4)" /><p>The Origin of Spacewar! &mdash; Figure 4.<br />&quot;Warp-induced photonic stress emission.&quot; The Hyperspace Minskytron signature.<br />(Please mind that the image is upside down, slightly rotated, and off-center.)<br />Credits: J.M. Graetz 1962/1981</p></figure>
+
+<p class="noindent">And in his DECUS paper Martin Graetz gives another detail that we haven't mentioned already (see the top of the page for the preceding passage), as it applies to the hyperspace patch only:</p>
+
+<blockquote>Each player has exactly three hyperspace jumps.<br /><em class="cite">(J. M. Graetz, &quot;<a href="decus1962/" target="_blanK">Spacewar! Real-Time Capability of the PDP-1</a>&quot;, DECUS Proceedings 1962: Papers and Presentations of the Digital Equipment Computer Users Society; Maynard, Massachusetts, 1962. p. 37-39. p. 38)</em></blockquote>
+
+<p>Only a few months ago this would have been essentially all, we could report on the first hyperspace in gaming history. But, meantime, we managed to not only identify the version of Spacewar described <em>(Spacewar! 2b)</em> and the missing hyperspace routine <em>(hyperspace85.bin)</em>, we also identified the source code of both Spacewar! 2b and the hyperspace85-patch in a batch of listings that were donated to the <a href="http://www.imusee.net/" target="_blank">iMus&eacute;e</a>, the <em>Mus&eacute;e de l'informatique du Quebec</em>. (For more on this, see <a href="insidespacewar-minskytron-hyperspace.html">Intermission: Digging up the Minskytron Hyperspace</a> in this series.) This puts us not only in the rather privileged position to offer an in-depth view on this for the very first time, we may also experience it on our own (in emulation), like this:</p>
+
+<figure id="minskytron_signature" class="img borderless"><img src="images/minskytron-hyperspace.jpg" width="520" height="520" alt="The Minskytron Hyperspace (closeup, emulation)" /><p>Jumping to hyperspace near the <em>heavy star</em> leaving the &quot;Minkytron&quot; hyperspace signature behind.<br />(Emulation, closeup; image: N. Landsteiner 2014)</p></figure>
+
+<p style="margin-bottom: 2em; margin-top: 2em;"><span style="font-family:sans-serif; font-size: 80%;color: #555;">&#9654;</span> Play <a href="https://www.masswerk.at/spacewar/?version=2x" target="_blank" title="Play the original Spacewar! 2b and the hyperspace patch in a JS/HTML5 emulaton">Spacewar! 2b! and the &quot;Minskytron&quot; hyperspace patch</a> (original code running in an online emulation).</p>
+
+<p>The setup we're describing here is namely Spacewar! 2b (2 Apr 62), the patch &quot;hyperspace85.bin&quot; (which isn't exactly the original name, as we'll see soon), and the patch &quot;spaceWarRstrt.bin&quot; (also named &quot;spacewAutoRestartPatch.bin&quot;) applied to it. (A game of Spacewar! 2b originally ended with one or both of the ships blowing up, something that was fixed by the auto-restart patch in order to provide a continous gameplay.)<br />Also, there was a scorer patch (<em>&quot;A scoring facility was added so that finite matches could be played, making it easier to limit the time any one person spent at the controls.&quot;</em> &mdash; J.M. Graetz in &quot;Origin of Spacewar&quot; on the last prepatory steps.), which seems to be lost, but was probably much like the scoring in version 3.1.<br />This is also the setup described in &quot;Origin of Spacewar&quot; and probably the setup shown at the annual <em>Science Open House Day</em> at MIT in May 1962, the very event, Spacewar's development had been scheduled to. &mdash; We may note that by then loading and setting up a game of Spacewar! had become a rather lengthy procedure, with the core program to load, probably the starfield data from another tape (&quot;stars.bin&quot;), the hyperspace patch, the auto-restart patch, to be applied to the hyperspace patch, and the scorer patch, probably to be applied to the auto-restart patch. Moreover, we may assume that applying any changes to any of the sources would have become rather difficult, because you would have to preserve the locations of any key addresses for the other patches &mdash; we'll see some of this in the hyperspace patch &mdash; and therefore the game was essentially frozen until the code was consolidated and merged into a single strain in fall 1962, the piece of code we know as version 3.</p>
+
+<p>So, let's have a look at it &mdash; and we're up to some surprises:</p>
+
+<h3 id="hyperspace85">The Code</h3>
+
+<pre>HYPERSPACE 85
+
+/A new tape prepared by JMG, 26 Oct 1985
+/from the listing of Hyperspace VIci, 2 May 1962
+
+/Macros privy to Hyperspace
+
+define setx S,K
+	law K		dac S
+terminate
+
+define split
+	scr 9s	sal 9s
+terminate
+
+define pack X,Y,S
+	lac X		lio Y		sar 9s		scl 9s		dac S
+termin
+
+define marvin X1,Y1,X2,Y2,S,SS
+	lac X1		add X2		S		add Y1 		dac Y1
+	sub Y2		SS		cma		add X1		dac X1
+termi
+
+define dismin X,Y,XC,YC
+	lac Y		add YC		swap		lac X		add XC		dpn
+term
+
+define reset S,K
+	lac (K		dac S
+term
+
+define random N
+	lac N		rar 1s		xor (335671			add (335671
+	dac N
+term
+
+dpn=dpy-i
+
+/Symbols privy to SPACEWAR
+
+mh1=2665		mh2=2666		mh3=2667		mx1=1567
+my1=1577		mq1=1642		ml1=1540		mb1=1637
+srt=2343		ran=2654		nnn=4500		not=3573
+scw=2673		oc=337			mco=2254		ot1=2365
+ot2=2402		nb1=3243
+
+<span class="comment">///</span>
+
+dimension th1(2),th2(2),th3(2),th4(2),th5(2),th6(2)
+
+/Patch location table
+
+hyp=5240		a3x=1525		a4=5510
+mlx=1456		hml=5530		shx=2341
+srh=5545		mqx=1642		hq1=5570
+
+
+/Patches directly into SPACEWAR
+
+a3x/	jda a4-1
+
+/Hypertable initialization, part 1
+
+a4/	dap a4x
+	lac .-2
+	dac nb1 1		/finish main program business
+	clear th1,th5 1
+	law 4 i
+	dac th1
+	dac th1 1		/counts tries
+	lac (opr
+	dac th4
+	dac th4 1		/recovery switch
+a4x,	jmp .
+
+mlx/	jmp hml
+
+/Hypertable initialization, part 2
+
+hml/	init hp1,th1
+	init hp2,th2
+	init hp3,th3
+	init hp4,th4
+	init hp5,th5
+	init hp6,th6
+	jmp ml1
+
+<span class="comment">///</span>
+
+shx/	jmp srh
+
+/Control word inspection sequence
+
+srh/
+
+hp4,	xct .			/th4 table (opr to start)
+	lac scw
+	cma
+	and mco i
+	sma
+	jmp sh1
+	ral 1
+	spa
+	jsp hyp			/go for it
+sh1,	lio scw
+	jmp srt-1
+
+mqx/	jsp hq1
+
+/Main loop table indexing
+
+hq1/	dap hqx
+	idx mx1
+	idx hp1
+	idx hp2
+	idx hp3
+	idx hp4
+	idx hp5
+	idx hp6
+hqx,	jmp .
+
+<span class="comment">///</span>
+
+/Hyperspace calculation and Minskytron display
+
+hyp/	dap hxt
+hp1,	isp .			/(th1)OK to jum?
+	jmp hp2-1		/yes
+	dzm hp1 i
+	jmp hxt
+	lio mx1 i
+hp2,	dio .			/(th2)
+	lio my1 i
+hp3,	dio .			/(th3)
+	lac ml1 i
+hp6,	dap .			/(th6)
+	random ran
+	add mx1 i		/diddle ship coordinates
+	dac mx1 i
+	add my1 i
+	dac my1 i
+
+	setx mb1 i,364
+	law 20 i
+hp5,	dac .			/(th5) loop counters
+	move xy1,mh1 i
+	move xy2,mh2 i
+	move xy3,mh3 i
+	init ml1 i,he1
+	jmp he1 3
+
+he1,	dap hxt
+	setx mb1 i,325
+	setx \hcl,4 i		/inner loop count
+	lac mh1 i		/unpack point coordinates
+	split
+	dac \hx1
+	dio \hy1
+	lac mh2 i
+	split
+	dac \hx2
+	dio \hy2
+	lac mh3 i
+	split
+	dac \hx3
+	dio \hy3
+
+
+/Here it is...
+h3,	marvin \hx1,\hy1,\hx2,\hy2,sar 5s,sar 5s
+	marvin \hx2,\hy2,\hx3,\hy3,sar 8s,sar 4s
+	dismin \hx2,\hy2,hp2 i,hp3 i
+	marvin \hx3,\hy3,\hx1,\hy1,sar 1s,sar 6s
+	dismin \hx3,\hy3,hp2 i,hp3 i
+
+<span class="comment">///</span>
+
+h3a,	count \hcl,h3
+	pack \hx1,\hy1,mh1 i	/repack coordinates
+	pack \hx2,\hy2,mh2 i
+	pack \hx3,\hy3,mh3 i
+h3b,	count hp5 i,hxt
+	setx hp5 i,100 i	/delay timer
+	init ml1 i,he2		/delay entry
+	setx mb1 i,12
+
+hxt,	jmp .			/BACK TO THE FRAY...
+
+/Delay and recovery time count loops
+
+he2,	dap hxt
+	count hp5 i,hxt
+	lac hp6 i
+	dap ml1 i
+	setx mb1 i,2000
+	reset hp4 i,jmp hyj	/recovery gate
+	setx hp5 i,500 i
+	jmp hxt
+
+hyj,	count hp5 i,sh1
+	reset hp4 i,nop
+	jmp sh1
+
+xy1,	6
+xy2,	10765
+xy3,	767765
+
+
+variables
+constants
+
+start</pre>
+
+<p>Further, the code makes use of some of the macros from the &quot;macro fio-dec system&quot;, most of which we've seen before, as well:</p>
+
+<pre>define initialize A,B
+	law B
+	dap A
+	term
+
+define swap
+	rcl 9s
+	rcl 9s
+	term
+
+define count A,B
+	isp A
+	jmp B
+	term
+
+define move A,B
+	lio A
+	dio B
+	term
+
+define clear A,B
+	init .+2, A
+	dzm
+	index .-1, (dzm B+1, .-1
+	term</pre>
+
+<p>The first suprise is the name of the patch: If you were, like me, a bit suspecious about the name &quot;hyperspace85.bin&quot;, you were exactly right. &quot;hyperspace85.bin&quot; is really for <em>hyperspace 1985</em> and it's a retyped tape from 26 Oct 1985 from an original source of &quot;Hyperspace VIci&quot; from 2 May 1962. We may note the rather advanced and fine granular version code, hinting at a development phase quite furious.</p>
+
+<p>The second surprise is the style of this source: It is nothing like the rest of the Spacewar! code and illustrates quite perfectly, how remote Martin Graetz's <em>&quot;secret hideaway (then known as the Electronic Systems Lab)&quot;</em> really was. Just to note some of the numerous idiosyncrasies of this source:</p>
+<ul>
+	<li>The tab-delimited instructions in the macro definitions.<br />(The Macro assembler treated tabs and linebreaks synonymously.)</li>
+	<li>The use of some macros (namely &quot;<code>move</code>&quot;, &quot;<code>clear</code>&quot;) and pseudo instructions (namely &quot;<code>dimension</code>&quot;), we haven't seen in any parts of the source yet.</li>
+	<li>The use of macros for instructions that were rather inline code in other sources (&quot;<code>setx</code>&quot;, &quot;<code>reset</code>&quot;, but also &quot;<code>move</code>&quot;, or the definition &quot;<code>dpn=dpy-i</code>&quot;) hinting at somewhat different previous coding experiences.</li>
+	<li>Appending the character &quot;<code>i</code>&quot; for the i-bit to the instruction instead of placing it directly after the opcode.</li>
+	<li>Or, the rather curious use of defined constants for frequently used code labels.</li>
+	<li>We may even note the tongue-in-cheek style of coding, like the variations on the legitimate abbrivations of the pseudo instruction &quot;<code>terminate</code>&quot;, as in the cadence <em>&quot;terminate &ndash; termin &ndash; termi &ndash; term&quot;</em>.</li>
+</ul>
+
+<p>If we dared to engage in a dissasembly of the binary object code before the source was available, near to nothing would have prepared us for the sight of the real thing. But at least some of these oddities are not that odd at all and may even shed some light on other aspects of the Spacewar!-code:</p>
+
+<p>For instance, on the tab delimited instructions of the macro definitions: We've actually seen this before in the definition of the macro &quot;<code>mult</code>&quot; for the sine-cosine routine, but we didn't make much fuzz about it, then. It's quite logical to assume that Martin Graetz must have had some precedent or model for this coding style, and we already have found an example for this. We may even assume that this might have been fairly common with PDP-1 code at the time.</p>
+<p>Then there is this rather strange use of predefined constants for some labels and starting locations of various routines (inspite of just letting the assembler do its job and assign the locations for them), and we may even come up with an explanation for this: We've already mentioned the quite late date (2 May 1962) and the quite advanced version code (VIci) of the source. We've also seen, how the final program would have been loaded in incremental steps with some patches to be applied and even some dependencies there. Namely, there's a dependency on a location in the hyperspace patch for the auto-restart patch, which is meant to be applied to the first one. In order to not break the system and not to have to reassemble all the other patches, making the labels constants would have been a logical thing to do. Just note the key addresses of any previous version as listed in the symbol table of the assembler output and define these as constants for the new version. Provided, the code snippet or routine in question would be either shorter in length in the new version or it would be split to separate parts that would fit into the space of the existing patch. This is also what we see here, and there are in deed some empty memomry registers (or &quot;wholes&quot; in the resulting object code) left over from this process.</p>
+
+<p>But we're dwelling on preliminaries and side-aspects again, let's start with the code:</p>
+
+<h3>Setup</h3>
+
+<p>The patch starts with some macor definitions that we'll cover as we encounter their use in the code. Then there are blocks of assignements which are mostly setting up locations in the main program in some labels that are providing the usual names to the patch. (A partial copy of the symbol table of the main program.) A few others are defining start addresses for individual patches of code, for reasons we've mentioned before.</p>
+
+<pre>/Symbols privy to SPACEWAR
+
+mh1=2665		mh2=2666		mh3=2667		mx1=1567
+my1=1577		mq1=1642		ml1=1540		mb1=1637
+srt=2343		ran=2654		nnn=4500		not=3573
+scw=2673		oc=337			mco=2254		ot1=2365
+ot2=2402		nb1=3243
+
+dimension th1(2),th2(2),th3(2),th4(2),th5(2),th6(2)
+
+/Patch location table
+
+hyp=5240		a3x=1525		a4=5510
+mlx=1456		hml=5530		shx=2341
+srh=5545		mqx=1642		hq1=5570</pre>
+
+<p>The first notable instruction we have to address here, isn't exactly an instruction, but a pseudo instruction of the Macro assembler:</p>
+
+<pre>dimension th1(2),th2(2),th3(2),th4(2),th5(2),th6(2)</pre>
+
+<p>We haven't seen the keyword <code>dimension</code> before. This one is reserving the number of addresses provided in the paranthesis and assigns the address of the first of these locations to the label provided in front of it. The locations will be reserved where the <code>variables</code> keyword is found in the source. Notably, when looking at the resulting object code, this isn't discernible from the table setup for the spaceships properties, we've seen in the main program.</p>
+
+<p>Speeding ahead a bit, we'll provide the semantics of this table besides its definition, a series of pairs of properties, one for each of the ships:</p>
+
+<pre style="background-color: white;">th1   ....  number of hyperspace shots, spaceship 1
+th1 1 ....  same for spaceship 2
+th2   ....  pos x
+th2 1
+th3   ....  pos y
+th3 1
+th4   ....  internal jump vector (see hp4), initially &quot;opr&quot;
+th4 1
+th5   ....  loop counter
+th5 1
+th6   ....  backup: address of spaceship routine 
+th6 1</pre>
+
+<p>While the main program is also managing 3 properties per ship dedicated to hyperspace (<code>mh1 .. mh3</code>), these were obviously not enough and the patch extends the objects by this table, the properties of which it will have to manage on its own.</p>
+<p>What's following now, isn't just a single patch, but a series of patches to be applied to main program:</p>
+
+<h4>The First Patch</h4>
+
+<p>The smallest constant for a pseudo-label to be found in the source is the definition &quot;<code>a4=5510</code>&quot; &mdash; and <code>a4</code> is also the first real piece of code that we encounter, when scanning the source top-down. Apart that it isn't. There's the patch for the main source, and this one is a <code>jda</code> to the location immediately before <code>a4</code>.</p>
+
+<pre>/Patches directly into SPACEWAR
+
+a3x/	jda a4-1	<span class="comment">// a3x=1525</span></pre>
+
+<p>The patched location is address <code>1525</code> in the main program, and this is, what it looks like:</p>
+
+<pre><span class="comment">//Spacewar 2b:</span>
+
+	law 2000
+	dac nb1
+	dac nb1 1	<span class="comment">// location 1525: patched to &quot;jda a4-1&quot;</span>
+	jmp ml0</pre>
+
+<p>This is just at the end of the code setting up the spaceships at the start of a game, with the jump to <code>ml0</code> being the jump to the start of the very first frame. We may note that this isn't just patching the final &quot;<code>jmp ml0</code>&quot; (which would have been easy), but is rather avoiding this important location carefully (maybe it was already patched elsewhere). By replacing the instruction &quot;<code>dac nb1 1</code>&quot; by &quot;<code>jda a4-1</code>&quot;, the program is thus rerouted to the patch, making the address <code>a4-1</code> or <code>5507</code> the effectively narrowest address of the patch.</p>
+
+<pre>/Hypertable initialization, part 1
+
+<span class="comment">// 5510</span>
+
+a4/	dap a4x
+	lac .-2			<span class="comment">// store 2000 (put by jda into a4-1) in nb1+1</span>
+	dac nb1 1		/finish main program business
+	clear th1,th5 1		<span class="comment">// clear table from th1 to th5+1</span>
+	law 4 i			<span class="comment">// load -4 (3 jumps)</span>
+	dac th1			<span class="comment">// store it in th1 and tha+1</span>
+	dac th1 1		/counts tries
+	lac (opr		<span class="comment">// load (opr, store it in th4 and th4+1</span>
+	dac th4
+	dac th4 1		/recovery switch
+a4x,	jmp .			<span class="comment">// return</span></pre>
+
+<P>Since the patched instruction was setting up the instruction count for spaceship 2 to the value <code>2000</code>, the contents of the accumulator, and because this is now replaced by the return address put there by the <code>jda</code> instruction which we inserted there in place, we have a little problem. But since we used the <code>jda</code> instruction, which first places the current contents of the accumulator in the memory location specified in the address part of the instruction and then performs a usual jump-to-subroutine, we've saved this in address <code>a4-1</code>. So, in order to clean up mess we left behind, we first place the return address in the address part of our jump to return at <code>a4x</code> as usual, and restore the contents of the accumulator by &quot;<code>lac .-2</code>&quot;. (Since we advanced for a single address, &quot;<code>.-2</code>&quot; is pointing to &quot;<code>a4-1</code>&quot;.) Now we can fix the lost instruction from the main program by performing the instruction &quot;<code>dac nb1 1</code>&quot; in the patch, storing the value <code>2000</code> as the instruction count for spaceship 2.</p>
+
+<p>By then we're ready to perform the task, we've come here for at all, namely, we're initializing the properties of the spaceships that are private to the patch. The macro instruction &quot;<code>clear th1,th5 1</code>&quot; resets the table entries <code>th1</code> to <code>th5+1</code>, therby clearing the properties of the two ships (with the only exception of the contents of <code>th6</code>, to be overwritten with the address of the spaceship routine). Next, we're setting up the number of possible jumps for each spaceship: &quot;<code>law 4 i</code>&quot; loads the number <code>-4</code> into the accumulator &mdash; and since this will be used in a usual <code>count</code>-loop, there will be <code>3</code> jumps to hyperspace. This is now stored in the hyperspace-properties private to the patch, in locations <code>th1</code> and <code>th1+1</code>, as in instructions &quot;<code>dac th1</code>&quot; and &quot;<code>dac th1 1</code>&quot; repectively.</p>
+<p>Finally, we load the opcode of the instruction &quot;<code>opr</code>&quot; as a constant and store it in the properties <code>th4</code> and <code>th4+1</code> for each of the ships. &quot;<code>opr</code>&quot; is here used as a synonym for &quot;<code>nop</code>&quot; <em>(no operation)</em> and we'll see later, what this &quot;recovery switch&quot; is good for. By then, we've finished the private setup phase and are handing back the command to the main program by the jump to the return address at label <code>a4x</code>.</p>
+
+<h4>The Second Patch</h4>
+
+<p>Despite of the comment &quot;Hypertable initialization, part 2&quot;, the next patch isn't exactly commencing on the previous task. It patches the final jump to location <code>ml1</code> at the end of the instructions that are both defining the objects table, but are also, on the operative side, initializing the properties at the beginning of each frame:</p>
+
+<pre><span class="comment">// 1456</span>
+
+mlx/	jmp hml</pre>
+
+
+<pre><span class="comment">// Spacewar 2b</span>
+
+...
+nh3=nh2 nob
+nnn=nh3 nob
+	jmp ml1		<span class="comment">// location 1456: patched by &quot;jmp hml&quot;</span></pre>
+
+<p>With the instruction &quot;<code>jmp ml1</code>&quot; replaced, we'll take the detour to label <code>hml</code>:</p>
+
+<pre>/Hypertable initialization, part 2
+
+<span class="comment">// 5530</span>
+
+hml/	init hp1,th1	<span class="comment">// set hp1 to address of th1, etc</span>
+	init hp2,th2
+	init hp3,th3
+	init hp4,th4
+	init hp5,th5
+	init hp6,th6
+	jmp ml1</pre>
+
+<p>The code at <code>hml</code> is setting up the addresses of the table entries <code>th1</code> .. <code>th6</code> in the address parts of the corresponding addresses <code>ph1</code> .. <code>ph6</code> for a dual use, both as an operative instruction and as a pointer, just as we've seen it in the main program. Therefor the address parts of <code>ph1</code> .. <code>ph6</code> will be pointing to the properties of the first spaceship. (This is also the last time, we've seen the labels <code>th<em>n</em></code> in the code.) As the patched jump instruction &quot;<code>jmp ml1</code>&quot; is free of context, we can execute it here without further ado, picking up the flow of the main program, just were we made the detour.</p>
+
+<p>&quot;<code>init</code>&quot; is once again an abbreviation for the macro <code>initialize</code>, the same we've encountered repeatedly in the main code:</p>
+
+<pre>define initialize A,B
+	law B
+	dap A
+	term</pre>
+
+<p>With both the setup for a fresh game and new frame covered, we're ready to actually patch the spaceship routine:</p>
+
+<h3>The Trigger</h3>
+
+<pre><span class="comment">// 2341</span>
+
+shx/	jmp srh</pre>
+
+<p>The location patched here, is actually interesting by itself, since it's storing the <em>old control word</em> in <code>mco</code>, an instruction that is missing in Spacewar 3.1:</p>
+
+<pre>sr5,  move \scw, i mco</pre>
+
+<p>The macro <code>move</code> is copying the contents of one location to another using the IO register, bypassing the accumulator:</p>
+
+<pre>define move A,B
+	lio A
+	dio B
+	term</pre>
+
+<p>Thus, the patched location will be in the expanded code of the inserted macro, as in:</p>
+
+<pre>	lio \scw	<span class="comment">// location 2341: patched by &quot;jmp srh&quot;</span>
+	dio i mco</pre>
+
+<p>And by patching this, we will end up jumping to the following patch:</p>
+
+<pre>/Control word inspection sequence
+
+<span class="comment">// 5545</span>
+
+srh/
+
+hp4,	xct .		/th4 table (opr to start)
+	lac scw		<span class="comment">// load control word (redefined here to scw)</span>
+	cma		<span class="comment">// complement it</span>
+	and mco i	<span class="comment">// and mco (last control word)</span>
+	sma		<span class="comment">// is it minus?</span>
+	jmp sh1		<span class="comment">// no, fix up and return</span>
+	ral 1		<span class="comment">// next bit</span>
+	spa		<span class="comment">// is it positive?</span>
+	jsp hyp		/go for it	<span class="comment">// no (bit 0 and bit 1 set), hyperspace...</span>
+sh1,	lio scw		<span class="comment">// fix up: scw in IO</span>
+	jmp srt-1</pre>
+
+<p>The first instruction at label <code>hp4</code> will execute, what's in property <code>th4</code> (or <code>th4+1</code> for spaceship 2). For now, let's have it with that. Let's just recall that this will be executing the void instruction <code>opr</code>, when we would come here at the beginning of a game. So this will be without further effect(s). (A curious reader, scanning ahead, may find that this may be eventually replaced by a jump instruction, thus it's an internal switch to an alternate branch of code, quite like the method replacement in the main code. We may note some object-like notion expressed in this code, as well.)</p>
+
+<p>Let's scan the trigger: Once again, we see a comparison of the <em>control word</em> and the <em>previous control word,</em> quite like in Spacewar! 3.1, but it's a bit of a different theme here: We load the control word by &quot;<code>lac scw</code>&quot; (<code>scw</code> has been redefined here as a simple label, pointing to the actual address of the variable as assigned by the assembler when the main program was compiled), complement it and perform a logical <tt>and</tt> with the old control word (once again redefined here for the patch as a simple label pointing to the actual location, hence the i-bit for indirect addressing). Since the highest bit is also the sign-bit, we may test it by the <code>sma</code> instruction <em>(skip on minus AC)</em>. If the bit is not set, we'll execute the next jump to <code>sh1</code>, where we'll fix the patched instruction and jump back to the main program.</p>
+<p>If the sign-bit would be set, we're still in business and rotate the second highest bit into the sign position by the instruction &quot;<code>ral 1</code>&quot; <em>(rotate AC left by 1 bit)</em>. This time, we're skipping the jump, if the bit would be not set and the contents of the accumulator would be positive. If negative, we execute the jump-to-subroutine to label <code>hyp</code>, where we'll initilize for the jump to hyperspace.</p>
+
+<p>If we make the skip, we'll execute the instruction &quot;<code>lio scw</code>&quot; at label <code>sh1</code>, fixing the instruction that was replaced by the patch. The final instruction &quot;<code>jmp srt-1</code>&quot; takes us to where we've left the main program, since <code>srt</code> is defined as <code>2343</code> in the patch and <code>2342</code> is the same as the instruction immediately following to the patched location in the main program.</p>
+
+<p>But, what did we actually check here? Since the control word is complemented at the beginning, it will trigger, if both of the two highest bits are <em>not</em> set. But, since there is also the masking operation with the previous control word, the jump to hyperspace will trigger only, if both of these bits were set in the previous frame. In other words, a ship will not jump to hyperspace, when the trigger is <em>deployed</em>, but, instead, when it is <em>released!</em> This is quite remarkable, and might be addressing the issue with overlapping control input for left and right turn in normal flight. Since an occasional overlap will result in still one of the bits being set, the code will not parse this as a jump. On the other hand, the jump is a bit difficult to handle with the console switches, because the two switches have to be released in the very same frame. Thus, the hyperfield generators might be said to be <em>&quot;not entirely reliable&quot;</em> and that they <em>&quot;might not work at all&quot;</em>, even without a dedicated a random factor for this the trigger, at least with the test word controls.</p>
+
+<p><em>Note: We can see now that the quite complicated code in Spacewar! 3.1 is just inverting this operation in order to send a ship to hyperspace, as soon as the trigger is deployed. It might be that this would have been just the same level of difficulty for the player-operators to handle, but it might also be that letting the switches flip back to their off positions at once &mdash; as in the hyperspace patch &mdash; would have been a tick easier to handle.</em></p>
+
+
+<h4>And Yet Another Patch</h4>
+
+<pre><span class="comment">// 1642</span>
+
+mqx/	jsp hq1
+
+/Main loop table indexing
+
+<span class="comment">// 5570</span>
+
+hq1/	dap hqx		<span class="comment">// store return address</span>
+	idx mx1		<span class="comment">// index hyperspace properties</span>
+	idx hp1
+	idx hp2
+	idx hp3
+	idx hp4
+	idx hp5
+	idx hp6
+hqx,	jmp .		<span class="comment">// return</span></pre>
+
+<p>Here we patch the code that is iterating the pointer in order to have them point to the next object (here, spaceship 2), right at the end of the main loop of Spacewar! 2Bs:</p>
+
+<pre>mq1,  idx mx1    / end of comparison and display loop (location 1642)</pre>
+
+<p>We'll have to fix the replaced instruction &quot;<code>idx mx1</code>&quot;, which we're doing right at the beginning after storing the return address. Then the various pointers are incremented to point to the next address in the internal properties table, just like it is done for the properties of the main program.</p>
+<p>We may observe, that this piece of code will be visted for each of the up to (decimal) 24 objects, with the first two of them being the spaceships and any other ones being torpedoes. But we've only reserved some properties for the two spaceships &mdash; will the code break, if the pointers are incremented for a torpedo? Not at all, since the code for the trigger is actually visited by spaceships only (as it is patched into the spaceship routine). With the start of a new frame, the property pointers will be reset near label <code>hml</code> to point to the properties of the first spaceship and any previous increments will be ignored. Hence, the only case of interest here is, when the pointers are incremented to point to the properties of spaceship 2, as in the increment of <code>ph1</code> to be advanced from <code>th1</code> to <code>th1+1</code>.</p>
+
+
+<h3>Into The Voids of Hyperspace</h3>
+
+<pre>/Hyperspace calculation and Minskytron display
+
+<span class="comment">// 5240</span>
+
+hyp/	dap hxt
+hp1,	isp .			/(th1)OK to jum<span class="comment">[p]</span>? <span class="comment">// th1 was initialized to -4</span>
+	jmp hp2-1		/yes
+	dzm hp1 i		<span class="comment">// reset th1 (prevent count around) and return</span>
+	jmp hxt
+	lio mx1 i		<span class="comment">// store pos x in th2</span>
+hp2,	dio .			/(th2)
+	lio my1 i		<span class="comment">// store pos y in th3</span>
+hp3,	dio .			/(th3)
+	lac ml1 i		<span class="comment">// backup main routine in th6</span>
+hp6,	dap .			/(th6)</pre>
+
+<p>Here we go for hyperspace: First, we deposite the return address, since this is a subroutine. Then, we check, if there would be still a jump left by executing an <em>index and skip on positive</em> instruction on <code>hp1</code>, the pointer to the number of hyperspace jumps. If it is positive after the increment, we have either arrived at zero, or its value would have been zero before. Eitherway, we'll reset the counter to zero to prevent a count around to a negative value and jump to the return address in the next instruction. If the value is still negative after the increment, we'll skip these two instructions by executing the instruction &quot;<code>jmp hp2-1</code>&quot;, which takes us to the instruction &quot;<code>lio mx1 i</code>&quot;, where we load the value of the x-coordinate of the spaceship into the IO register to store it for further use in the property <code>th2</code>. (The address of <code>th2</code> is setup in location <code>hp2</code>, where we stored it in the address part before. Thus, we may also use the label <code>ph2</code> as a pointer to this address.) Just the same, we store the y-coordinate in property <code>th3</code>, aliased by pointer <code>ph3</code>. Finally, we back up the location of the current spaceship routine in <code>th6</code> (aliased in the address part of <code>hp6</code>).</p>
+
+<p>With all the old properties saved, we're assigning some new values to the spaceship's properties, to be used after re-entry from hyperspace:</p>
+
+<pre>	random ran		<span class="comment">// now set up random coors for breakout</span>
+	add mx1 i		/diddle ship coordinates
+	dac mx1 i
+	add my1 i
+	dac my1 i</pre>
+
+<p>The expression &quot;<code>random ran</code>&quot; stores a fresh random number in location <code>ran</code> and leaves it also in the accumulator. (The macro <code>random</code> is quite the same as in Spacewar! 3.1, but uses an arbitrary location to store the random number, rather than using a dedicated location for this. The location of the random number is to be provided as the single parameter to the macro and is always the same all over the program, here defined in the label <code>ran</code>.) The current x-coordinate of the ship is now updated by adding the random number (left in the accumulator by <code>random</code>) and stored. The y-coordinate is then updated by adding the x-coordinate to it and stored again. The ship will be positioned anywhere on the screen, when the positional vector in <code>mx1</code>/<code>my1</code> is used again by the standard spaceship routine after the re-entry.</p>
+
+<p>Having taken care of the continuity with the standard routine, it's time to setup the internal hyperflight routine as the spaceship's object method:</p>
+
+<pre>	setx mb1 i,364		<span class="comment">// store 364 as instruction count</span>
+	law 20 i		<span class="comment">// load -20, display frames to go</span>
+hp5,	dac .			/(th5) loop counters
+	move xy1,mh1 i		<span class="comment">// mh1 = 6      (  0,   6)</span>
+	move xy2,mh2 i		<span class="comment">// mh2 = 10765	( 10, 765)</span>
+	move xy3,mh3 i		<span class="comment">// mh3 = 767765 (767, 765)</span>
+	init ml1 i,he1		<span class="comment">// ml1 = he1 (operational object routine)</span>
+	jmp he1 3</pre>
+
+<p>The first of these instructions stes the instruction count of the hyperspace routine in the property <code>mb1</code> (in the main program) to the number <code>364</code> by inserting the following macro:</p>
+
+<pre>define setx S,K
+	law K
+	dac S
+terminate</pre>
+
+<p>Then we store the number of frames to go in the counter <code>th5</code>, aliased in the address part of <code>hp5</code>. The insertions of the macro <code>move</code> are setting up some values in the hyperspace properties <code>mh1</code>, <code>mh2</code>, and <code>mh3</code>. While we, won't bother with the semantics here, we may note that these are the hyperspace properties already defined and managed inside the main program. (Also, we may note that these are of an alltogether different use and meaning here, as compared to Spacewar! 3.1.) Finally, we're linking the hyperspace routine at <code>he1</code> as the current object routine of the spaceship in <code>ml1</code> (also a property of the main program).</p>
+
+<p>Thus prepared, we're ready to go to hyperspace, as in &quot;<code>jmp he1 3</code>&quot;:</p>
+
+<pre>he1,	dap hxt			<span class="comment">// deposit return address</span>
+	setx mb1 i,325		<span class="comment">// set instruction count</span>
+	setx \hcl,4 i		/inner loop count <span class="comment">// \hcl = -4, do it 4 times</span>
+	lac mh1 i		/unpack point coordinates
+	split			<span class="comment">// mh1 to \hx1, \hy1</span>
+	dac \hx1
+	dio \hy1
+	lac mh2 i
+	split			<span class="comment">// mh2 to \hx2, \hy2</span>
+	dac \hx2
+	dio \hy2
+	lac mh3 i
+	split			<span class="comment">// mh2 to \hx2, \hy2</span>
+	dac \hx3
+	dio \hy3</pre>
+
+<p>The first two instructions are storing the return address and are setting the instruction count, when the routine is called in a conssecutive frame. During the very first frame, we skip these and are entering at <code>he1+3</code>. The instruction &quot;<code>setx \hcl,4 i</code>&quot; initilizes another loop counter to the number <code>-4</code>. This is an inner loop, to performed for each frame, and since the count up will be executed after the action &mdash; quite like in a do-while construct &mdash;, there will be 4 iterations of this inner loop.</p>
+
+<p>The next instructions are &quot;unpacking [the] point coordinates&quot; via the macro <em>split</em>. The coordinates are stored in the properties <code>mh1</code> .. <code>mh3</code> that we've initialized just before. Now we may see, what they are about.</p>
+
+<pre>define split		<span class="comment">// split AC to hi AC, hi IO (unpack)</span>
+	scr 9s
+	sal 9s
+terminate</pre>
+
+<p>By shifting the accumulator (AC) and the IO register as a combined 36-bit register by half a word-length to the right, the lower part of AC is shifted into the higher part of IO. The next &quot;<code>sal 9s</code>&quot; shifts the remainder in AC back into the higher part. Hence, the value in the accumulator will be split into a lower and a higher part, and the formerly lower part will be now in the highest 9 bits of IO.</p>
+<p>This is then stored in the variables <code>\hx1</code> (from AC) and <code>\hy1</code> (from IO), repeated for the pairs <code>\hx2,\hy2</code> (unpacked from <code>mh2</code>) and <code>\hx3,\hy3</code> (unpacked from <code>mh3</code>).</p>
+
+<p>Therefor, the start values of these variables will be:</p>
+
+<pre style="background-color: #fff;">sx1:      0,   sy1:   6000   (mh1:      6)
+sx2:  10000,   sy2: 765000   (mh2:  10765)
+sx3: 767777,   sy3: 765000   (mh3: 767765)</pre>
+
+<p>By this, we arrived at the heart of the patch, the famous <em>&quot;Minskytron&quot;-like warp-induced photonic stress emission!</em></p>
+
+<h4>The &quot;Minskytron&quot; Signature</h4>
+
+<pre>/Here it is...
+h3,	marvin \hx1,\hy1,\hx2,\hy2,sar 5s,sar 5s
+	marvin \hx2,\hy2,\hx3,\hy3,sar 8s,sar 4s
+	dismin \hx2,\hy2,hp2 i,hp3 i
+	marvin \hx3,\hy3,\hx1,\hy1,sar 1s,sar 6s
+	dismin \hx3,\hy3,hp2 i,hp3 i</pre>
+
+<p>First of all, <code>marvin</code> is a macro, and by its tongue-in-cheek title it seems to suggest the following entry to the <em style="white-space: nowrap;">Oxford Dictionary</em>:</p>
+
+<figure style="margin: 1.5em; padding: 1.5em; border: 1px #a0a0a1 solid;">
+	<p class="noindent"><strong>mar<span style="margin-left: 1px; margin-right: 1px;">&bull;</span>vin</strong> <span style="color: #999;">| &rsquo;m&auml;rvin |</span></p>
+	<p class="noindent">verb &nbsp; (<strong>marvins</strong>, <strong>marvined</strong>)<br />
+	To draw an arc or ellipse like Marvin Minsky: <em>The program <strong>marvins</strong> a circle onto the screen.</em></p>
+	<p class="noindent">ORIGIN 1960s, found in a program listing by J. M. Graetz; after Marvin Minsky, then head of the Artificial Intelligence Laboratory at MIT and author of the <em>&quot;Tri-Pos: Three-Position Display&quot;</em> for the TX-0 computer.</p>
+</figure>
+
+<p>A naive guess made on the impression of the images above might suggest that an instance of <code>marvin</code> would be advancing over a circle in incremental steps, like in:</p>
+
+<pre style="background-color: #fff;">function circle_step() {
+    x = x - (y &gt;&gt; 4);
+    y = y + (x &gt;&gt; 4);
+    display(x, y);
+}</pre>
+
+<p>(This algorithm had been discovered by Marvin Minsky by accident: <em>&quot;The circle algorithm was invented by mistake when I tried to save one register in a display hack! Ben Gurley had an amazing display hack using only about six or seven instructions, and it was a great wonder. But it was basically line-oriented. It occurred to me that it would be exciting to have curves, and I was trying to get a curve display hack with minimal instructions.&quot;</em> <cite>Marvin Minsky in <a href="http://www.inwap.com/pdp10/hbaker/hakmem/hacks.html" target="_blank">HAKMEM</a> &quot;Item 149 (Minsky): Circle Algorithm&quot;</cite> &mdash; As a historical footnote we may add that the same algorithm was used for determining the sine and cosine by the Sinclair Scientific pocket calculator in 1974, compare: &quot;<a href="http://files.righto.com/calculator/sinclair_scientific_simulator.html" target="_blank">Reversing Sinclair's amazing 1974 calculator hackl</a>&quot; by Ken Shirriff.)</p>
+
+<p>But the &quot;Minskytron&quot;, Marvin Minsky's &quot;Tri-Pos: Three-Position Display&quot;, is quite a different beast, as it is not only using parameters on each of these values, it interconnects them to form a <em>visual synthesizer</em> by having three of these generators driving and modulating each other, quite like the frequency modulators of a Moog synthesizer.</p>
+
+<figure class="img" id="chm_minskytron"><img src="images/chm-minskytron-by-joi_ito.jpg" alt="The 'Miskytron' port to the PDP-1, at the Computer History Museum" width="500" height="336" />
+<p>Marvin Minsky's &quot;Three Position Display&quot; (Minskytron) on the PDP-1 at the CHM.<br />Photo by <a href="http://www.flickr.com/photos/joi/494396034/" target="_blank">Joi Ito</a>, 2007 (<a href="https://creativecommons.org/licenses/by/2.0/deed.en" target="_blank">CreativeCommons</a>)</p></figure>
+
+<p style="margin-bottom: 2em; margin-top: 2em;">BTW: <span style="font-family:sans-serif; font-size: 80%;color: #555;">&#9654;</span> You may <a href="https://www.masswerk.at/minskytron/" target="_top" title="The Minskytron and other early graphics demos at the PDP-1 (in-browser emulation)">explore the Minskytron here</a> (online emulation).</p>
+
+<p>This is, what the macro <code>marvin</code> actually looks like:</p>
+
+<pre>define marvin X1,Y1,X2,Y2,S,SS
+	lac X1
+	add X2
+	S			<span class="comment">// apply a right-shift scaling</span>
+	add Y1 
+	dac Y1			<span class="comment">// Y1 = Y1 + S(X1 + X2)</span>
+	sub Y2
+	SS			<span class="comment">// apply a right-shift scaling</span>
+	cma
+	add X1
+	dac X1			<span class="comment">// X1 = X1 - SS(Y1 - Y2)</span>
+termi</pre>
+
+<p>Or translated to a C-like pseudo-code (please mind 18-bit word limits):</p>
+
+<pre style="background-color: #fff;">function marvin(*x1, *y1, x2, y2, sx, sy) {
+    y1 = y1 + ((x1 + x2) &gt;&gt; sx);
+    x1 = x1 - ((y1 - y2) &gt;&gt; sy);
+}</pre>
+
+<p style="margin-bottom: 1.5em;"><em>Note: With a bit of abstraction we might regard this as some kind of wavelet transformation, with the expression &quot;<code style="white-space: nowrap;">(x1+x2) &gt;&gt; sx</code>&quot; as a low-pass band working on the average and the expression &quot;<code style="white-space: nowrap;">(y1-y2) &gt;&gt; sy</code>&quot; as some kind of high-pass band based on the difference, with weighted coefficients applied by parameters <code>sx</code> and <code>sy</code>, adding distortion in the x- and y-domains.</em></p>
+
+<p>Since we would want to put some output on the screen too, there is another macro for this, named <code>dismin</code>, displaying a dot relatively to a central anchor point provided in <code>(XC|YC)</code> with an offset added by the vector <code>(X|Y)</code>:</p>
+
+<pre>define dismin X,Y,XC,YC		<span class="comment">// display a dot at X+XC, Y+YC</span>
+	lac Y
+	add YC
+	swap
+	lac X
+	add XC
+	dpn			<span class="comment">// dpn=dpy-i</span>
+term</pre>
+
+<p>Let's have another look at the instances of <code>marvin</code>:</p>
+
+<pre>/Here it is...
+h3,   marvin \hx1,\hy1,\hx2,\hy2,sar 5s,sar 5s    <span class="comment">// hy1 += (hx1+hx2)/32</span>
+                                                  <span class="comment">// hx1 -= (hy1-hy2)/32</span>
+      marvin \hx2,\hy2,\hx3,\hy3,sar 8s,sar 4s    <span class="comment">// hy2 += (hx2+hx3)/256</span>
+                                                  <span class="comment">// hx2 -= (hy2-hy3)/16</span>
+      dismin \hx2,\hy2,hp2 i,hp3 i                <span class="comment">// display @(x+hx2, y+hy2)</span>
+      marvin \hx3,\hy3,\hx1,\hy1,sar 1s,sar 6s    <span class="comment">// hy3 += (hx3+hx1)/2</span>
+                                                  <span class="comment">// hx3 -= (hy3-hy1)/64</span>
+      dismin \hx3,\hy3,hp2 i,hp3 i                <span class="comment">// display @(x+hx3, y+hy3)</span></pre>
+
+<p>As we may observe, there are 3 generators, but only two of them, namely the one for <code>(\hx2|\hy2)</code> and the one for <code>(\hx3|\hy3)</code> are connected to a visual output via the macro <code>dismin</code>. Moreover, the generators are visited in the order <code>(\hx1|\hy1)</code>, <code>(\hx2|\hy2)</code>, <code>(\hx3|\hy3)</code> in a round-robin fashion, but are feeding each other in the opposite direction, using the state of the previous generator as a modifier. Notably, this modifier will be in the state as at the end of the previous step.</p>
+
+<p>Thus we get a digital synthesizer with three interleaved generators <em>(G1, G2, G3)</em> and two of them connected to a visual output, this being some kind of a generator in its own by adding the input vector as an offset to a fixed positional vector:</p>
+
+<figure id="minskytron_hyperspace_schematics" class="img borderless"><img src="images/minskytron-hyperfield-generators.gif" alt="Schematics of the  'Minskytron' hyperspace signature" width="456" height="508" /><p>Schematics of the &quot;Minskytron&quot; hyperspace signature.</p></figure>
+
+<p>As we can see here, the only fixed values are in the scaling vectors, the bit-shifts to be applied to the partial sums. Since they are only symmetrical for the very first generator, the one without any connection to the visual output, and because there is a notable disparity in the scaling of the other ones, we may expect some kind of distortion of the resulting circles. Also, there might be some skew or rotation involved, as the oscillation of one generator is added to the oscillation of the previous one. (Compare the <a href="#minskytron_signature" onclick="if (window.showEmbeddedImage) {return showEmbeddedImage('images/minskytron-hyperspace.jpg', 520, 520, '#fff', 4);} else {return true;}">screenshot</a> above.)</p>
+
+<p>This will be visited exactly four times in each frame, drawing a series of consecutive dots in two arcs loosly aligned to the vertical and horizontal axis respectively (mind the scaling factors for the second and third generators):</p>
+
+<pre>h3a,	count \hcl,h3		<span class="comment">// repeat 4 times</span>
+	pack \hx1,\hy1,mh1 i	/repack coordinates
+	pack \hx2,\hy2,mh2 i
+	pack \hx3,\hy3,mh3 i</pre>
+
+<p>If the count-up at <code>h3a</code> yields a negative result, we continue for another round-trip over the <em>marvinous</em> oscillators at label <code>h3</code>. After the 4<sup style="line-height: normal;">th</sup> iteration, we'll fall through and pack the point coordinates back into the properties <code>mh1</code> to <code>mh3</code>, to preserve them separately for each of the ships:</p>
+
+<pre>define pack X,Y,S	<span class="comment">// pack X, Y to hi, lo AC, deposit in S</span>
+	lac X
+	lio Y
+	sar 9s
+	scl 9s
+	dac S
+termin</pre>
+
+<p>This is exactly the reverse operation of <code>split</code>, but with the addition of storing the packed value in the location provided in parameter <code>S</code>. Notably, there is a small side effect of this packing and unpacking: Since a display coordinate has a precision of 10 bits and our packed ccordinates will only preserve the highest 9 bits, only the 4 consecutive dots drawn in the same frame will line up smoothly, but we may expect some jumpy discontinuities between frames (which may be actually observed, compare the <a href="#minskytron_signature" onclick="if (window.showEmbeddedImage) {return showEmbeddedImage('images/minskytron-hyperspace.jpg', 520, 520, '#fff', 4);} else {return true;}">screenshot</a>), due to the loss of the least significant bits.</p>
+
+<p>Follows the count up between frames and the set up of the code for the rentry phase, in case we would be finished and fall through the count-loop:</p>
+
+<pre>h3b,	count hp5 i,hxt
+	setx hp5 i,100 i	/delay timer	<span class="comment">// 100 delay frames (time in hyperspace)</span>
+	init ml1 i,he2		/delay entry	<span class="comment">// setup object routine</span>
+	setx mb1 i,12				<span class="comment">// instruction count 12</span>
+
+hxt,	jmp .			/BACK TO THE FRAY...</pre>
+
+<p>At <code>h3b</code> the counter <code>hp5</code> will be incremented. Since it was initilized to octal <code>-20</code> and we're incrementing after the feat, we're drawing decimal 14 groups of 4 dots for each of the two arcs.</p>
+
+<p>All in all, as we iterate over the individual steps of the code, we'll get the scientifically refined version of the comics-style <em>Whizz &ndash; Swoosh</em> effect, we were imagining so vividly in the introduction: A carefully adjusted 3D-like, slightly distorted drawing of a two-thirds Bohr atom, fading slowly away at the very screen position, where the ship had been just before.</p>
+
+<p>Should we fall through, we're finished with the <em>warp-induced photonic stress emission</em> and are setting up for the actual hyperspace phase: &quot;<code>setx hp5 i,100 i</code>&quot; resets the counter <code>hp5</code> to the value <code>-100</code>, now to be repurposed to count the number of frames, for which the ship will be invisible in hyperspace (dec. 77 frames). &quot;<code>init ml1 i,he2</code>&quot; links the object routine for this phase and &quot;<code>setx mb1 i,12</code>&quot; sets the instruction count to octal <code>12</code>.</p>
+<p>In either case (still stress-emitting or already up for hyperspace), we finish at label <code>hxt</code> and are performing the return to the main program (or, in case this was the very first frame, the jump to the return to back to main).</p>
+
+<p>&nbsp;<br />And here is what it looks like in action, the <em>warp-induced photonic stress emission</em> signature as left behind by a ship making the jump to hyperspace:</p>
+
+<figure id="hyperspace_animation" class="img"><img src="images/sw2hyperspace-poster.png" width="224" height="224" alt="The Spacewar! 2b hyperspace-patch in action" id="hyperspace_anim_gif" onclick="hsAnimation.toggle(); return false;" style="cursor: pointer;" title="Click to play" /><p>The Spacewar! 2b hyperspace patch in action (screen recording of the emulation).<br />Click to play the animation.</p></figure>
+
+
+<h3>The Lonesomeness of Hyperspace</h3>
+
+<pre>/Delay and recovery time count loops
+
+he2,	dap hxt
+	count hp5 i,hxt		<span class="comment">// count up</span>
+	lac hp6 i		<span class="comment">// restore spaceship routine from  backup</span>
+	dap ml1 i
+	setx mb1 i,2000		<span class="comment">// reset instruction count to 2000</span>
+	reset hp4 i,jmp hyj	/recovery gate	<span class="comment">// &quot;lac (jmp hyj   dac hp4 i&quot;</span>
+	setx hp5 i,500 i	<span class="comment">// set hp5 to -500 (cooling frames)</span>
+	jmp hxt			<span class="comment">// return</span></pre>
+
+<p>As in Spacewar! 3.1, there isn't exactly much to do in hyperspace: We store the return address and are counting up on <code>hp5</code>, if still negative after the increment, we're finshed and jump to the return at <code>hxt</code>. If we fall through, it's time for re-entry: First, we restore the standard spaceship routine from the backup in pointer <code>hp6</code> (property <code>th6</code>). Then, we reset the instruction count to the standard value of <code>2000</code> and are up for a final piece of wizardry: &quot;<code>reset hp4 i,jmp hyj</code>&quot; sets the &quot;recovery gate&quot; in <code>hp4</code> (property <code>th4</code>) to the constant &quot;<code>jmp hyj</code>&quot;, an instruction that will be executed by the <code>xct</code> instruction at the very entrance of the normal in-flight patch. This will send the code to the location at label <code>hyj</code> (see below) instead of executing the usual trigger-parsing. Then, we repurpose the counter <code>hp5</code> once again, this time for the hyperspace cooling of octal <code>500</code> frames (decimal 320). The jump at <code>hxt</code> takes us finally back to the main program.</p>
+
+
+<pre>hyj,	count hp5 i,sh1		<span class="comment">// count up cooling</span>
+	reset hp4 i,nop		<span class="comment">// over reset recovery gate (hp4 = nop)</span>
+	jmp sh1			<span class="comment">// jump to return</span>
+
+xy1,	6
+xy2,	10765
+xy3,	767765</pre>
+
+<p>These are actually the very last instructions of the hyperspace patch: &quot;<code>count hp5 i,sh1</code>&quot; performs the count up on the hyperspace cooling, blocking any further attempt to jump to hyperspace. If the count up finished, we reset the &quot;recovery gate&quot; in <code>hp4</code> to the void operation <code>nop</code> (synonymous to the initial <code>opr</code>), thus clearing the detour to this piece of code. &quot;<code>jmp sh1</code>&quot; is once again a jump to the return address, the last one in the entire patch.</p>
+
+<p>Follow the constants for the initialization of the <code>marvin</code>-generators &mdash; and, with this being the end of the hyperspace patch as provided by the final keyword <code>start</code> after the pseudo-instructions <code>variables</code> and <code>constants</code> for reserving the locations for the various assembler entities in place, we've reached the end of the listing:</p>
+
+<pre>variables
+constants
+
+start</pre>
+
+
+<p class="endex">*****</p>
+
+
+<p>Pfew! &mdash; This has become nearly a double issue, but we were also discussing two versions of hyperspace at once. But, eventually, we've arrived at the finish line, having seen all there is to see. &mdash; But, as usual, there's a little extra that should be presented in this context: This time it's a short one, the auto-restart patch, patching into the hyperspace patch and by this illustrating pretty well, how the dependencies of these code snippets would have built up.</p>
+
+<h2 id="autorestart">The Auto-Restart Patch</h2>
+
+<p>This is the source code reconstructed from disassembly:</p>
+
+<pre>spacewar 2b auto-restart patch
+/ requires the hyperspace 85 patch
+
+/ locations in spacewar 2b
+
+a=1462		/ setup for test word controls
+ml1=1540	/ property linking to an object's handling routine
+mtb=3103	/ start address of the objects table
+ntr=3543	/ property for the number of torpsedos remaining
+
+/ locations in hyperspace85 (Hyperspace VIci, 2 May 1962)
+
+hml=5530
+hmx=hml+14	/ (5544)
+
+/ patches into hyperspace85
+
+hmx/
+
+jmp rs0			/ replaces "jmp ml1"
+
+/ start of patch
+
+5610/
+
+rs0,	lac mtb		/ control word of first spaceship
+	sza i		/ is it not empty?
+	jmp rs1		/ empty, restart
+	lac mtb 1	/ check second spaceship
+	sza i
+	jmp rs1
+	lac ntr		/ add number of remaining torpedoes
+	add ntr 1	/ sum them up
+	sza i		/ any left?
+	jmp rs1		/ no, restart
+	scr 2s		/ operand is 440, 2 high bits
+	dac rsc		/ reset rsc to torps remaining / 4
+	jmp ml1		/ return to main
+
+rs1,	isp rsc		/ count up on rsc
+	jmp ml1		/ jump to ml1, if still counting
+	jmp a		/ finished, start a new game
+
+rsc,	0
+
+	start 0</pre>
+
+<p>Let's have a quick look at this: The patched location in the &quot;hyperspace85&quot; patch is the final jump back to label <code>ml1</code>, to be found right after the part where the pointers are setup to point to the properties of the first spaceship. At the beginning of each frame we'll take a detour to location <code>5610</code>, following immediately after the hyperspace patch in the address space of the PDP-1.</p>
+
+<p>So, when may a game be over? A nice guess would be, when any of the ships would be no more, or if both of the ships would be out of torpedoes. This is also what the code at label <code>rs0</code> is checking at the start of each frame.</p>
+
+<p>The first instruction &quot;<code>lac mtb</code>&quot; loads the address of the object routine into the accumulator. Should this be not zero (&quot;<code>sza i</code>&quot;), indicating that the ship is still in any state of flight, hyperspace, or explosion, we skip the next jump instruction. Should the property have been reset to zero, this ship is out of order and we'll take the jump to label <code>rs1</code> for a restart. The same is then repeated for spaceship 2 by inspecting the property &quot;<code>mtb+1</code>&quot;.</p>
+
+<p>The next check is on the torpedoes, but this time it's a check on both of the ships at once. For this, we load the number of remaining torpedoes from <code>ntr</code> (spaceship 1) and <code>ntr+1</code> (spaceship 2) and add them. Should this sum be zero, we miss the probing skip (&quot;<code>sza i</code>&quot;) and jump to the restart at <code>rsc</code>, because both of the ships are out of torpedoes.</p>
+
+<p>If there are still both of the ships and any torpedoes left, the game is still commencing. What's left to be done? Let's have a look at actual restart procedure at label <code>rs1</code> before, which happens to be an incarnation of our well known macro <code>count</code>, followed by the location reserved for the counter:</p>
+
+<pre>rs1,	count rsc, ml1		<span class="comment">// count up restart delay</span>
+	jmp a			<span class="comment">// finished, start a new game</span>
+
+rsc, 0</pre>
+
+<p>So, this is counting up <code>rsc</code> to provide a delay before the restart. Thus we may expect the contents of location <code>rsc</code> to be a negative number. This was assigned in the last few instructions of the previous piece of code:</p>
+
+<pre>	scr 2s		/ operand is 440, 2 high bits
+	dac rsc		/ set up rsc to torps remaining / 4
+	jmp ml1		/ return to main</pre>
+
+<p>The first instruction &quot;<code>scr 2s</code>&quot; is quite peculiar. First, because it's actually &quot;<code>scr 440</code>&quot;, where <code>440</code> is a value with two high bits, the functional equivalent of the assembler constant &quot;<code>2s</code>&quot; (or value <code>3</code>). Second, it's a combined shift on the accumulator and the IO register, but we're interested in the accumulator only, because the contents of this is what is deposited into <code>rsc</code> in the next instruction, just before the jump to the main program. Odd, but this is, how it is. But, what's actually in the accumulator?</p>
+
+<p>As we've seen before, the contents of the accumulator is the sum of the remaining torpedoes of the two ships, a sum of two negative numbers and hence a negative value, too. It must be some negative value, because, if it would have been zero, we would have made the jump to the delayed restart at label <code>rs1</code> before. Obviously, the restart delay is a function of the remaining torpedoes, to be precisice, the number of any torpedoes remaining in the game divided by 4 (since we executed a right-shift by two bits).</p>
+
+<p>Since there are (decimal) <code>32</code> torpedoes for each ship, the sum will be anything from <code>-64</code> to zero. Dividing this by <code>4</code> we get a restart delay of up to (decimal) <code>16</code> frames, a mere second.</p>
+
+<p>But there's still something remarkable to be observed, namely the very location, where the game is restarted. Label &quot;<code>a</code>&quot; in the main program happens to be the code where the game is setup for reading the control boxes for input. In other words, if we were using the test word controls, we would be up for a surprise: The game would be out of order, because the program would be scanning the ports for the control boxes exclusively by executing the instruction &quot;<code>iot 11</code>&quot; and wouldn't listen to the test word switches anymore. Folks using the test word controls would want to change this to the instruction &quot;<code>jmp a1</code>&quot;, where location <code>a1</code> is the (octal) address <code>1457</code>.</p>
+
+<p>That's all!</p>
+
+<p class="endex">*****</p>
+
+<p>Yet another remark or observation, namely on the memory available at the PDP-1: In the hyperspace patch we've finally met an occasion, where some properties would have been packed and unpacked to and from a compressed store. We may note that this wasn't done, because there wouldn't have been any spare locations left in the PDP-1, but apparently because of the patch already bordering to the auto-restart patch in locations <code>5610</code> &ndash; <code>5630</code>. Even then, there wouldn't have been any need to do so and this is actually a waste of memory locations, since the various intructions for packing and unpacking the properties are using more space than the 2 &times; 6 locations required for storing the plain values all along. Moreover, there's still a huge block of unused memory registers, namely to be used for the <code>DDT</code> online-debugger, which would have still fit into the PDP-1's memory in parallel to Spacewar! &mdash; even, when various patches had been applied to the program.</p>
+
+
+<p class="endex">*****</p>
+
+<p>Is this also the end of our journey through Spacewar-code? Not at all, since there are still some sights to be visited that are related to versions 4 of Spacewar!, namely the on-screen scorer patch for Spacewar! 4.8. Moreover, we'll want to engage in some sort of interpretation and higher level analysis that may be a bit more educated, since we've acquired by now some sound knowledge of the code and its workings. So there is still more to come.</p>
+
+<p>Stay tuned for the next episode &hellip;</p>
+
+<p>&nbsp;</p>
+<p class="noindent"><span class="author">Norbert Landsteiner</span><br />
+Vienna, September/October 2014<br />
+<a href="https://www.masswerk.at/" target="_top">www.masswerk.at</a></p>
+<p>&nbsp;</p>
+<p class="noindent"><em>In case you would have found any errors or inconsistencies, or would have additional information,<br />please <a href="https://www.masswerk.at/contact.php">contact me</a>.</em></p>
+<p class="endex">*****</p>
+
+<p class="noindent"><span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9664;</span> Previous: &nbsp; <a href="insidespacewar-pt7-shootout.html">Part 7: Shootout at El Cassiopeia</a><br />
+<span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9654;</span> Next: &nbsp; <a href="insidespacewar-pt9-spacewar4hacks.html">Part 9: Like a WW II Pilot&rsquo;s Tally &mdash; The 4.8 Scorer Patch and Other Spacewar! 4 Oddities</a><br /><br />
+<span style="font-family:sans-serif; font-size: 80%;color: #707070; margin-right: 0.2em;">&#9650;</span> Back to the <a href="./">index</a>.</p>
+
+</article>
+
+<section id="related">
+	<p>References / Related Links:</p>
+	<ul>
+		<li><a href="https://www.masswerk.at/spacewar/sources/spacewar3.1_complete.txt">Spacewar! 3.1 source code</a> (PDP-1, Macro assembler code)</li>
+		<li><a href="https://www.masswerk.at/spacewar/sources/spacewar_2b_25mar62.txt">Spacewar! 2b source code</a> (PDP-1, Macro assembler code)</li>
+		<li><a href="https://www.masswerk.at/spacewar/sources/hyperspace85.txt">Source code of the hyperspace patch &quot;hyperspace85.bin&quot;</a> (PDP-1, Macro assembler code)</li>
+		<li><a href="https://www.masswerk.at/spacewar/sources/spaceWarRstrt_disassembly.txt">Disassembly of the auto-restart patch &quot;spaceWarRstrt.bin&quot;</a> (PDP-1, Macro assembler code)</li>
+		<li><a href="https://www.masswerk.at/spacewar/SpacewarOrigin.html">&quot;The Origin of Spacewar&quot; by J. M. Graetz</a> (redacted copy, incl. additional text and images)</li>
+		<li><a href="https://www.masswerk.at/spacewar/decus1962/">&quot;Spacewar! Real-Time Capability of the PDP-1&quot; by J.M. Graetz</a> (Decus Proceedings 1962)</li>
+		<li><a href="pdp1-instructions.html" target="_blank">PDP-1 Instruction List</a> (opens in a new window)</li>
+		<li><span style="font-family:sans-serif; font-size: 80%;color: #555;">&#9654;</span> See the <a href="https://www.masswerk.at/minskytron/" target="_top" title="The Minskytron and other early graphics demos at the PDP-1 (in-browser emulation)">Minksytron</a> and other &quot;display hacks&quot; online (html5/JavaScript emulation of a PDP-1)</li>
+		<li><span style="font-family:sans-serif; font-size: 80%;color: #555;">&#9654;</span> <a href="https://www.masswerk.at/spacewar/" title="Play Spacewar! online">Play Spacewar! online</a> (html5/JavaScript emulation of a PDP-1 running Spacewar!)</li>
+	</ul>
+	<p>&nbsp;</p>
+	<p>&lt;<a href="https://www.masswerk.at/" target="_top">www.masswerk.at</a>&gt;</p>
+</section>
+
+</body>
+</html>
