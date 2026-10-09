@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from . import ir
+from .dialect import Namer
 from .select import FunctionLowerer, W
 
 
@@ -13,14 +14,13 @@ class LayoutError(Exception):
 
 
 def place(unit: ir.Unit, label_prefix: str) -> list[ir.Word]:
+    namer = Namer(label_prefix, unit.next_label)
     items: list[ir.Item] = []
-    counter = 0
-    for top in unit.items:
+    for n, top in enumerate(unit.items):
         match top:
             case ir.Function():
-                fl = FunctionLowerer(top, label_prefix, counter)
-                items += fl.lower()
-                counter = fl.counter
+                following = unit.items[n + 1].sym if n + 1 < len(unit.items) else None
+                items += FunctionLowerer(top, namer, following).lower()
             case ir.Datum():
                 items += [ir.LabelDef(top.sym), W(None, "ST-PLACED", ir.Num(top.value))]
     return attach_labels(items)
