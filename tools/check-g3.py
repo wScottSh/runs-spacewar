@@ -22,10 +22,19 @@ C_STRING = re.compile(r'"((?:[^"\\\n]|\\.)*)"')
 
 
 def oracle() -> tuple[set[str], set[str]]:
+    """Spacewar's own symbols (the oracle's symbol table less what macro1
+    predefines, such as ioh) and the oracle's words."""
     lst = (ROOT / "build/oracle.lst").read_text(errors="replace")
-    symbols = set(re.findall(r"^ (\w+)\s+[0-7]{6}$", lst, re.M))
+    symbols = set(re.findall(r"^ (\w+)\s+[0-7]{6}$", lst, re.M)) - macro1_predefined()
     words = set(re.findall(r"^\s*\d*\s+[0-7]{5} ([0-7]{6})", lst, re.M))
     return symbols, words
+
+
+def macro1_predefined() -> set[str]:
+    src = (ROOT / "tools/macro1.c").read_text()
+    tables = src[src.index("SYM_T pseudos[]"):]
+    tables = tables[:tables.index("};", tables.index("SYM_T permanent_symbols[]"))]
+    return set(re.findall(r'\{\s*\w+,\s*"(\w+)"', tables))
 
 
 def strings_in(path: Path) -> list[str]:

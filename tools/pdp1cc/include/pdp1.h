@@ -25,8 +25,20 @@
  * by a jump with its plain parameter in AC. A JDA function whose returns all
  * tail-call one BLOCK shares that block's exit. skip_return() makes the
  * current call return one word further, skipping the caller's next word.
+ * JSP: entered by `jsp f`, which leaves the return address in AC, so the
+ * only parameter is a `register` one; the result comes back in AC (or
+ * AC:IO). XCT: a function that is one instruction, executed in place by
+ * `xct f`; its plain parameter is AC and its register parameter IO. A
+ * pointer to a function type is a word holding its address; `return p(...)`
+ * jumps through it. A function's name used as a value is its address.
  * ENTRY_CELL(f) names f's entry word; several names may share it.
- * SYM("x") gives a C name the Macro symbol x.
+ * SYM("x") gives a C name the Macro symbol x. AT(a) lays a definition out
+ * from address a. RESERVE sets aside the words of an uninitialized object
+ * where it is defined; they are not punched, so the machine leaves whatever
+ * core held there. MINUS_ZERO is the word with every bit set.
+ *
+ * Hardware builtins: tyi() reads the typewriter into IO; lsm() leaves
+ * sequence break mode.
  *
  * Under g++ the macros below are empty. The reference build
  * (tools/pdp1cc/gate/reference.py) binds the two storage facts a macro
@@ -46,6 +58,13 @@ typedef struct dword { word hi, lo; } dword;
 #define BYNAME __attribute__((pdp1_byname))
 #define SYM(s) __attribute__((pdp1_sym(s)))
 #define ENTRY_CELL(f) __attribute__((pdp1_entry_cell(f)))
+#define XCT __attribute__((pdp1_xct))
+#define JSP __attribute__((pdp1_jsp))
+#define AT(a) __attribute__((pdp1_at(a)))
+#define RESERVE __attribute__((pdp1_reserve))
+#define MINUS_ZERO (-(word)0)
+word tyi(void);
+void lsm(void);
 void rcl(word hi, word lo, int n);
 void rcr(word hi, word lo, int n);
 void scl(word hi, word lo, int n);
@@ -68,6 +87,11 @@ void skip_return(void);
 #define BYNAME
 #define SYM(s)
 #define ENTRY_CELL(f)
+#define XCT
+#define JSP
+#define AT(a)
+#define RESERVE
+#define MINUS_ZERO (-(word)0)
 
 typedef std::uint32_t pdp1_bits;
 static const pdp1_bits PDP1_MASK = (1u << 18) - 1;
@@ -189,6 +213,13 @@ static inline void dis(word &h, word &l, word m) {
  * reference driver clears it before a call and reads it after. */
 static int pdp1_skips;
 static inline void skip_return() { ++pdp1_skips; }
+
+/* Hardware. The typewriter buffer holds what was last typed (nothing, in a
+ * reference run); sequence break mode is a flag. */
+static word pdp1_typewriter;
+static bool pdp1_break_mode;
+static inline word tyi() { return pdp1_typewriter; }
+static inline void lsm() { pdp1_break_mode = false; }
 
 #else
 #error "pdp1.h: compile with g++ (executable reference) or pdp1cc"

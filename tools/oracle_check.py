@@ -50,7 +50,8 @@ def check(label: str, lift_files: list[str], entry: str, calls: list[Inputs], do
     native = reference.build(files, sig, ROOT / "build/ref" / entry,
                              [reference.cell(s.name) for s in cells])
     want = simh.run_jda(ROOT / "build/pdp1", ROOT / "build/oracle.rim", oracle_symbol(sig.sym),
-                        calls, bool(sig.inline_count), [oracle_symbol(s.sym) for s in cells])
+                        calls, bool(sig.inline_count), [oracle_symbol(s.sym) for s in cells],
+                        op="xct" if sig.conv == "xct" else "jda")
     got = reference.run(native, calls)
     diffs = corpus.compare(calls, want, got, sig, [f"entry word {s.sym}" for s in cells])
     returns = Counter(o.returned_past for o in want)

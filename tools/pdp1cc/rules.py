@@ -36,6 +36,16 @@ RULES: dict[str, str] = {
     "LAY-ADOPT": "a function whose returns all tail-call one BLOCK patches that block's exit",
     "LOOP-UNROLL": "for (int i = 0; i < N; i++) S: S emitted N times (N read as C reads it)",
     "ST-ENTRY-CELL": "ENTRY_CELL(f) object: f's entry word under another name",
+    "XCT-CALL": "f(...) for an XCT f: arguments in AC and IO, then `xct f`",
+    "XCT-BODY": "an XCT function is the one word its body lowers to: no prologue, no exit",
+    "JSP-CALL": "f(...) for a JSP f: a register argument already in IO, then `jsp f`",
+    "JSP-PROLOGUE": "JSP prologue: `dap R` patches the exit cell with the return address in AC",
+    "JSP-FORWARD": "a JSP function whose body is `return g(...)` for a JSP g: `jmp g`, AC still holds the return address",
+    "LAY-AT": "AT(a) on a definition: the origin `a/` before it",
+    "ST-RESERVE": "RESERVE object: `. n/` sets its n words aside, not punched",
+    "EX-CODE": "a function's name as a value: its address, `law f`",
+    "TAIL-CALL-INDIRECT": "return p(...) through a pointer-to-function object p: arguments, `jmp i p`",
+    "EX-HW": "a hardware builtin with no operand (tyi, lsm): its one instruction",
     "SKIP-IO": "a register (IO) local compared with 0: io < 0 skips on `spi i`, io >= 0 on `spi`",
 }
 

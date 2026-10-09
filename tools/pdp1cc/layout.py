@@ -6,6 +6,7 @@ from dataclasses import replace
 
 from . import ir
 from .dialect import Namer
+from .rules import check
 from .select import FunctionLowerer, W
 
 
@@ -18,9 +19,12 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Word]:
     items: list[ir.Item] = []
     entered_by_fallthrough = False
     for n, top in enumerate(unit.items):
+        if top.at is not None:
+            items.append(ir.Place("origin", top.at, check("LAY-AT")))
         match top:
             case ir.Function():
-                following = unit.items[n + 1].sym if n + 1 < len(unit.items) else None
+                after = unit.items[n + 1] if n + 1 < len(unit.items) else None
+                following = after.sym if after is not None and after.at is None else None
                 lowerer = FunctionLowerer(top, namer, following)
                 own = lowerer.lower()
                 if entered_by_fallthrough:
@@ -29,6 +33,8 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Word]:
                 items += own
             case ir.Datum():
                 items += [ir.LabelDef(top.sym), W(None, "ST-PLACED", ir.Num(top.value))]
+            case ir.Space():
+                items += [ir.LabelDef(top.sym), ir.Place("reserve", top.size, check("ST-RESERVE"))]
     return attach_labels(items)
 
 
@@ -38,13 +44,19 @@ def _tag_first_word(items: list[ir.Item], rule: str) -> list[ir.Item]:
     return items[:n] + [replace(items[n], via=items[n].via + (rule,))] + items[n + 1:]
 
 
-def attach_labels(items: list[ir.Item]) -> list[ir.Word]:
-    words: list[ir.Word] = []
+def attach_labels(items: list[ir.Item]) -> list[ir.Word | ir.Place]:
+    """Labels name the next word, or the next reserved space."""
+    words: list[ir.Word | ir.Place] = []
     pending: list[str] = []
     alias: dict[str, str] = {}
     for it in items:
         if isinstance(it, ir.LabelDef):
             pending.append(it.name)
+            continue
+        if isinstance(it, ir.Place) and it.kind == "origin":
+            if pending:
+                raise LayoutError(f"labels {pending} come before an origin")
+            words.append(it)
             continue
         if pending:
             for extra in pending[1:]:
@@ -57,7 +69,7 @@ def attach_labels(items: list[ir.Item]) -> list[ir.Word]:
     return [_rename(w, alias) for w in words]
 
 
-def _rename(w: ir.Word, alias: dict[str, str]) -> ir.Word:
-    if isinstance(w.operand, ir.Sym) and w.operand.name in alias:
+def _rename(w: ir.Word | ir.Place, alias: dict[str, str]) -> ir.Word | ir.Place:
+    if isinstance(w, ir.Word) and isinstance(w.operand, ir.Sym) and w.operand.name in alias:
         return replace(w, operand=ir.Sym(alias[w.operand.name]))
     return w

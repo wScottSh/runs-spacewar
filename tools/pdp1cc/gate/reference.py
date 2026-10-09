@@ -94,7 +94,10 @@ def build(c_files: list[Path], sig: ir.Signature, out: Path, watch: list[str] = 
         ["g++", "-std=c++14", "-O2", "-Wall", "-Wno-register", "-Wno-unused-label", "-Werror",
          "-include", str(HEADER), *includes,
          f"-DCALL={call_expr(sig)}", f"-DINLINE={sig.inline_count}",
-         f"-DWATCH={watch_expr or ';'}", str(DRIVER), "-o", str(out)],
+         f"-DWATCH={watch_expr or ';'}", str(DRIVER), "-o", str(out),
+         # Lifted code may name routines that are still unlifted Macro; the
+         # reference run never reaches them.
+         "-Wl,--unresolved-symbols=ignore-all"],
         check=True)
     return out
 

@@ -50,6 +50,7 @@ class Program:
     words: list[ir.Word]
     placed: list[ir.Datum]
     functions: list[ir.Function]
+    spaces: list[ir.Space]
     mirrors: str | None = None      # the lifted routine this program copies the shape of
 
 
@@ -75,7 +76,9 @@ def load(path: Path) -> Program:
     entries = [unit.signatures[name] for name in fields["entry"].split(",")]
     placed = [t for t in unit.items if isinstance(t, ir.Datum)]
     functions = [t for t in unit.items if isinstance(t, ir.Function)]
-    return Program(path, entries, calls_for(ac), words, placed, functions, fields.get("mirrors"))
+    spaces = [t for t in unit.items if isinstance(t, ir.Space)]
+    return Program(path, entries, calls_for(ac), words, placed, functions, spaces,
+                   fields.get("mirrors"))
 
 
 def assemble(prog: Program, macro1: Path, work: Path) -> tuple[Path, dict[str, int]]:
@@ -111,11 +114,16 @@ def compare(calls: list[simh.Inputs], machine: list[simh.Outcome], native: list[
     return diffs
 
 
-def watched(prog: Program) -> list[tuple[str, str, str]]:
-    """(label, Macro symbol, native expression) of every word compared after
-    each call: the placed words and the entry words of defined JDA functions."""
-    out = [(d.name, d.sym, d.name) for d in prog.placed]
-    out += [(f"entry word of {f.sig.name}", f.sig.sym, reference.cell(f.sig.name))
+def watched(prog: Program) -> list[tuple[str, str, int, str]]:
+    """(label, Macro symbol, offset, native expression) of every word compared
+    after each call: placed words, reserved words (not pointers, whose native
+    value is a host address), and the entry words of defined JDA functions."""
+    out = [(d.name, d.sym, 0, d.name) for d in prog.placed]
+    for s in prog.spaces:
+        if not s.pointer:
+            out += [(f"{s.name}[{k}]", s.sym, k, f"{s.name}[{k}]") if s.array else
+                    (s.name, s.sym, 0, s.name) for k in range(s.size)]
+    out += [(f"entry word of {f.sig.name}", f.sig.sym, 0, reference.cell(f.sig.name))
             for f in prog.functions if reference.entry_param(f.sig)]
     return out
 
@@ -126,12 +134,12 @@ def run_program(prog: Program, simh_bin: Path, macro1: Path, work: Path) -> list
     diffs = []
     for sig in prog.entries:
         machine = simh.run_jda(simh_bin, rim, symbols[sig.sym], prog.calls, bool(sig.inline_count),
-                               [symbols[sym] for _, sym, _ in watch])
+                               [symbols[sym] + k for _, sym, k, _ in watch])
         binary = reference.build([prog.path], sig, work / f"{prog.path.stem}-{sig.name}",
-                                 [expr for _, _, expr in watch])
+                                 [expr for *_, expr in watch])
         native = reference.run(binary, prog.calls)
         diffs += [f"{sig.name} {d}" for d in
-                  compare(prog.calls, machine, native, sig, [label for label, _, _ in watch])]
+                  compare(prog.calls, machine, native, sig, [label for label, *_ in watch])]
     return diffs
 
 

@@ -6,7 +6,7 @@ import re
 
 from pycparser import c_ast, c_generator
 
-from . import ir
+from . import ir, macro
 
 PAIR_SHIFTS = {"rcl", "rcr", "scl", "scr"}
 PAIR_STEPS = {"mus", "dis"}
@@ -15,8 +15,9 @@ BIN_OPS = {"+", "-", "&", "|", "^"}
 MACRO_SYMBOL_LEN = 6
 CMP_OPS = {"<", ">=", "==", "!=", "<=", ">"}
 ATTR = re.compile(r"pdp1_(\w+)(?:\((.*)\))?$")
-CONVS = {"jda", "block"}
-ATTRIBUTES = CONVS | {"byname", "sym", "entry_cell"}
+CONVS = {"jda", "block", "xct", "jsp"}
+ATTRIBUTES = CONVS | {"byname", "sym", "entry_cell", "at", "reserve"}
+HARDWARE = {"tyi", "lsm"}           # builtins that are one instruction with no operand
 MACRO_SYMBOL = re.compile(r"[a-z][a-z0-9]{0,%d}" % (MACRO_SYMBOL_LEN - 1))
 
 
@@ -33,7 +34,7 @@ def _attrs(decl: c_ast.Decl) -> dict[str, str]:
     """The pdp1_* attributes on a declaration, in any position: name -> argument text."""
     gen = c_generator.CGenerator()
     texts: list[str] = []
-    for spec in decl.funcspec or []:
+    for spec in getattr(decl, "funcspec", None) or []:
         if hasattr(spec, "exprlist"):
             texts.append(gen.visit(spec.exprlist))
     t = decl.type
@@ -81,6 +82,19 @@ def _is_octal(text: str) -> bool:
     return len(text) > 1 and text[0] == "0" and text[1] not in "xXbB"
 
 
+def const_word(node: c_ast.Node) -> int:
+    """A constant word. Integer constants convert as C converts them, so -0 is
+    +0; a cast to word makes the operators the machine's: -(word)0 is -0."""
+    match node:
+        case c_ast.Constant(type="int") | c_ast.UnaryOp(op="-", expr=c_ast.Constant()):
+            return to_word(c_int(node), node)
+        case c_ast.Cast() if _base_type(node.to_type.type) == "word":
+            return const_word(node.expr)
+        case c_ast.UnaryOp(op="-" | "~", expr=c_ast.Cast()):
+            return const_word(node.expr) ^ ir.WORD_MASK
+    raise _err(node, "expected a constant word")
+
+
 def to_word(value: int, node: c_ast.Node) -> int:
     """C integer -> 18-bit word. A negative constant is the ones' complement."""
     if abs(value) > ir.WORD_MASK:
@@ -121,15 +135,21 @@ def _symbol(name: str, attrs: dict[str, str], namer: Namer, node: c_ast.Node) ->
         if not MACRO_SYMBOL.fullmatch(sym):
             raise _err(node, f"SYM({sym!r}) is not a Macro symbol: a lower-case letter, then "
                              f"letters or digits, {MACRO_SYMBOL_LEN} characters at most")
+        if macro.predefined(sym):
+            raise _err(node, f"SYM({sym!r}) is predefined by macro1")
         return sym
-    return name if MACRO_SYMBOL.fullmatch(name) else namer.fresh()
+    if MACRO_SYMBOL.fullmatch(name) and not macro.predefined(name):
+        return name
+    return namer.fresh()
 
 
-def _signature(decl: c_ast.Decl, namer: Namer) -> ir.Signature:
+def _signature(decl: c_ast.Decl, namer: Namer, symbol: bool = True) -> ir.Signature:
+    """symbol=False: a function type (typedef), which has no entry of its own."""
     attrs = _attrs(decl)
     convs = CONVS & attrs.keys()
     if len(convs) != 1:
-        raise _err(decl, f"{decl.name}: a function needs exactly one calling convention (JDA or BLOCK)")
+        raise _err(decl, f"{decl.name}: a function needs exactly one calling convention "
+                         "(JDA, JSP, XCT or BLOCK)")
     conv = convs.pop()
     ftype = decl.type
     params: list[ir.Param] = []
@@ -152,9 +172,16 @@ def _signature(decl: c_ast.Decl, namer: Namer) -> ir.Signature:
         raise _err(decl, f"{decl.name}: more than one BYNAME parameter is not implemented yet")
     if "byname" in kinds and kinds[-1] != "byname":
         raise _err(decl, f"{decl.name}: BYNAME parameters come last, as the words after the call")
+    if "byname" in kinds and conv in ("xct", "jsp"):
+        raise _err(decl, f"{decl.name}: an {conv.upper()} function has no inline words")
+    if "ac" in kinds and conv == "jsp":
+        raise _err(decl, f"{decl.name}: a JSP function receives its return address in AC; "
+                         "pass a register parameter")
     returns = _base_type(ftype.type)
     if returns not in ("word", "dword", "void"):
         raise _err(decl, f"{decl.name}: returns word, dword or void")
+    if not symbol:
+        return ir.Signature(decl.name, "", conv, tuple(params), returns, "")
     return ir.Signature(decl.name, _symbol(decl.name, attrs, namer, decl), conv, tuple(params),
                         returns, namer.fresh())
 
@@ -166,27 +193,36 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
     for ext in ast.ext:
         decl = ext.decl if isinstance(ext, c_ast.FuncDef) else ext
         if isinstance(decl, c_ast.Decl) and _is_function(decl.type) and not _in_header(decl):
+            if "at" in _attrs(decl) and not isinstance(ext, c_ast.FuncDef):
+                raise _err(decl, f"{decl.name}: AT places a definition, not a declaration")
             if decl.name not in sigs:
                 sigs[decl.name], first[decl.name] = _signature(decl, namer), decl
             elif not _same_declaration(decl, first[decl.name]):
                 raise _err(decl, f"{decl.name}: declarations disagree with the one at "
                                  f"{first[decl.name].coord}")
 
+    types = {e.name: _signature(e, Namer("q"), symbol=False) for e in ast.ext
+             if isinstance(e, c_ast.Typedef) and _is_function(e.type) and not _in_header(e)}
+
     globals_: dict[str, ir.Storage] = {}
+    pointers: dict[str, ir.Signature] = {}
     objects = [e for e in ast.ext if isinstance(e, c_ast.Decl) and not _is_function(e.type)]
     seen: dict[str, c_ast.Decl] = {}
     for ext in objects:
-        if ext.name in seen and _attrs(ext) != _attrs(seen[ext.name]):
+        if ext.name in seen and _decl_attrs(ext) != _decl_attrs(seen[ext.name]):
             raise _err(ext, f"{ext.name}: declarations disagree with the one at {seen[ext.name].coord}")
         seen.setdefault(ext.name, ext)
+        if (fn_type := _pointee(ext.type, types)) is not None:
+            pointers[ext.name] = fn_type
     for ext in objects:                       # definitions first: an extern may precede one
         attrs = _attrs(ext)
         if "entry_cell" in attrs:
             owner = sigs.get(attrs["entry_cell"])
-            if owner is None or owner.conv != "jda":
-                raise _err(ext, f"{ext.name}: ENTRY_CELL names a JDA function declared above")
+            if owner is None or owner.conv != "jda" or not any(p.kind == "ac" for p in owner.params):
+                raise _err(ext, f"{ext.name}: ENTRY_CELL names a JDA function with an AC "
+                                "parameter, declared above")
             globals_[ext.name] = ir.Entry(owner.sym, alias=True)
-        elif ext.init is not None:
+        elif ext.init is not None or "reserve" in attrs:
             globals_[ext.name] = ir.Placed(_symbol(ext.name, attrs, namer, ext))
     for ext in objects:
         if ext.name in globals_:
@@ -195,34 +231,91 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
         if "extern" not in ext.storage:
             raise _err(ext, f"{ext.name}: uninitialized file-scope object "
                             "(pool variable) is not in the implemented dialect yet")
-        if len(ext.name) > MACRO_SYMBOL_LEN and "sym" not in attrs:
+        if not MACRO_SYMBOL.fullmatch(ext.name) and "sym" not in attrs:
             raise _err(ext, f"{ext.name}: an extern names unlifted text; give it SYM(\"x\")")
         globals_[ext.name] = ir.Extern(_symbol(ext.name, attrs, namer, ext))
 
     items: list[ir.TopItem] = []
     for ext in ast.ext:
         if isinstance(ext, c_ast.FuncDef):
-            items.append(_lower_function(ext, sigs[ext.decl.name], globals_, sigs, namer))
-        elif isinstance(ext, c_ast.Decl) and ext.init is not None and not _is_function(ext.type):
-            if _base_type(ext.type) != "word":
-                raise _err(ext, f"{ext.name}: only `word` objects can be placed")
+            fn = _lower_function(ext, sigs[ext.decl.name], globals_, sigs, pointers, namer)
+            items.append(ir.Function(fn.sig, fn.params, fn.body, _origin(ext.decl)))
+        elif isinstance(ext, c_ast.Decl) and not _is_function(ext.type):
+            attrs = _attrs(ext)
+            if ext.init is None and "reserve" not in attrs:
+                if "at" in attrs:
+                    raise _err(ext, f"{ext.name}: AT places a definition, not a declaration")
+                continue
             storage = globals_[ext.name]
             if not isinstance(storage, ir.Placed):
                 raise _err(ext, f"{ext.name}: defined here but declared elsewhere as {storage}")
-            items.append(ir.Datum(storage.sym, to_word(c_int(ext.init), ext.init), ext.name))
+            if "reserve" in attrs:
+                if ext.init is not None or "extern" in ext.storage:
+                    raise _err(ext, f"{ext.name}: RESERVE sets aside uninitialized words; "
+                                    "it has no initializer and is not extern")
+                items.append(ir.Space(storage.sym, _words(ext), ext.name, _origin(ext),
+                                      array=isinstance(ext.type, c_ast.ArrayDecl),
+                                      pointer=isinstance(ext.type, c_ast.PtrDecl)))
+                continue
+            if _base_type(ext.type) != "word":
+                raise _err(ext, f"{ext.name}: only `word` objects can be placed")
+            items.append(ir.Datum(storage.sym, const_word(ext.init), ext.name, _origin(ext)))
     return ir.Unit(tuple(items), sigs, namer.counter, globals_)
+
+
+def _decl_attrs(decl: c_ast.Decl) -> dict[str, str]:
+    """Attributes every declaration of an object repeats: all but placement."""
+    return {k: v for k, v in _attrs(decl).items() if k not in ("at", "reserve")}
+
+
+def _origin(decl: c_ast.Decl) -> int | None:
+    attrs = _attrs(decl)
+    if "at" not in attrs:
+        return None
+    try:
+        at = int(attrs["at"], 0 if not _is_octal(attrs["at"]) else 8)
+    except ValueError:
+        raise _err(decl, f"{decl.name}: AT({attrs['at']}) needs an integer address") from None
+    if not 0 <= at <= ir.ADDR_MASK:
+        raise _err(decl, f"{decl.name}: AT({at:o}) is outside core")
+    return at
+
+
+def _words(decl: c_ast.Decl) -> int:
+    """Words a RESERVE object occupies: 1, or an array's constant length."""
+    t = decl.type
+    if isinstance(t, c_ast.ArrayDecl):
+        if _base_type(t.type) != "word" or t.dim is None:
+            raise _err(decl, f"{decl.name}: a reserved array is `word name[N]`")
+        return c_int(t.dim)
+    if _base_type(t) == "word" or isinstance(t, c_ast.PtrDecl):
+        return 1
+    raise _err(decl, f"{decl.name}: RESERVE takes a word, a word array or a pointer")
+
+
+def _pointee(t: c_ast.Node, types: dict[str, ir.Signature]) -> ir.Signature | None:
+    """The function type of a pointer-to-function object `ftype *p`."""
+    if isinstance(t, c_ast.PtrDecl):
+        name = _base_type(t.type)
+        if name in types:
+            return types[name]
+        raise _err(t, "a pointer must point to a function type declared with typedef")
+    return None
 
 
 def _same_declaration(a: c_ast.Decl, b: c_ast.Decl) -> bool:
     """Same parameters, return type and dialect attributes, so no single
     declaration's attribute is decoration."""
     sa, sb = _signature(a, Namer("q")), _signature(b, Namer("q"))
-    return ((sa.params, sa.returns, sa.conv) == (sb.params, sb.returns, sb.conv)
-            and _attrs(a) == _attrs(b))
+    placement = {"at"}          # AT belongs to the definition alone
+    attrs_a = {k: v for k, v in _attrs(a).items() if k not in placement}
+    attrs_b = {k: v for k, v in _attrs(b).items() if k not in placement}
+    return (sa.params, sa.returns, sa.conv) == (sb.params, sb.returns, sb.conv) and attrs_a == attrs_b
 
 
 def _lower_function(fn: c_ast.FuncDef, sig: ir.Signature, globals_: dict[str, ir.Storage],
-                    sigs: dict[str, ir.Signature], namer: Namer) -> ir.Function:
+                    sigs: dict[str, ir.Signature], pointers: dict[str, ir.Signature],
+                    namer: Namer) -> ir.Function:
     scope = _Scope(globals_)
     frame: dict[str, ir.Storage] = {}
     params: list[ir.Var] = []
@@ -236,7 +329,7 @@ def _lower_function(fn: c_ast.FuncDef, sig: ir.Signature, globals_: dict[str, ir
         frame[p.name] = storage
         params.append(ir.Var(p.name, storage))
     scope.frames.append(frame)
-    lowerer = _Lowerer(scope, sigs, namer)
+    lowerer = _Lowerer(scope, sigs, pointers, namer)
     body = lowerer.block(fn.body)
     if missing := lowerer.labels_used - lowerer.labels_defined:
         raise _err(fn, f"{sig.name}: goto to undefined label(s) {sorted(missing)}")
@@ -244,8 +337,9 @@ def _lower_function(fn: c_ast.FuncDef, sig: ir.Signature, globals_: dict[str, ir
 
 
 class _Lowerer:
-    def __init__(self, scope: _Scope, sigs: dict[str, ir.Signature], namer: Namer):
-        self.scope, self.sigs, self.namer = scope, sigs, namer
+    def __init__(self, scope: _Scope, sigs: dict[str, ir.Signature],
+                 pointers: dict[str, ir.Signature], namer: Namer):
+        self.scope, self.sigs, self.pointers, self.namer = scope, sigs, pointers, namer
         self.labels: dict[str, str] = {}
         self.labels_used: set[str] = set()
         self.labels_defined: set[str] = set()
@@ -375,6 +469,10 @@ class _Lowerer:
         match node:
             case c_ast.Constant(type="int"):
                 return ir.Const(to_word(c_int(node), node))
+            case c_ast.Cast() | c_ast.UnaryOp(op="-" | "~", expr=c_ast.Cast()):
+                return ir.Const(const_word(node))
+            case c_ast.ID() if node.name in self.sigs and not self._is_variable(node.name):
+                return ir.CodeRef(self.sigs[node.name])
             case c_ast.ID():
                 return self.scope.lookup(node)
             case c_ast.StructRef(type="."):
@@ -402,8 +500,20 @@ class _Lowerer:
                 return self.call(node, name)
         raise _err(node, f"expression {type(node).__name__} is not in the implemented dialect yet")
 
+    def _is_variable(self, name: str) -> bool:
+        return any(name in frame for frame in self.scope.frames)
+
     def call(self, node: c_ast.FuncCall, name: str) -> ir.Expr:
         args = node.args.exprs if node.args else []
+        if name in HARDWARE and _in_header_name(name, self.sigs):
+            if args:
+                raise _err(node, f"{name}() takes no arguments")
+            return ir.Hw(name)
+        if name in self.pointers and self._is_variable(name):
+            sig = self.pointers[name]
+            if len(args) != len(sig.params):
+                raise _err(node, f"{name} points to a {sig.name}, which takes {len(sig.params)} arguments")
+            return ir.IndirectCall(self.scope.lookup(node.name), sig, tuple(self.expr(a) for a in args))
         if name in PAIR_SHIFTS | PAIR_STEPS:
             if len(args) != 3:
                 raise _err(node, f"{name}(hi, lo, x) takes three arguments")
@@ -421,6 +531,11 @@ class _Lowerer:
         if len(args) != len(sig.params):
             raise _err(node, f"{name} takes {len(sig.params)} arguments")
         return ir.Call(sig, tuple(self.expr(a) for a in args))
+
+
+def _in_header_name(name: str, sigs: dict[str, ir.Signature]) -> bool:
+    """A hardware builtin is pdp1.h's, unless the program defines a function of that name."""
+    return name not in sigs
 
 
 def _mentions(node: c_ast.Node, name: str) -> bool:

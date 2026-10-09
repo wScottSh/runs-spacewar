@@ -11,17 +11,20 @@ swap   `l op r` with op in + & | ^ and both operands memory words or
        the words [load l] [op r] become [load r] [op l]. A load is absent
        when the value is already in AC (TRACK).
 const  a constant c used as a value becomes c + 1 (-c becomes -(c + 1)).
-       Exactly one word changes, and it encodes c + 1 where it encoded c,
-       in the same form (data word, literal operand, or constant load,
-       whose form may move between cla, law, law i and lac).
+       Exactly one line changes, and it encodes c + 1 where it encoded c,
+       in the same form (data word, literal operand, origin, reserved
+       length, or constant load, whose form may move between cla, law,
+       law i and lac).
 count  a shift or rotate count n becomes n + 1. The run of 9s chunks for n
-       becomes the run for n + 1.
+       becomes the run for n + 1. In an XCT function a run that would grow
+       past one word is predicted to be refused.
 
 The predictions are written here from the rule tables, not computed by the
 compiler's own lowering code."""
 from __future__ import annotations
 
 import copy
+import re
 from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -59,22 +62,28 @@ def chunks(n: int) -> list[str]:
     return [f"{k}s" for k in [9] * (n // 9) + ([n % 9] if n % 9 else [])]
 
 
+OCTAL = r"([0-7]+)"
+FORMS = [(re.compile(r"cla$"), "load", lambda m: 0),
+         (re.compile(r"law i " + OCTAL + "$"), "load", lambda m: int(m.group(1), 8) ^ MASK),
+         (re.compile(r"law " + OCTAL + "$"), "load", lambda m: int(m.group(1), 8)),
+         (re.compile(r"lac \(" + OCTAL + "$"), "load", lambda m: int(m.group(1), 8)),
+         (re.compile(r"(\w+ )\(" + OCTAL + "$"), None, lambda m: int(m.group(2), 8)),
+         (re.compile(OCTAL + "$"), "data", lambda m: int(m.group(1), 8)),
+         (re.compile(OCTAL + "/$"), "origin", lambda m: int(m.group(1), 8)),
+         (re.compile(r"\. " + OCTAL + "/$"), "reserve", lambda m: int(m.group(1), 8))]
+
+
 def value_of(instr: str) -> tuple[str, int] | None:
-    """(form, value) of a word that encodes a constant, else None."""
-    if instr == "cla":
-        return "load", 0
-    if instr.startswith("law i "):
-        return "load", int(instr[6:], 8) ^ MASK
-    if instr.startswith("law "):
-        return "load", int(instr[4:], 8)
-    if instr.startswith("lac ("):
-        return "load", int(instr[5:], 8)
-    if "(" in instr:
-        head, _, num = instr.partition("(")
-        return head, int(num, 8)
-    if instr.isdigit():
-        return "data", int(instr, 8)
+    """(form, value) of a line that encodes a constant, else None."""
+    for pattern, form, value in FORMS:
+        if m := pattern.match(instr):
+            return (form or m.group(1) + "("), value(m)
     return None
+
+
+def encode(form: str, v: int) -> str:
+    return {"load": load_const(v), "data": f"{v:o}", "origin": f"{v:o}/",
+            "reserve": f". {v:o}/"}.get(form, f"{form}{v:o}")
 
 
 # ---------------------------------------------------------- the C side
@@ -88,6 +97,8 @@ class Site:
     rewrites: Callable[[list[Line]], list[Rewrite]]     # where one copy of the edit may land
     edit: Callable[[c_ast.Node], None]
     copies: int = 1             # an unrolled loop body is emitted this many times
+    error: str | None = None    # the edit must be refused with this message instead
+    n: int = 0                  # a count site's count
 
     def predict(self, old: list[Line]) -> list[list[Line]]:
         """Every output the rules allow: `copies` successive rewrites applied."""
@@ -192,12 +203,14 @@ def sites(ast: c_ast.FileAST, unit: ir.Unit) -> list[Site]:
             continue
         if isinstance(parent, c_ast.BinaryOp) and field == "right" and parent.op in SHIFT:
             if token + 1 <= MAX_SHIFT:
-                out.append(replace(count_site(index, node, SHIFT[parent.op], token), copies=ctx.get('copies', 1)))
+                out.append(one_word_limit(replace(count_site(index, node, SHIFT[parent.op], token),
+                                                  copies=ctx.get('copies', 1)), unit, fn))
             continue
         builtin = builtin_count(parent, field, ctx)
         if builtin:
             if token + 1 <= MAX_SHIFT:
-                out.append(replace(count_site(index, node, builtin, token), copies=ctx.get('copies', 1)))
+                out.append(one_word_limit(replace(count_site(index, node, builtin, token),
+                                                  copies=ctx.get('copies', 1)), unit, fn))
             continue
         negated = isinstance(parent, c_ast.UnaryOp) and parent.op == "-"
         old = dialect.to_word(-token if negated else token, node)
@@ -247,15 +260,9 @@ def const_site(index: int, node: c_ast.Constant, old_v: int, new_v: int) -> Site
             got = value_of(instr)
             if got is None or got[1] != old_v:
                 continue
-            form = got[0]
-            if form == "load":
-                candidates = {load_const(new_v)}
-                if instr.startswith("lac ("):       # a by-name literal keeps its form
-                    candidates.add(f"lac ({new_v:o}")
-            elif form == "data":
-                candidates = {f"{new_v:o}"}
-            else:
-                candidates = {f"{form}({new_v:o}"}
+            candidates = {encode(got[0], new_v)}
+            if instr.startswith("lac ("):           # a by-name literal keeps its form
+                candidates.add(f"lac ({new_v:o}")
             outs += [(i, i + 1, [(lab, c)]) for c in candidates]
         return outs
 
@@ -264,6 +271,15 @@ def const_site(index: int, node: c_ast.Constant, old_v: int, new_v: int) -> Site
 
     return Site("const", index, node.coord.line,
                 f"constant {old_v:06o} -> {new_v:06o}", rewrites, edit)
+
+
+def one_word_limit(site: Site, unit: ir.Unit, function: str | None) -> Site:
+    """An XCT function is one word: an edit that needs more is refused."""
+    sig = unit.signatures.get(function or "")
+    if site.kind == "count" and sig is not None and sig.conv == "xct" and \
+            len(chunks(site.n + 1)) > len(chunks(site.n)):
+        return replace(site, error="must lower to exactly one word")
+    return site
 
 
 def count_site(index: int, node: c_ast.Constant, mnemonic: str, n: int) -> Site:
@@ -281,7 +297,7 @@ def count_site(index: int, node: c_ast.Constant, mnemonic: str, n: int) -> Site:
     def edit(n_: c_ast.Constant) -> None:
         n_.value = str(n + 1)
 
-    return Site("count", index, node.coord.line, f"{mnemonic} count {n} -> {n + 1}", rewrites, edit)
+    return Site("count", index, node.coord.line, f"{mnemonic} count {n} -> {n + 1}", rewrites, edit, n=n)
 
 
 # -------------------------------------------------------------- running
@@ -289,8 +305,8 @@ def count_site(index: int, node: c_ast.Constant, mnemonic: str, n: int) -> Site:
 def lines_of(text: str) -> list[Line]:
     out = []
     for raw in text.splitlines():
-        label, _, instr = raw.partition("\t")
-        out.append((label.rstrip(","), instr.strip()))
+        label, tab, instr = raw.partition("\t")
+        out.append((label.rstrip(","), instr.strip()) if tab else ("", raw.strip()))
     return out
 
 
@@ -312,9 +328,15 @@ def check_file(path: Path) -> tuple[Counter, list[str]]:
         try:
             new = lines_of(compile_ast(edited, trace=False))
         except COMPILE_ERRORS as e:
-            failures.append(f"{path.name}:{site.line}: {site.describe}: compile error {e}")
+            tested[site.kind] += 1
+            if site.error is None or site.error not in str(e):
+                failures.append(f"{path.name}:{site.line}: {site.describe}: compile error {e}")
             continue
         tested[site.kind] += 1
+        if site.error is not None:
+            failures.append(f"{path.name}:{site.line}: {site.describe}: compiled; predicted "
+                            f"the error {site.error!r}")
+            continue
         if new not in site.predict(old):
             failures.append(f"{path.name}:{site.line}: {site.describe}: output differs from the prediction"
                             + ("" if new != old else " (output unchanged)"))
