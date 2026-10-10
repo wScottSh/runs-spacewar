@@ -165,19 +165,23 @@ def stub(sig: ir.Signature) -> str:
     return f"{sig.returns} {sig.name}({params}) {{ std::abort(); }}\n"
 
 
-def call_expr(sig: ir.Signature, name: str | None = None) -> str:
-    return f"{name or sig.name}({', '.join(native_arg(p) for p in sig.params)})"
-
-
-def build(c_files: list[Path], sig: ir.Signature, out: Path, watch: list[str] = (),
-          placed: list[Placement] = (), scratch: str = "", native: str | None = None) -> Path:
-    """c_files are included in order into one translation unit with the
-    driver. watch holds C expressions of a word or pointer type printed after
-    each call. placed says where the machine holds C objects, for instruction
-    words and pointers. scratch is extra C++ (words the caller sets up)
-    included after the files. native names a function to call in place of
-    sig's: the program's own statement of what sig computes, for an entry
+def call_expr(sig: ir.Signature, native: str | None = None) -> str:
+    """The driver's call of sig. native names a function to call in its
+    place: the program's own statement of what sig computes, for an entry
     the native build cannot run (one that jumps into generated code)."""
+    return f"{native or sig.name}({', '.join(native_arg(p) for p in sig.params)})"
+
+
+def build(c_files: list[Path], out: Path, call: str, inline_words: int = 0, watch: list[str] = (),
+          placed: list[Placement] = (), scratch: str = "", setup: str = "") -> Path:
+    """c_files are included in order into one translation unit with the
+    driver, which makes the C call `call` once per input line (a void call
+    returns AC and IO 0). inline_words: the words after the call it returns
+    past. watch holds C expressions of a word or pointer type printed after
+    each call. placed says where the machine holds C objects, for
+    instruction words and pointers. scratch is extra C++ (words the caller
+    sets up) included after the files. setup is C++ run before each call,
+    with the line's ac, io, byname and sense in scope."""
     out.parent.mkdir(parents=True, exist_ok=True)
     parsed = units(c_files)
     sigs = {name: s for u in parsed.values() for name, s in u.signatures.items()}
@@ -202,7 +206,7 @@ def build(c_files: list[Path], sig: ir.Signature, out: Path, watch: list[str] = 
         ["g++", "-std=c++14", "-O2", "-Wall", "-Wno-register", "-Wno-unused-label", "-Wno-array-bounds",
          "-Werror",
          "-include", str(HEADER), *includes,
-         f"-DCALL={call_expr(sig, native)}", f"-DINLINE_WORDS={sig.inline_count}",
+         f"-DCALL={call}", f"-DINLINE_WORDS={inline_words}", f"-DSETUP={setup or ';'}",
          f"-DWATCH={watch_expr or ';'}", str(DRIVER), "-o", str(out)],
         check=True)
     return out

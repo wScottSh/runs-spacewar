@@ -64,8 +64,8 @@ def main() -> int:
 
     named = [("ot1", address["ot1"]), ("ot2", address["ot2"])] + tables
     calls = [Inputs(CODE, 0, table) for _, table in named]
-    native = reference.build(files, sig, ROOT / "build/ref/outline_compiler",
-                             [expr for *_, expr in watch], placed, scratch)
+    native = reference.build(files, ROOT / "build/ref/outline_compiler", reference.call_expr(sig),
+                             sig.inline_count, [expr for *_, expr in watch], placed, scratch)
     want = simh.run_jda(ROOT / "build/pdp1", ROOT / "build/oracle.rim", address[sig.sym], calls,
                         watch=[where for _, where, _ in watch], inline=True,
                         deposits={TABLES + k: w for k, w in enumerate(words)})

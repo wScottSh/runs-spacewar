@@ -178,9 +178,9 @@ def run_program(prog: Program, simh_bin: Path, macro1: Path, work: Path) -> list
                                [symbols[sym] + k for _, sym, k, _ in watch],
                                inline=sig.inline_count > sig.byname,
                                display=display_words(rim.with_suffix(".lst")))
-        binary = reference.build([prog.path], sig, work / f"{prog.path.stem}-{sig.name}",
-                                 [expr for *_, expr in watch], placed,
-                                 native=prog.native.get(sig.name))
+        binary = reference.build([prog.path], work / f"{prog.path.stem}-{sig.name}",
+                                 reference.call_expr(sig, prog.native.get(sig.name)),
+                                 sig.inline_count, [expr for *_, expr in watch], placed)
         native = reference.run(binary, prog.calls)
         diffs += [f"{sig.name} {d}" for d in
                   compare(prog.calls, machine, native, sig, [label for label, *_ in watch])]

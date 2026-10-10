@@ -65,8 +65,8 @@ def check(label: str, lift_files: list[str], entry: str, calls: list[Inputs], do
     sigs = {name: s for u in lifted_units(files).values() for name, s in u.signatures.items()}
     sig = sigs[entry]
     cells = [s for s in sigs.values() if reference.entry(s)]
-    native = reference.build(files, sig, ROOT / "build/ref" / entry,
-                             [reference.cell(s.name) for s in cells])
+    native = reference.build(files, ROOT / "build/ref" / entry, reference.call_expr(sig),
+                             sig.inline_count, [reference.cell(s.name) for s in cells])
     address = built_symbols()
     want = simh.run_jda(ROOT / "build/pdp1", ROOT / "build/oracle.rim", address[sig.sym],
                         calls, bool(sig.inline_count), [address[s.sym] for s in cells],
