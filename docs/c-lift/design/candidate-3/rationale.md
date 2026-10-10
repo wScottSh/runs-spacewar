@@ -123,7 +123,7 @@ Phase F steps 1-4 (synthesis.md) are implemented for the sqt subset. This sectio
 - G5 and G6 run in `pdp1cc gate` (M2 section). `tests/reject/` holds programs the dialect must refuse, each with the error it expects.
 - G7 is a review rule: a new rule lands with its corpus programs. The row checker is not built.
 
-**Not implemented yet.** while/do, indirect calls that return, a homed pointer read as a value anywhere but a `dap` or its home word, `int` parameters of static inline functions, and the hints `SKIPNOT` and `RELOAD`. POOL, HOMED, INLINE parameters, the jump-table switch, `PLACE` and `ARGS_DONE` landed in M3; `sas`/`sad`, static inline functions and Duff's device in M4.
+**Not implemented yet.** while/do, a call through a pointer variable that returns (`jsp i p`), `int` parameters of static inline functions, and the hint `RELOAD`. POOL, HOMED, INLINE parameters, the jump-table switch, `PLACE` and `ARGS_DONE` landed in M3; `sas`/`sad`, static inline functions and Duff's device in M4; `SKIPNOT`, the computed call `((f *)e)()` and a homed pointer read as a value for a `dap` in M7.
 
 ### M1 math (sin/cos, imp/mpy, idv/dvd)
 
@@ -292,6 +292,47 @@ Deviations from the design, and why:
 - **The slot is a HOMED insn, not `SLOT dword mi1(dword)`.** HOMED already means "storage in the instruction at its home"; for an `insn` the storage is the whole word. A C function cannot be assigned, so a slot spelled as a function would need a new kind of object.
 - **The native header executes shift instructions.** The playbook says the reference build never executes generated code, and mex runs a shift it builds at run time. The M5 brief allows exactly this form: a shift word run by `xct` whose C meaning the header defines. It decodes one instruction group into the same `rcl`, `scl`, `sar` and the rest the lifted C calls; any other word aborts, and the compiler refuses `xct` of a constant outside the group. Code the outline compiler generates and enters by a jump is still never run natively. The operator should confirm this reading.
 - **pof's busy wait is a label and a goto.** `while (c);` is not implemented; M7's `count \mtc, .` will want it.
+
+### M7 main loop (the frame, the object loop, game control, core layout)
+
+Source lines 664-941 and 1357-1366 compile from `lift/main_loop.c`, one region with two line ranges. A `[[dropped]]` entry in `lift.toml` leaves out the macro definitions and equates whose users are all lifted: `szm`, `spq`, `senseswitch`, `listen`, `swap`, `load`, `setup`, `move`, `clear`, `xincr`, `dispatch` and `background`. They make no words, and the hash shows it. Lifted coverage is 2254/2514 words (89.7%). It now counts the 84 literal constants, which a compiled `CONSTANTS()` places. The 260 words left are ss1/ss2 (M6).
+
+The C forms:
+- **The object table** is one `RESERVE` array, `object_table` (`mtb`), of 0274 words, after `CONSTANTS()`, `VARIABLES()` and the patch space (`p, . 200/`). Each property is a macro naming where its array starts (`X_POSITIONS` is `object_table + NOB`), and `X_POSITIONS[1]` is the word `mtb+31` (EX-ELEMENT). The equates `nx1` .. `nnn` are not symbols any more; their words are the same addresses.
+- **The cursor setup at ml0** walks an AC local `word *slot` from property to property (`slot = slot + NOB` is `add (30`) and stores each cursor: `dap` for a homed one, `dac` for a pool word.
+- **The cursors' homes.** `routine_slot`, `x_slot`, `y_slot`, `cycles_slot` and `outline_slot` are `lac .` homes, `counter_slot` is a `dac .` home. The other object's cursors are `lac .` (`ml2`), `sub .` (`mx2`, `my2`), `add .` (`mb2`) and `dac .` (`ma2`). `object_table.h` now says HOMED on the cursors that are instruction fields; `spin_slot`, `angle_slot`, `old_control_slot` and `ship_outline_entry` are `extern HOMED`, whose homes are in ss1.
+- **`law 1 / add ml1 / dap ml2`** is `other_routine_slot = 1 + routine_slot` (HOMED-VALUE).
+- **The calc routine call** `lac i ml1 / dap . 1 / jsp .` is `((calc_routine *)*routine_slot)()` (CALL-COMPUTED). The `dap` keeps the address bits, so the non-colliding sign bit drops out, as in C's cast.
+- **The collision test** keeps |dx| in a pool word (`\mt1`) and clips the square's corners with |dx| + |dy|. The explosion trigger stores one AC local through both routine cursors.
+- **The spare-time loop** `count \mtc, .` is `spare: if (++spare_time < 0) goto spare;`.
+- **Game control.** `a1`, `a40`, `a`, `a6` and `a2` are BLOCKs; `a` falls into `a6`, and `a6` into `a2`. `next_frame` (ml0) tail-calls the object loop or `between_games`, so a BLOCK may now tail-call several BLOCKs. The `clear` macro is a HOMED pointer whose home is `dzm 0`, and its bound is `I_DZM(...)`. The scores show by `halt(first, second)`.
+- **The control word getters** `mg1` and `mg2` are JSP functions returning an `io_word`. `tunables.c` declares `mg1` and `cwr` the same way now (they were `dword` with no parameter; the words are the same).
+
+New rules, each used by two or more corpus programs that mirror no lifted routine (lift words in parentheses):
+- `EX-ELEMENT` (23). `a[k]` for a file-scope array, or an address `a + n` into one, and a constant k (ledger, signal, tasks).
+- `HOMED-VALUE` (5). `n + p` or `p + n` for a HOMED p, stored by `dap` (ledger, signal, tasks). Any other store of it is an error (reject `homed-value-stored`).
+- `CALL-COMPUTED` (4). `((f *)e)()` for a JSP function type f with no parameters (signal, tasks). A function type returning an `io_word` leaves the result in IO.
+- `SKIPNOT` (1). `SKIPNOT(c)` for a sign test of AC: `spa i` where the default is `sma` (ledger, tasks).
+- `SWAP` (2). `SWAP(x)`: a move between AC and IO by `rcl 9s` twice (signal, tasks).
+- `LAY-POOL` (2). `CONSTANTS()` and `VARIABLES()` (ledger, signal, tasks). The corpus harness no longer appends its own `constants` and `variables` to a program that places them.
+
+Extended rules: `HOMED-HOME` covers `dac .`, `dzm .` and `dio .` homes as stores and `add .` and `sub .` homes as operands (ledger, signal, tasks); `EX-INSN` and `HOMED-WORD` cover `I_DZM` (ledger, tasks); `EX-HW` covers `lat()` and `halt(ac, io)` (signal, tasks) and `control_boxes()`, `iot 11`, which no corpus program runs (below). A HOMED pointer defined in a file must have its home there (reject `homed-pointer-no-home`), and a function cannot adopt the exit of a BLOCK that tail-calls several BLOCKs (reject `adopt-exitless`).
+
+Harness:
+- **Test word and halts.** Each corpus call sets the test word (`dep TW` in SIMH, `pdp1_test_word` natively). A compiled `hlt` gets a SIMH breakpoint that reads AC and IO and steps past it; the native `halt` records the same pair, and both go into the plotted points that G2 compares. Recording the native pair in the wrong order makes 193 of 320 signal calls and 320 of 320 tasks calls differ.
+- **Computed calls natively.** `(f *)w` converts a word to the function at its address field through the address table, which now marks functions. `word * + word` adds as `law p / add w` does.
+- **G5** also checks `SKIPNOT`, `SWAP`, `CONSTANTS()` and `VARIABLES()`. A SYM in a header earns its place when two files that include it use the name it declares (`mh4` links objects.c and main_loop.c).
+- **G6** predicts edits to the constants of an array address chain or a subscript (`mtb+256`), and spells a pool operand with `\`.
+- **The objects check** reads the table's equates (`nx1` .. `nnn`) from the oracle listing; the build no longer defines them. It defines the header's pool cursors that no calc routine uses.
+- **The interface check** removes Macro comments before it looks for a symbol in unlifted text (it found `a` in comments).
+- **Lifted coverage** counts the words a listing line makes after its first under that line: the literal constants under a compiled `CONSTANTS()` count as compiled.
+
+Deviations from the design, and why:
+- **`nob=30` (line 663) stays as source.** ss1/ss2 use `nob`; it goes with them in M6. Lines 661-662 are a comment and a blank.
+- **One array for the table, not one per property.** The cursor setup steps from one property's array to the next by adding NOB. Across separate C arrays that is undefined; inside one array it is plain pointer arithmetic.
+- **The cursors are HOMED in `object_table.h`.** M5 left HOMED off the extern declarations because no file defined a home. All declarations of an object now agree with the definition, and a `p = e` in a file without the home must still be a `dap`.
+- **`control_boxes()` has no SIMH run.** The headless simulator stops on `iot 11`; only the hash covers that word. The frame-level check below starts the game at 5 (test word), so mg1 does not run there either.
+- **The main loop has no native reference.** It calls ss1/ss2 (unlifted) and the compiled outlines (generated code), which the native build cannot run. The frame-level check below covers it in SIMH only.
 
 ## Open questions and risks
 

@@ -29,7 +29,7 @@ Milestones are listed in [the lift playbook](docs/lift-playbook.md). Decisions a
 
 1. `tools/oracle.sh` assembles the original source, `source/spacewar3.1_complete.txt`, with `macro1`, the PDP-1 Macro cross-assembler from open-simh simtools. The output, `build/oracle.rim`, is the oracle. Its sha256 is `8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf`.
 2. `pdp1cc` compiles each lifted C file in `lift/` to PDP-1 Macro text.
-3. `pdp1cc build` replaces each lifted region of the original source with the compiled text, assembles the result with the same `macro1`, and compares the sha256 with the oracle.
+3. `pdp1cc build` replaces each lifted region of the original source with the compiled text, assembles the result with the same `macro1`, and compares the sha256 with the oracle. It also leaves out the macro definitions that no unlifted line uses any more (`[[dropped]]` in `lift.toml`). They make no words, so the hash still matches.
 
 The C is written in a small dialect defined by `tools/pdp1cc/include/pdp1.h`. The PDP-1 has two registers, AC and IO, and the dialect maps C storage onto the machine:
 

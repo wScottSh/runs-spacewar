@@ -60,3 +60,15 @@ name = "objects"
 lines = ["946-1077", "1312-1333"]
 c = "lift/objects.c"
 prefix = "zx"
+
+[[region]]
+name = "main_loop"
+lines = ["664-941", "1357-1366"]
+c = "lift/main_loop.c"
+prefix = "zg"
+
+# Macro definitions and equates whose every user is lifted. They make no words.
+[[dropped]]
+name = "prelude"
+lines = ["3-4", "8-12", "24-45", "51-60", "117-127", "138-145", "622-628"]
+why = "szm, spq, senseswitch, listen, swap, load, setup, move, clear, xincr, dispatch, background: no unlifted user"

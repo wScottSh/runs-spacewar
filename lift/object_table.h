@@ -14,20 +14,24 @@
 /* The calc routine word: 0 when the slot is free, otherwise the address of
  * the object's calc routine, with the sign bit set when the object does not
  * collide (exploding, or in hyperspace). */
-extern word *routine_slot SYM("ml1");
+extern HOMED word *routine_slot SYM("ml1");
 #define NON_COLLIDING ((word)0400000)
 
-extern word *x_slot SYM("mx1");                 /* position */
-extern word *y_slot SYM("my1");
+extern HOMED word *x_slot SYM("mx1");           /* position */
+extern HOMED word *y_slot SYM("my1");
 extern POOL word *dx_slot SYM("mdx");           /* velocity */
 extern POOL word *dy_slot SYM("mdy");
-extern word *counter_slot SYM("ma1");           /* frames left: the life of a torpedo or an
+extern HOMED word *counter_slot SYM("ma1");     /* frames left: the life of a torpedo or an
                                                    explosion, the time in hyperspace */
-extern word *cycles_slot SYM("mb1");            /* the time the calc routine takes, in
+extern HOMED word *cycles_slot SYM("mb1");      /* the time the calc routine takes, in
                                                    instructions, and the size of an explosion */
 
 /* Spaceships only. */
-extern word *angle_slot SYM("mth");             /* heading */
+extern HOMED word *spin_slot SYM("mom");        /* angular velocity */
+extern HOMED word *angle_slot SYM("mth");       /* heading */
+extern POOL word *fuel_slot SYM("mfu");
+extern POOL word *torpedoes_slot SYM("mtr");    /* torpedoes left, counting up */
+extern HOMED word *old_control_slot SYM("mco"); /* last frame's control word */
 extern POOL word *saved_routine_slot SYM("mh1");    /* the ship's own calc routine, kept
                                                        while hyperspace runs instead */
 extern POOL word *jumps_left_slot SYM("mh2");   /* hyperspace jumps left, counting up */
