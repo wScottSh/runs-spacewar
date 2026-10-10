@@ -39,3 +39,17 @@ def flag_skip_when(n: int, negated: bool) -> str:
 def isp_skip_when(op: str) -> str | None:
     """`++m >= 0` is `isp m`. `++m < 0` has no skip: callers use IF-MULTI."""
     return "isp" if op == ">=" else None
+
+
+def sense_skip_when(n: int, negated: bool) -> str:
+    """`szs n0` skips when sense switch n is off: skip_when(!sense(n))."""
+    return f"szs {n << 3:o}" if negated else f"szs i {n << 3:o}"
+
+
+# AC compared with a memory word or a literal: sas skips when they are the
+# same, sad when they differ.
+SAME_SKIP: dict[str, str] = {"==": "sas", "!=": "sad"}
+
+
+def same_skip_when(op: str) -> str:
+    return SAME_SKIP[op]

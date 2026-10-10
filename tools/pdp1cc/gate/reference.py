@@ -197,7 +197,7 @@ def build(c_files: list[Path], sig: ir.Signature, out: Path, watch: list[str] = 
     bound, defined = [], set()
     for f, unit in parsed.items():
         mine = [fn.sig for fn in unit.items if isinstance(fn, ir.Function)]
-        defined |= {s.name for s in mine}
+        defined |= {s.name for s in mine} | set(unit.inlines or {})
         copy = src / f.name
         copy.write_text(f'#line 1 "{f.resolve()}"\n' + bind(f, mine))
         bound.append(copy)
@@ -207,7 +207,8 @@ def build(c_files: list[Path], sig: ir.Signature, out: Path, watch: list[str] = 
     watch_expr = "".join(f' printf(" %06o", pdp1_value({w}));' for w in watch)
     includes = [a for f in [cells, *bound, stubs] for a in ("-include", str(f))]
     subprocess.run(
-        ["g++", "-std=c++14", "-O2", "-Wall", "-Wno-register", "-Wno-unused-label", "-Werror",
+        ["g++", "-std=c++14", "-O2", "-Wall", "-Wno-register", "-Wno-unused-label", "-Wno-array-bounds",
+         "-Werror",
          "-include", str(HEADER), *includes,
          f"-DCALL={call_expr(sig, native)}", f"-DINLINE_WORDS={sig.inline_count}",
          f"-DWATCH={watch_expr or ';'}", str(DRIVER), "-o", str(out)],
@@ -216,7 +217,13 @@ def build(c_files: list[Path], sig: ir.Signature, out: Path, watch: list[str] = 
 
 
 def run(binary: Path, calls: list[Inputs]) -> list[Outcome]:
-    text = "".join(f"{c.ac:o} {c.io:o} {c.byname:o}\n" for c in calls)
+    text = "".join(f"{c.ac:o} {c.io:o} {c.byname:o} {c.sense:o}\n" for c in calls)
     out = subprocess.run([str(binary)], input=text, capture_output=True, text=True, check=True).stdout
-    rows = [[int(x, 8) for x in line.split()] for line in out.splitlines()]
-    return [Outcome(r[0], r[1], r[2], tuple(r[3:])) for r in rows]
+    outcomes = []
+    for line in out.splitlines():
+        words, _, plots = line.partition(";")
+        r = [int(x, 8) for x in words.split()]
+        p = [int(x, 8) for x in plots.split()]
+        outcomes.append(Outcome(r[0], r[1], r[2], tuple(r[3:]),
+                                tuple(tuple(p[k:k + 3]) for k in range(0, len(p), 3))))
+    return outcomes

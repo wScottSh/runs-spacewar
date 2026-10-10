@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from . import ir
+from . import inline, ir
 from .dialect import Namer
 from .rules import check
 from .select import FunctionLowerer, W, datum_words, preserves_io
@@ -19,14 +19,19 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Word]:
     items: list[ir.Item] = []
     entered_by_fallthrough = False
     keeps_io: dict[str, bool] = {}
+    inlines = unit.inlines or {}
+    homes = home_ops([t for t in unit.items if isinstance(t, ir.Function)] + list(inlines.values()))
     for n, top in enumerate(unit.items):
         if top.at is not None:
             items.append(ir.Place("origin", top.at, check("LAY-AT")))
         match top:
+            case ir.RegionBreak():
+                items.append(ir.Break())
             case ir.Function():
                 after = unit.items[n + 1] if n + 1 < len(unit.items) else None
-                following = after.sym if after is not None and after.at is None else None
-                lowerer = FunctionLowerer(top, namer, following, keeps_io)
+                following = after.sym if isinstance(after, (ir.Function, ir.Datum, ir.Space)) and \
+                    after.at is None else None
+                lowerer = FunctionLowerer(top, namer, following, keeps_io, inlines, homes)
                 own = lowerer.lower()
                 keeps_io[top.sym] = preserves_io(own) and not lowerer.fell_through
                 if entered_by_fallthrough:
@@ -40,6 +45,18 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Word]:
     return attach_labels(items)
 
 
+def home_ops(functions: list[ir.Function]) -> dict[str, str]:
+    ops: dict[str, str] = {}
+    for fn in functions:
+        for n in inline.iter_nodes(fn.body):
+            if isinstance(n, ir.Assign) and isinstance(n.value, ir.HomeLoad):
+                op = "lio" if isinstance(n.target.storage, ir.Io) else "lac"
+                ops[n.value.pointer.storage.sym] = op
+            elif isinstance(n, ir.HomeLoad):
+                ops.setdefault(n.pointer.storage.sym, "lac")
+    return ops
+
+
 def _tag_first_word(items: list[ir.Item], rule: str) -> list[ir.Item]:
     """The word a fallthrough reaches carries the rule that made it adjacent."""
     n = next(i for i, it in enumerate(items) if isinstance(it, ir.Word))
@@ -47,10 +64,8 @@ def _tag_first_word(items: list[ir.Item], rule: str) -> list[ir.Item]:
 
 
 def attach_labels(items: list[ir.Item]) -> list[ir.Word | ir.Place]:
-    """Labels name the next word, or the next reserved space."""
     words: list[ir.Word | ir.Place] = []
     pending: list[str] = []
-    alias: dict[str, str] = {}
     defined: set[str] = set()
     for it in items:
         if isinstance(it, ir.LabelDef):
@@ -59,23 +74,15 @@ def attach_labels(items: list[ir.Item]) -> list[ir.Word | ir.Place]:
             defined.add(it.name)
             pending.append(it.name)
             continue
-        if isinstance(it, ir.Place) and it.kind == "origin":
+        if isinstance(it, ir.Break) or (isinstance(it, ir.Place) and it.kind == "origin"):
             if pending:
                 raise LayoutError(f"labels {pending} come before an origin")
             words.append(it)
             continue
         if pending:
-            for extra in pending[1:]:
-                alias[extra] = pending[0]
-            it = replace(it, labels=(pending[0],))
+            it = replace(it, labels=tuple(pending))
             pending = []
         words.append(it)
     if pending:
         raise LayoutError(f"labels {pending} name no word")
-    return [_rename(w, alias) for w in words]
-
-
-def _rename(w: ir.Word | ir.Place, alias: dict[str, str]) -> ir.Word | ir.Place:
-    if isinstance(w, ir.Word) and isinstance(w.operand, ir.Sym) and w.operand.name in alias:
-        return replace(w, operand=ir.Sym(alias[w.operand.name]))
-    return w
+    return words
