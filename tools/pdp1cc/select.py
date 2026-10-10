@@ -30,58 +30,48 @@ class SelectError(Exception):
     pass
 
 
-# What a register is known to hold (TRACK).
-
 @dataclass(frozen=True)
 class Local:
-    """The value of an AC or register (IO) local, or a parameter."""
     name: str
 
 
 @dataclass(frozen=True)
 class Cell:
-    """The value of a memory word, or of a homed pointer's home instruction."""
     sym: str
 
 
 @dataclass(frozen=True)
-class Address:
-    """Address bits equal to a constant address: &sym + offset."""
+class AddressBits:
     sym: str
     offset: int
 
 
 @dataclass(frozen=True)
-class PointerValue:
-    """Address bits equal to homed pointer sym's value: its home's address field."""
+class PointerBits:
     sym: str
 
 
-Fact = Local | Cell | Address | PointerValue
+Fact = Local | Cell | AddressBits | PointerBits
 
 
 @dataclass(frozen=True)
 class State:
-    """Facts AC / IO hold. None (as a State) = unreachable."""
     ac: frozenset[Fact] = frozenset()
     io: frozenset[Fact] = frozenset()
 
     def write_mem(self, written: Local | Cell) -> State:
-        """written was stored to: what was read from it is stale."""
-        stale = {written} | ({PointerValue(written.sym)} if isinstance(written, Cell) else set())
+        stale = {written} | ({PointerBits(written.sym)} if isinstance(written, Cell) else set())
         return State(self.ac - stale, self.io - stale)
 
-    def registers_only(self) -> State:
-        """Only facts no store to memory can change."""
+    def without_memory(self) -> State:
         return State(_lasting(self.ac), _lasting(self.io))
 
 
 def _lasting(facts: frozenset[Fact]) -> frozenset[Fact]:
-    return frozenset(f for f in facts if isinstance(f, (Local, Address)))
+    return frozenset(f for f in facts if isinstance(f, (Local, AddressBits)))
 
 
-def _memory_facts(facts: frozenset[Fact]) -> frozenset[Fact]:
-    """The facts that outlive a function's locals."""
+def _without_locals(facts: frozenset[Fact]) -> frozenset[Fact]:
     return frozenset(f for f in facts if not isinstance(f, Local))
 
 
@@ -93,18 +83,16 @@ def meet(a: State | None, b: State | None) -> State | None:
     return State(a.ac & b.ac, a.io & b.io)
 
 
-def address_fact(e: ir.Expr) -> Address | PointerValue | None:
-    """What e's address bits are, when known."""
+def address_fact(e: ir.Expr) -> AddressBits | PointerBits | None:
     match e:
         case ir.AddrOf(operand=o) | ir.Insn(operand=ir.Sym() as o):
-            return Address(o.name, o.offset)
+            return AddressBits(o.name, o.offset)
         case ir.Var(storage=ir.Homed(sym=sym)):
-            return PointerValue(sym)
+            return PointerBits(sym)
     return None
 
 
 def fact(v: ir.Var) -> Local | Cell:
-    """The fact that a register holds v's value."""
     if isinstance(v.storage, ir.Memory):
         return Cell(ir.mem_sym(v.storage))
     if isinstance(v.storage, ir.Homed):
@@ -389,7 +377,7 @@ class FunctionLowerer:
 
     @staticmethod
     def after_idx(t: ir.Var, st: State) -> State:
-        ac = {fact(t)} | ({PointerValue(t.storage.sym)} if isinstance(t.storage, ir.Homed) else set())
+        ac = {fact(t)} | ({PointerBits(t.storage.sym)} if isinstance(t.storage, ir.Homed) else set())
         return State(frozenset(ac), st.io - {fact(t)})
 
     def home_op(self, p: ir.Var) -> str:
@@ -468,7 +456,7 @@ class FunctionLowerer:
                     raise SelectError(f"{c.sig.name}: pass a register local for {p.name}")
                 self.need_io(arg, st)
                 io.add(fact(var))
-        entry = State(_memory_facts(st.ac) | ac, _memory_facts(st.io) | io)
+        entry = State(_without_locals(st.ac) | ac, _without_locals(st.io) | io)
         body = _rename_labels(fn.body, self.namer)
         if not _ends_in_transfer(body):
             if c.sig.returns != "void":
@@ -488,7 +476,7 @@ class FunctionLowerer:
                  if isinstance(w, ir.Word) else w for w in words]
         if inst.exits:
             words.append(ir.LabelDef(inst.after))
-        return items + words, State(_memory_facts(out.ac), _memory_facts(out.io))
+        return items + words, State(_without_locals(out.ac), _without_locals(out.io))
 
     def store_next(self, s: ir.StoreNext, st: State):
         """*p++ = e: e from AC (dac i p) or from a register local (dio i p), then idx p."""
@@ -501,7 +489,7 @@ class FunctionLowerer:
             items, st = self.to_ac(v, st)
             store = W("dac", "EX-POSTINC-STORE", mem(s.pointer), i=True, via=_via(s.pointer))
         step = W("idx", "EX-POSTINC-STORE", mem(s.pointer), via=_via(s.pointer))
-        st = st.registers_only()
+        st = st.without_memory()
         return items + [store, step], State(frozenset({fact(s.pointer)}), st.io)
 
     def switch(self, s: ir.Switch, st: State):
@@ -796,7 +784,7 @@ class FunctionLowerer:
             elif p.kind is ir.ParamKind.INLINE:
                 items.append(W(None, "JDA-INLINE-ARG", self.inline_word(arg)))
         if self.keeps_io.get(c.sig.sym):
-            return items, State(frozenset(), st.registers_only().io)
+            return items, State(frozenset(), st.without_memory().io)
         return items, State()
 
     @staticmethod
@@ -844,7 +832,7 @@ class FunctionLowerer:
                 if fact(p) in st.ac:
                     return [], st
                 return [W("lac", "HOMED-WORD", cell(p), via=_via(p))], \
-                    State(frozenset({fact(p), PointerValue(p.storage.sym)}), st.io)
+                    State(frozenset({fact(p), PointerBits(p.storage.sym)}), st.io)
             case ir.HomeLoad(pointer=p):
                 return [ir.LabelDef(p.storage.sym), W("lac", "HOMED-HOME", home_address(p), via=_via(p))], \
                     State(frozenset(), st.io)
@@ -988,7 +976,6 @@ def hardware_word(name: str) -> ir.Word:
 
 
 def _homed_switches(body) -> dict[str, str]:
-    """The table of each switch on a HOMED word, by the word's symbol."""
     out: dict[str, str] = {}
     for n in inline.iter_nodes(body):
         if isinstance(n, ir.HomedSwitch):

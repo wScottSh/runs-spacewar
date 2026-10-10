@@ -14,7 +14,7 @@ BIN_OPS = {"+", "-", "&", "|", "^"}
 MACRO_SYMBOL_LEN = 6
 CMP_OPS = {"<", ">=", "==", "!=", "<=", ">"}
 ATTR = re.compile(r"pdp1_(\w+)(?:\((.*)\))?$")
-CONVS = {c.value: c for c in ir.Conv if c is not ir.Conv.INLINE}     # by attribute name
+CONVS = {c.value: c for c in ir.Conv if c is not ir.Conv.INLINE}
 ATTRIBUTES = CONVS.keys() | {"byname", "inline", "sym", "entry_cell", "at", "reserve", "pool", "homed"}
 HARDWARE = {"tyi", "lsm", "ioh"}    # builtins that are one instruction with no operand
 DISPLAY = {"dpy", "dpy_nowait"}
@@ -880,7 +880,6 @@ class _Lowerer:
 
 
 def _cases(node: c_ast.Switch, switch: str, its_cases: str) -> list[list[c_ast.Node]]:
-    """The statements of cases 0..n, in order; no default."""
     body = node.stmt.block_items or [] if isinstance(node.stmt, c_ast.Compound) else []
     cases: list[list[c_ast.Node]] = []
     for item in body:

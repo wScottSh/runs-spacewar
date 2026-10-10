@@ -50,7 +50,6 @@ def line_text(w: ir.Word | ir.Origin | ir.Reserve, trace: bool = True) -> str:
 
 
 def regions(words: list[ir.Emitted], trace: bool = True) -> list[list[str]]:
-    """The lines of each source region, split where a REGION_BREAK() stood."""
     out: list[list[str]] = [[]]
     for w in words:
         if isinstance(w, ir.Break):
@@ -61,7 +60,6 @@ def regions(words: list[ir.Emitted], trace: bool = True) -> list[list[str]]:
 
 
 def emit(words: list[ir.Emitted], trace: bool = True) -> str:
-    """Macro text, with a comment line where one region ends and the next begins."""
     lines = [line for n, region in enumerate(regions(words, trace))
              for line in ([BREAK] if n else []) + region]
     return "\n".join(lines) + "\n"

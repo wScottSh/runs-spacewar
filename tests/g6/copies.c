@@ -1,6 +1,3 @@
-/* G6 fixture: C that is laid out more than once, next to words the same
- * constant makes elsewhere. tests/test_predict.py edits the constants in
- * the copies. */
 word total = 0;
 
 static inline void add_five(void)

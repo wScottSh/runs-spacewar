@@ -77,7 +77,7 @@ FOLD = {"+": lambda a, b: a + b, "-": lambda a, b: a - b, "*": lambda a, b: a * 
         "<<": lambda a, b: a << b, ">>": lambda a, b: a >> b}
 
 Line = tuple[str, str]          # (label, instruction text)
-Where = dict[ir.Construct, str]  # the copies a line was laid out in: construct -> instance
+LineCopies = dict[ir.Construct, str]
 
 
 # ------------------------------------------------------------ rule tables
@@ -130,20 +130,17 @@ class Site:
     describe: str
     rewrites: Callable[[list[Line]], list[Rewrite]]     # where one copy of the edit may land
     edit: Callable[[c_ast.Node], None]
-    copies: int = 1             # the site's C is laid out this many times
-    replicas: tuple[ir.Construct, ...] = ()     # the constructs that lay it out more than once
+    copies: int = 1
+    replicas: tuple[ir.Construct, ...] = ()
     error: str | None = None    # the edit must be refused with this message instead
     n: int = 0                  # a count site's count
 
-    def copy_at(self, where: Where) -> tuple[str, ...] | None:
-        """Which copy of the site a line rewritten at `where` is in, or None
-        when it lies outside the copies."""
-        if any(r not in where for r in self.replicas):
+    def copy_at(self, copies_of: LineCopies) -> tuple[str, ...] | None:
+        if any(r not in copies_of for r in self.replicas):
             return None
-        return tuple(where[r] for r in self.replicas)
+        return tuple(copies_of[r] for r in self.replicas)
 
-    def matches(self, old: list[Line], new: list[Line], where: list[Where]) -> bool:
-        """where[i]: the copies old line i was laid out in."""
+    def matches(self, old: list[Line], new: list[Line], copies_of: list[LineCopies]) -> bool:
         at: dict[int, list[tuple[int, list[Line]]]] = {}
         for start, end, words in self.rewrites(old):
             if old[start:end] != words:
@@ -159,7 +156,7 @@ class Site:
                 return True
             if i < len(old) and j < len(new) and old[i] == new[j]:
                 todo.append((i + 1, j + 1, done))
-            copy = self.copy_at(where[i]) if i in at and len(done) < self.copies else None
+            copy = self.copy_at(copies_of[i]) if i in at and len(done) < self.copies else None
             if copy is not None and copy not in done:
                 for end, words in at[i]:
                     if new[j:j + len(words)] == words:
@@ -509,13 +506,12 @@ def lines_of(text: str) -> list[Line]:
     return out
 
 
-def compiled(ast: c_ast.FileAST) -> tuple[list[Line], list[Where]]:
-    """The Macro lines of ast, and the copies each was laid out in."""
+def compiled(ast: c_ast.FileAST) -> tuple[list[Line], list[LineCopies]]:
     words = lay_out(ast, "z")
-    where = [{c.construct: c.instance for c in getattr(w, "copies", ())} for w in words]
+    copies_of = [{c.construct: c.instance for c in getattr(w, "copies", ())} for w in words]
     lines = lines_of(emit.emit(words, trace=False))
-    assert len(lines) == len(where), "one line per laid-out item"
-    return lines, where
+    assert len(lines) == len(copies_of), "one line per laid-out item"
+    return lines, copies_of
 
 
 def node_at(ast: c_ast.FileAST, index: int) -> c_ast.Node:
@@ -529,7 +525,7 @@ def node_at(ast: c_ast.FileAST, index: int) -> c_ast.Node:
 class Prepared:
     ast: c_ast.FileAST
     old: list[Line]
-    where: list[Where]
+    copies_of: list[LineCopies]
     sites: list[Site]
 
 
@@ -539,9 +535,9 @@ _PREPARED: dict[Path, Prepared] = {}
 def prepared(path: Path) -> Prepared:
     if path not in _PREPARED:
         ast = front.parse(path)
-        old, where = compiled(copy.deepcopy(ast))
+        old, copies_of = compiled(copy.deepcopy(ast))
         unit = dialect.lower_unit(copy.deepcopy(ast))
-        _PREPARED[path] = Prepared(ast, old, where, sites(ast, unit))
+        _PREPARED[path] = Prepared(ast, old, copies_of, sites(ast, unit))
     return _PREPARED[path]
 
 
@@ -559,7 +555,7 @@ def check_site(path: Path, k: int) -> tuple[str, str | None]:
         return site.kind, None
     if site.error is not None:
         return site.kind, f"{at}: compiled; predicted the error {site.error!r}"
-    if not site.matches(p.old, new, p.where):
+    if not site.matches(p.old, new, p.copies_of):
         return site.kind, f"{at}: output differs from the prediction" + \
             ("" if new != p.old else " (output unchanged)")
     return site.kind, None

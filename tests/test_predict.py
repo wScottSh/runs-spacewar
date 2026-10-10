@@ -1,12 +1,3 @@
-"""G6 counts an edit in replicated C once per copy.
-
-tests/g6/copies.c lays out `total + 5` in two inline copies and `total + 7`
-in two unrolled iterations, and makes the same `add (5` and `add (7` once
-more outside them. It also lays out two `total + 9` statements in each of
-two inline copies. Each test edits one constant in the copies and hands G6
-the output of a compiler that rewrote the wrong two identical words.
-
-Usage: uv run python -m unittest discover -s tests"""
 import unittest
 from pathlib import Path
 
@@ -24,11 +15,10 @@ class OneRewritePerCopy(unittest.TestCase):
                   and s.copies == 2 and line in (None, s.line)]
         return site
 
-    def rewrite(self, constant: int, picks: list[int]) -> list[predict.Line]:
-        """The original lines with the picked occurrences of `add (c` made `add (c+1`."""
+    def rewrite(self, constant: int, occurrences: list[int]) -> list[predict.Line]:
         at = [i for i, (_, instr) in enumerate(self.p.old) if instr == f"add ({constant:o}"]
         new = list(self.p.old)
-        for k in picks:
+        for k in occurrences:
             new[at[k]] = (new[at[k]][0], f"add ({constant + 1:o}")
         return new
 
@@ -38,7 +28,7 @@ class OneRewritePerCopy(unittest.TestCase):
 
     def test_each_copy_rewritten_matches(self):
         for c in (5, 7):
-            self.assertTrue(self.site(c).matches(self.p.old, self.rewrite(c, [0, 1]), self.p.where))
+            self.assertTrue(self.site(c).matches(self.p.old, self.rewrite(c, [0, 1]), self.p.copies_of))
 
     def test_compiler_passes(self):
         for k, site in enumerate(self.p.sites):
@@ -46,16 +36,15 @@ class OneRewritePerCopy(unittest.TestCase):
 
     def test_a_copy_and_a_word_outside_the_copies_fails(self):
         for c in (5, 7):
-            for picks in ([0, 2], [1, 2]):
-                with self.subTest(constant=c, picks=picks):
-                    self.assertFalse(self.site(c).matches(self.p.old, self.rewrite(c, picks), self.p.where))
+            for occurrences in ([0, 2], [1, 2]):
+                with self.subTest(constant=c, occurrences=occurrences):
+                    self.assertFalse(self.site(c).matches(self.p.old, self.rewrite(c, occurrences), self.p.copies_of))
 
     def test_one_copy_twice_fails(self):
-        """The first `total + 9` edited; the compiler rewrote both 9s of the first copy."""
         first = FIXTURE.read_text().splitlines().index("    total = total + 9;") + 1
         site = self.site(9, first)
-        self.assertTrue(site.matches(self.p.old, self.rewrite(9, [0, 2]), self.p.where))
-        self.assertFalse(site.matches(self.p.old, self.rewrite(9, [0, 1]), self.p.where))
+        self.assertTrue(site.matches(self.p.old, self.rewrite(9, [0, 2]), self.p.copies_of))
+        self.assertFalse(site.matches(self.p.old, self.rewrite(9, [0, 1]), self.p.copies_of))
 
 
 if __name__ == "__main__":

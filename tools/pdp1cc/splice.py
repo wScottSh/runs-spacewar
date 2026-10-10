@@ -93,7 +93,6 @@ def listing(path: Path) -> tuple[dict[int, tuple[str, str]], int | None]:
 
 
 def symbols(listing_text: str) -> dict[str, int]:
-    """The symbol table macro1 prints at the end of a listing."""
     return {s: int(v, 8) for s, v in LISTING_SYMBOL.findall(listing_text)}
 
 

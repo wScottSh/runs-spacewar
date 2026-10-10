@@ -117,7 +117,7 @@ class Rot:              # ral/rar(ac, n), ril/rir(io, n): one register rotated
 
 
 @dataclass(frozen=True)
-class PairShift:        # rcl(h, l, n) etc: h in AC, l in IO, both shifted as one
+class PairShift:        # rcl(h, l, n) etc: h in AC, l in IO, shifted as one
     op: str
     hi: Var
     lo: Var
@@ -125,7 +125,7 @@ class PairShift:        # rcl(h, l, n) etc: h in AC, l in IO, both shifted as on
 
 
 @dataclass(frozen=True)
-class PairStep:         # mus(h, l, m) / dis(h, l, m): one multiply or divide step on AC:IO
+class PairStep:         # mus(h, l, m) / dis(h, l, m)
     op: str
     hi: Var
     lo: Var
@@ -133,19 +133,18 @@ class PairStep:         # mus(h, l, m) / dis(h, l, m): one multiply or divide st
 
 
 class Conv(Enum):
-    """How a function is entered and left."""
     JDA = "jda"
     JSP = "jsp"
     XCT = "xct"
     BLOCK = "block"
-    INLINE = "inline"   # static inline: laid out at each call, no entry of its own
+    INLINE = "inline"
 
 
 class ParamKind(Enum):
-    AC = "ac"           # in AC (a JDA function's entry word)
-    IO = "io"           # a register parameter, in IO
-    BYNAME = "byname"   # the caller's word after the call, fetched with xct
-    INLINE = "inline"   # the constant word after the call
+    AC = "ac"
+    IO = "io"
+    BYNAME = "byname"
+    INLINE = "inline"
 
     @property
     def after_call(self) -> bool:
@@ -238,14 +237,14 @@ class Flag:             # stf(n) / clf(n): set or clear program flag n
 
 
 @dataclass(frozen=True)
-class Dpy:              # dpy(x, y, n): plot (x, y) at intensity n
+class Dpy:              # dpy(x, y, n)
     x: "Expr"
     y: Var
     intensity: int
 
 
 @dataclass(frozen=True)
-class DpyNowait:        # dpy_nowait(x, y): plot (x, y), ask for a completion pulse
+class DpyNowait:        # dpy_nowait(x, y)
     x: "Expr"
     y: Var
 
@@ -315,7 +314,7 @@ class Labeled:
 class Unroll:           # for (int i = 0; i < n; i++) S with i unused: S n times
     count: int
     body: Stmt
-    at: str = ""        # the loop's source position, which names its copies of S
+    at: str = ""
 
 
 @dataclass(frozen=True)
@@ -488,13 +487,13 @@ Operand = Union[Sym, Num, Lit, Here, ShiftCount]
 
 
 @dataclass(frozen=True)
-class InlineBody:       # a static inline function's body, laid out at each call
+class InlineBody:
     function: str
 
 
 @dataclass(frozen=True)
-class UnrolledBody:     # an unrolled loop's body, laid out once per iteration
-    at: str             # the loop's source position
+class UnrolledBody:
+    at: str
 
 
 Construct = Union[InlineBody, UnrolledBody]
@@ -502,7 +501,6 @@ Construct = Union[InlineBody, UnrolledBody]
 
 @dataclass(frozen=True)
 class Copy:
-    """One copy of replicated C. instance tells copies of one construct apart."""
     construct: Construct
     instance: str
 
@@ -518,7 +516,7 @@ class Word:
     labels: tuple[str, ...] = ()
     note: str = ""      # trace detail, e.g. the skip-table row
     via: tuple[str, ...] = ()   # rules that shaped this word without emitting their own
-    copies: tuple[Copy, ...] = field(default=(), repr=False)    # inline copies and unrolled iterations it is in
+    copies: tuple[Copy, ...] = field(default=(), repr=False)
 
 
 @dataclass(frozen=True)
@@ -528,7 +526,6 @@ class LabelDef:
 
 @dataclass(frozen=True)
 class Origin:
-    """`a/`: a location directive, not a word. What follows is laid out from a."""
     n: int
     rule: str
     via: tuple[str, ...] = ()
@@ -536,7 +533,6 @@ class Origin:
 
 @dataclass(frozen=True)
 class Reserve:
-    """`. n/`: n words set aside, not punched."""
     n: int
     rule: str
     labels: tuple[str, ...] = ()
@@ -549,4 +545,4 @@ class Break:
 
 
 Item = Union[Word, LabelDef, Origin, Reserve, Break]
-Emitted = Union[Word, Origin, Reserve, Break]  # an item laid out: one line of output
+Emitted = Union[Word, Origin, Reserve, Break]

@@ -1,8 +1,3 @@
-/* Reads one call per line (octal AC, IO, by-name input and sense switches),
- * runs SETUP, makes CALL, and prints AC, IO, the words returned past call+1
- * (INLINE plus skips) and the WATCH words, then `;` and each point plotted
- * during the call (instruction, x, y), in octal. A void CALL leaves AC and
- * IO 0. Built with -include pdp1.h -include prog.c. */
 #include <cstdio>
 #include <type_traits>
 
