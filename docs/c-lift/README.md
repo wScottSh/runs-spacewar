@@ -56,7 +56,7 @@ Names in the C follow Norbert Landsteiner's "Inside Spacewar!" series. Local cop
 
 A matching hash does not prove the C means anything. A compiler could ignore its input and print stored output. These checks rule that out:
 
-- **Reference runs.** `pdp1.h` has a second mode for `g++`. In that mode, `word` is a C++ class with exact 18-bit ones' complement arithmetic, so the lifted C runs natively. Each pure math routine is run this way and compared, bit for bit, with the original binary's routine in the SIMH PDP-1 simulator. `tools/check-sqt-reference.py` covers all 65,536 inputs of the square root.
+- **Reference runs.** `pdp1.h` has a second mode for `g++`. In that mode, `word` is a C++ class with exact 18-bit ones' complement arithmetic, so the lifted C runs natively. Each pure math routine is run this way and compared, bit for bit, with the original binary's routine in the SIMH PDP-1 simulator. `tools/check-sqt-reference.py` covers all 65,536 inputs of the square root. Routines that draw are compared by the points they plot: SIMH reports AC and IO at each display instruction, and the native build records each point. `tools/check-heavens-reference.py` covers the central star and a full turn of the starfield.
 - **Corpus programs.** `tests/corpus/` holds small C programs that are not Spacewar. `pdp1cc gate` compiles each one, runs it in SIMH, and compares the result with its native build. Every compiler rule must be used by at least two corpus programs, so each rule is a general C rule and not a Spacewar special case.
 - **Lint and isolation.** `tools/check-g3.py` fails if the compiler's source contains any Spacewar symbol or any word from the oracle image. It also compiles the corpus and the lifted C in a copy of the repo without `source/` or the oracle files, and checks that the output is identical.
 - **Mutation checks.** A change to an operator or a constant in the lifted C must change the output where the compiler's rules predict, and the hash must fail.
@@ -64,7 +64,7 @@ A matching hash does not prove the C means anything. A compiler could ignore its
 
 ### What the checks do not prove
 
-The reference runs cover only the pure math routines. The game logic depends on code that the outline compiler generates at run time, and only a PDP-1 can run that code. For those regions, the hash is the whole verdict. Because the hash covers every word, it is enough to show that the game is the same.
+The reference runs cover the math routines, the outline compiler and the heavens. The game logic depends on code that the outline compiler generates at run time, and only a PDP-1 can run that code. For those regions, the hash is the whole verdict. Because the hash covers every word, it is enough to show that the game is the same.
 
 The checks do not judge whether the C reads well. That part is review.
 

@@ -111,7 +111,7 @@ Phase F steps 1-4 (synthesis.md) are implemented for the sqt subset. This sectio
 
 **TRACK.** Lowering is a pure function of (statement, AC/IO state). A `for (;;)` body is lowered again until the state at its head is a fixpoint. A read of an AC local whose value is no longer in AC is a compile error that asks for a static.
 
-**Labels.** Generated labels use a per-region prefix from `lift.toml` (`zs` for sqt), not a region letter. Two labels that land on one word are merged.
+**Labels.** Generated labels use a per-region prefix from `lift.toml` (`zs` for sqt), not a region letter. Several labels may name one word, and each stays a name of it (`zh73, zh17, jmp .`); M3 merged them into one (M4 section).
 
 **Splice build.** The interface check reads the source text. A label defined inside the region and named outside it must still be defined by the compiled text. It does not use the oracle xref. On a mismatch, `build` reports whether the `variables` base moved, then the first differing address with the expected word, the actual word and the rule id. There is no per-region cache.
 
@@ -123,7 +123,7 @@ Phase F steps 1-4 (synthesis.md) are implemented for the sqt subset. This sectio
 - G5 and G6 run in `pdp1cc gate` (M2 section). `tests/reject/` holds programs the dialect must refuse, each with the error it expects.
 - G7 is a review rule: a new rule lands with its corpus programs. The row checker is not built.
 
-**Not implemented yet.** while/do, `sas`/`sad`, indirect calls that return, a homed pointer read anywhere but its home, and the hints `SKIPNOT` and `RELOAD`. POOL, HOMED, INLINE parameters, the jump-table switch, `PLACE` and `ARGS_DONE` landed in M3.
+**Not implemented yet.** while/do, indirect calls that return, a homed pointer read as a value anywhere but a `dap` or its home word, `int` parameters of static inline functions, and the hints `SKIPNOT` and `RELOAD`. POOL, HOMED, INLINE parameters, the jump-table switch, `PLACE` and `ARGS_DONE` landed in M3; `sas`/`sad`, static inline functions and Duff's device in M4.
 
 ### M1 math (sin/cos, imp/mpy, idv/dvd)
 
@@ -222,6 +222,43 @@ Deviations from the design, and why:
 - **The ship variables are declared in `outline_compiler.c`.** oc's text is their first appearance, so it decides their addresses. They keep their Macro names by SYM because the unlifted spaceship code names them. M6 will declare them `extern POOL` where it needs them.
 - **Label merging.** When a home instruction is also a C label or loop top, the first label names the word and the others are renamed to it. A pinned homed pointer could lose its symbol this way; the build's interface check would then fail.
 
+### M4 heavens (the central star, the Expensive Planetarium, the star catalog)
+
+Source lines 510-621, 629-653 and 1373-1866 compile from `lift/heavens.c`, one region with three line ranges. Lifted coverage is 1733/2514 words (68.9%); the catalog is 938 of them.
+
+The C forms:
+- **The `random` macro** is `static inline word next_random(void)`, laid out at each of its two calls. The macro stays in the prelude for unlifted code.
+- **`bpt` and the unrolled `starp` block are Duff's device.** `HOMED word line_dots_skipped;` is the switch index, held in the jump into the line. `line_dots_skipped = skipped;` is `sal 3s / add (bds / dap bjm`, and `switch ((int)line_dots_skipped)` is `bjm, jmp .`. Cases 0-6 each hold one `line_step` and fall into the next; case 7 holds nine. The mirrored second pass is a `for (;;)` around the switch, so its `jmp bjm` re-enters the stored case. `starp` is `static inline dword line_step(word x, register word y)`; its two swaps are `rcl(x, y, 18)`, since both halves are live.
+- **`dislis` x4 is a cpp macro that defines functions.** `MAGNITUDE(m, stars, count, intensity)` defines, for one magnitude, two HOMED star pointers (`fin`, `fyn`), the cursor and scan-start words (`flo`, `fpo`), and `static inline void display_magnitude_m(void)`. `bck` calls the four functions in order. A static inline function with `int` parameters would share one set of state words in the native build, since C has one static per function; the machine has a set per copy. One function per magnitude, called once, keeps the two in step. The state words are file-scope objects that the function PLACEs at its end, where `dislis` has `fpo` and `flo`.
+- **The cross-instance jumps.** `jmp flo+R+1` is the word after a `dislis` copy, which is the first word of the next copy (or `isp bkc` after the fourth). It is a return from the static inline function: a return before the function's last statement jumps to the word after the copy (INLINE-RETURN). No C names another copy's words. The C has one `done: return;`, at `fx`; the other exits are `goto done`, as the source's are `jmp fx`.
+- **`bck`'s exit cell** sits under `isp bcc`, in the middle of the routine. The source-last return owns the exit cell, so the C writes `if (++alternate_frames < 0) finished: return;` and the later exits are `goto finished`.
+- **The catalog** is four `word` arrays, one per magnitude, of `STAR(x, y)` pairs with each star's name from the source comment. `STAR(x, y)` is `8192 - (x), (y) * 256`, decimal as in the source, folded by C's rules. `AT(06077)` places the first table.
+
+New rules, each used by two or more independent corpus programs (lift words in parentheses):
+- `INLINE-CALL` (322), `INLINE-RETURN` (4). A call of a static inline function lays its body out at the call with fresh labels (dotline, lookup, ringscan). Its parameters take the caller's AC and IO; TRACK carries memory facts in and out.
+- `SWITCH-HOMED` (4). Duff's device (dotline, ticks). Each case before the last is a power of two of words; the store scales the index by that shift. The stride is found by lowering the cases, so the function is lowered until the strides, like the label states, are a fixpoint.
+- `HOMED-WORD` (4). `I_LIO(p)` and `I_LIO(++p)` for a HOMED p whose home is `lio .` are its home word (`lac fyn`, `idx fyn`) (lookup, ringscan). `sad (lio Q+2` and `sad fpo` compare instruction words, so the C does too: `I_LIO(++star_y) == I_LIO(stars + 2 * (count))`. The design's EX-HOMED-CMP compared a pointer with a constant pointer; `fpo` is an instruction word, not a pointer, so the instruction form covers both comparisons.
+- `SKIP-SAME` (16). `a == m` and `a != m` with m a word or constant skip on `sas` / `sad` (lookup, ringscan). Other orderings against a nonzero value are an error.
+- `SKIP-SENSE` (2). `sense(n)` (dotline, ticks).
+- `EX-DPY` (21). `dpy(x, y, n)` is `dpy-i+n00` and `dpy_nowait(x, y)` is `dpy-4000`, with x in AC and y in IO, both kept (dotline, ringscan, ticks). `ioh()` is `iot i` under `EX-HW`.
+- `OPR-COMBINE` (1). A comma statement whose parts are each one operate-group instruction, writing different registers or the flags, is one word: `pen.hi = 0, pen.lo = 0, clf(6);` is `cla cli clf 6-opr-opr` (dotline, ticks). Parts that write one register are an error, since the result would depend on the hardware's order.
+- Extended rules. `ST-PLACED` covers a pointer word initialized with an address (`flo, 4j`). A HOMED pointer may be initialized, which sets its home's address field (`fin, lac` is `= 0`). `x.addr = e` and `p = e` emit only `dap` when TRACK knows AC's address field already holds e (`dap fpo / dap fin / dap fyn`, and `dap fin` after `lac (lio J`). Address operands may be `array + n`. Constant expressions of `+ - * << >>` fold as C folds them.
+
+Harness:
+- **The display, compared.** SIMH has no display, so the harness sets a breakpoint on every display instruction that examines AC and IO and continues; the native `pdp1.h` records each point it is asked to plot. G2 and the reference checks compare the points, in order, call by call. The simulator's I/O synchronizer is set, so `ioh` never waits. Sense switches vary per corpus call.
+- **`tools/check-heavens-reference.py`** compares the 938 catalog words of the native tables with the words SIMH loads from the oracle image at 06077 (all match), 100,000 calls of `blp` from four seeds of `ran` (random number, `bx`, `by`, the `bjm` jump word and every plotted point after each), 263,144 frames of `bck` in a row, which take the window once round the sky (8192 right margins), and 20,000 frames that each start from a random right margin. After each frame it compares the counters, the right margin, and each magnitude's cursor, scan start and both home words, plus every plotted point. All match: 7,972,764 points from `bck`.
+- **The SIMH stub moved** from 07700 to 07760. At 07700 it overwrote catalog words 07700-07712, which the random-margin frames read. The moved stub is above the catalog's last word (07750).
+- **Labels.** Several labels may name one word (`a, b, lac .`); none is renamed. M3 merged them into the first, which lost a HOMED pointer's symbol when a C label named its home.
+- **One past the end.** A native pointer one past an array's end can coincide with the next host object, and `pdp1_address` then names that object. The heavens check reckons the star pointers' home words from their table. G6 now predicts folded constants, array offsets, sense and intensity fields, refuses count edits that lengthen a Duff case, counts copies of static inline code, and accepts an edit when the output is the original with exactly that many predicted rewrites. It runs its edits in parallel.
+- `-Wno-array-bounds` in the native builds: g++ warns that a home pointer initialized to null may be read, which the C never does.
+
+Deviations from the design, and why:
+- **No `int` parameters on static inline functions.** The design's ST-CT form for `dislis` needs per-copy state, which C statics cannot give natively (above). A cpp macro defines one function per magnitude instead.
+- **`and (add 340` is written as 0400340** (`SLOPE_BITS`). It is a mask, not an instruction; macro1 dedups literals by value.
+- **The `starp`, `dislis` and `mark` macro definitions are gone**, since every use was inside the region. The `background` macro (lines 624-627) stays as source text, because the unlifted main loop uses it; that is why the region has three ranges. The unused label `fs` is gone. `blp`, `bck`, `bx`, `by` and `ran` keep their symbols by SYM; unlifted text names them.
+- **The catalog title line (1371) and the `start` lines stay.** They emit no words.
+
+
 ## Open questions and risks
 
 - Runtime-generated code: M3 settles the writing side (data written through a pointer, no execution spec). M6 must still choose the C form for entering the compiled outline (`sp5, jmp .` patched by `dap`) and for its return at `sq6`.
@@ -229,7 +266,7 @@ Deviations from the design, and why:
 - Uninitialized `register` reads (mpy's `rcr(h, m, 18)` with garbage IO) are indeterminate in ISO C. The reference build maps IO to a global so it is defined there. Is that acceptable?
 - `ENTRY_CELL` aliasing (sin/cos scratch, oc's pointer) is only correct while the owner's parameter is dead. Should the compiler prove that, or is a documented contract enough?
 - pycparserext must parse GNU attributes on parameters and labels before declarations. A front-end spike should confirm this before anything else.
-- `dislis` x4 (static inline + `int` params, per-instance homed cells, `jmp flo+R+1`) is untested against these rules.
+- `dislis` x4: settled in M4 by a cpp macro that defines one static inline function and its state per magnitude (M4 section). A static inline function with `int` parameters is still unimplemented.
 
 ## Next implementation step
 

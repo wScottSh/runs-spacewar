@@ -48,3 +48,9 @@ name = "outlines"
 lines = "1336-1356"
 c = "lift/outlines.c"
 prefix = "zl"
+
+[[region]]
+name = "heavens"
+lines = ["510-621", "629-653", "1373-1866"]
+c = "lift/heavens.c"
+prefix = "zh"
