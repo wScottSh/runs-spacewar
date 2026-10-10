@@ -71,7 +71,7 @@ class Element:      # a[k] with k constant: the word k past the start of a file-
 
 
 @dataclass(frozen=True)
-class HomedInsn:    # HOMED insn: the instruction at its home, executed where it stands
+class HomedInsn:    # HOMED shift: the instruction at its home, executed where it stands
     sym: str
     init: "Insn"
 
@@ -179,6 +179,7 @@ class Signature:
     params: tuple[Param, ...]
     returns: str        # "word" | "word*" | "dword" | "io" (a word returned in IO) | "void"
     exit_sym: str       # the cell returns go through: exit `jmp .` or the by-name `xct`
+    skips: bool = False     # SKIPS: may return one word past its inline words
 
     @property
     def inline_count(self) -> int:
@@ -201,6 +202,7 @@ class Call:             # f(args): a JDA call, or a tail call of a BLOCK
 class CodeRef:          # a function's name as a value: its address, with flags above it
     sig: Signature
     flags: int = 0
+    word: bool = False  # `f | c`: a whole word, loaded from a literal even when c is 0
 
 
 @dataclass(frozen=True)
@@ -208,6 +210,7 @@ class IndirectCall:     # p(args) through a pointer-to-function object p
     pointer: Var
     sig: Signature      # the pointed-to function type
     args: tuple[Expr, ...]
+    home: bool = False  # (*home(p))(...): the jump that holds HOMED p, `p, jmp .`
 
 
 @dataclass(frozen=True)
@@ -373,6 +376,13 @@ class ArgsDone:         # the inline-parameter skip, placed by inline.place_args
 
 
 @dataclass(frozen=True)
+class HomeStore:        # *home(p) = e (dac . / dio .), home(p)->addr = e (dap .)
+    pointer: Var
+    value: Expr
+    addr: bool = False
+
+
+@dataclass(frozen=True)
 class StoreNext:        # *p++ = e: store through p, then advance p
     pointer: Var
     value: Expr
@@ -437,7 +447,7 @@ class Block:
 
 
 Stmt = Union[Assign, AssignPair, Eval, If, Forever, Continue, Return, Block, Goto, Labeled,
-             Unroll, SkipReturn, ArgsDone, StoreNext, AssignAddr, Switch, PlaceHere, OprCombine,
+             Unroll, SkipReturn, ArgsDone, StoreNext, HomeStore, AssignAddr, Switch, PlaceHere, OprCombine,
              HomedSwitch]
 
 

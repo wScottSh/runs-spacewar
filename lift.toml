@@ -57,9 +57,15 @@ prefix = "zh"
 
 [[region]]
 name = "objects"
-lines = ["946-1077", "1312-1333"]
+lines = "946-1077"
 c = "lift/objects.c"
 prefix = "zx"
+
+[[region]]
+name = "spaceship"
+lines = "1079-1333"
+c = "lift/spaceship.c"
+prefix = "zp"
 
 [[region]]
 name = "main_loop"
@@ -70,5 +76,5 @@ prefix = "zg"
 # Macro definitions and equates whose every user is lifted. They make no words.
 [[dropped]]
 name = "prelude"
-lines = ["3-4", "8-12", "24-45", "51-60", "117-127", "138-145", "622-628"]
-why = "szm, spq, senseswitch, listen, swap, load, setup, move, clear, xincr, dispatch, background: no unlifted user"
+lines = ["3-60", "117-189", "622-628", "663-663"]
+why = "every macro and equate of the prelude (szm .. ranct) and nob: no unlifted user"

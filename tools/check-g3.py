@@ -2,7 +2,8 @@
 
 1. Lint tools/pdp1cc: no string literal equal to a symbol of the oracle's
    symbol table, and no 6-digit octal number equal to a word of the oracle.
-2. Isolation: copy the compiler, lift/ and tests/corpus/ into an empty tree
+2. Isolation: copy the compiler, macro1's source (whose symbol tables the
+   compiler reads), lift/ and tests/corpus/ into an empty tree
    with no source/ and no build/oracle*, compile every C file there in a
    fresh environment, and require the output to equal the in-tree output.
 
@@ -77,7 +78,7 @@ def isolation() -> list[str]:
     want = lower_all(ROOT, files)
     with tempfile.TemporaryDirectory() as tmp:
         tree = Path(tmp)
-        for item in ["pyproject.toml", "uv.lock", "tools/pdp1cc", "lift", "tests/corpus"]:
+        for item in ["pyproject.toml", "uv.lock", "tools/pdp1cc", "tools/macro1.c", "lift", "tests/corpus"]:
             src, dst = ROOT / item, tree / item
             dst.parent.mkdir(parents=True, exist_ok=True)
             if src.is_dir():

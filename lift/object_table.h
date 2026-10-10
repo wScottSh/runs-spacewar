@@ -16,6 +16,11 @@
  * collide (exploding, or in hyperspace). */
 extern HOMED word *routine_slot SYM("ml1");
 #define NON_COLLIDING ((word)0400000)
+#define COLLIDING ((word)0)
+
+/* The table itself: one array per property, NOB slots each, the routine
+ * words first. */
+extern word object_table[] SYM("mtb");
 
 extern HOMED word *x_slot SYM("mx1");           /* position */
 extern HOMED word *y_slot SYM("my1");
@@ -27,11 +32,11 @@ extern HOMED word *cycles_slot SYM("mb1");      /* the time the calc routine tak
                                                    instructions, and the size of an explosion */
 
 /* Spaceships only. */
-extern HOMED word *spin_slot SYM("mom");        /* angular velocity */
 extern HOMED word *angle_slot SYM("mth");       /* heading */
-extern POOL word *fuel_slot SYM("mfu");
+extern HOMED word *angular_momentum_slot SYM("mom");
+extern POOL word *fuel_slot SYM("mfu");         /* fuel, counting up: out at 0 */
 extern POOL word *torpedoes_slot SYM("mtr");    /* torpedoes left, counting up */
-extern HOMED word *old_control_slot SYM("mco"); /* last frame's control word */
+extern HOMED word *previous_control_slot SYM("mco");    /* the control word last frame */
 extern POOL word *saved_routine_slot SYM("mh1");    /* the ship's own calc routine, kept
                                                        while hyperspace runs instead */
 extern POOL word *jumps_left_slot SYM("mh2");   /* hyperspace jumps left, counting up */

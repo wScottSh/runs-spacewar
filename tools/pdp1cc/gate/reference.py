@@ -136,6 +136,8 @@ def bind(path: Path, defined: list[ir.Signature]) -> str:
             raise BindError(f"{path}: the reference build rewrote {done} of {want} {r.hint} "
                             f"uses; it binds only the shape `{r.shape}`")
     for sig in defined:
+        if not sig.skips:
+            text = guard_skips(text, sig)
         p = entry(sig)
         if p is None:
             continue
@@ -150,6 +152,16 @@ def bind(path: Path, defined: list[ir.Signature]) -> str:
         text, n = header.subn(bind_param, text)
         if n != 1:
             raise BindError(f"reference: found {n} definitions of {sig.name} to bind, want 1")
+    return text
+
+
+def guard_skips(text: str, sig: ir.Signature) -> str:
+    """Open a definition that is not SKIPS with pdp1_skip_guard, so the skips
+    of its callees end with it."""
+    header = re.compile(rf"\b{sig.name}\s*\([^)]*\)(?:\s|/\*.*?\*/)*\{{", re.S)
+    text, n = header.subn(lambda m: m.group(0) + " pdp1_skip_guard pdp1_guard;", text)
+    if n != 1:
+        raise BindError(f"reference: found {n} definitions of {sig.name} to guard, want 1")
     return text
 
 

@@ -1,4 +1,4 @@
-/* reject: stored only by a dap */
+/* reject: its value is the address field of an instruction */
 /* p + 1 for a HOMED p adds to p's home instruction: only its address
  * field means p + 1, so only a dap may store it. */
 

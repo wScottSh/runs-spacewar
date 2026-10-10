@@ -21,8 +21,6 @@
 #define SHIPS 2
 #define TABLE_WORDS (7 * NOB + 10 * SHIPS)
 
-extern word object_table[TABLE_WORDS] SYM("mtb");
-
 /* Each property's array, where it starts in the object table (nx1, ny1,
  * na1, nb1, ndx, ndy, nom, nth, nfu, ntr, not, nco, nh1 .. nh4). */
 #define ROUTINES (object_table)
@@ -49,6 +47,7 @@ extern word object_table[TABLE_WORDS] SYM("mtb");
  * buttons in the high four bits and ship 2's in the low four. */
 typedef io_word control_word_reader(register word io) JSP;
 typedef void calc_routine(void) JSP;
+typedef void compiled_outline(void) BLOCK;
 
 /* Routines the main loop calls, defined elsewhere. */
 JSP SYM("ss1") void first_spaceship(void);
@@ -70,7 +69,7 @@ extern word collision_radius_half SYM("me2");
 extern word separate_outlines SYM("ddd");
 
 HOMED word *outline_slot;           /* mot: a ship's compiled outline, the code that draws it */
-extern HOMED word *ship_outline_entry SYM("sp5");  /* the spaceship calc routine's jump into it */
+extern HOMED compiled_outline *draw_outline SYM("sp5");  /* the spaceship calc routine's jump into it */
 
 POOL control_word_reader *control_word_getter SYM("cwg");
 POOL word spare_time;               /* mtc: the frame's instruction budget, counting up */
@@ -129,7 +128,7 @@ BLOCK void next_frame(void)
     slot = slot + NOB;
     dy_slot = slot;
     slot = slot + NOB;
-    spin_slot = slot;
+    angular_momentum_slot = slot;
     slot = slot + SHIPS;
     angle_slot = slot;
     slot = slot + SHIPS;
@@ -139,7 +138,7 @@ BLOCK void next_frame(void)
     slot = slot + SHIPS;
     outline_slot = slot;
     slot = slot + SHIPS;
-    old_control_slot = slot;
+    previous_control_slot = slot;
     slot = slot + SHIPS;
     saved_routine_slot = slot;
     slot = slot + SHIPS;
@@ -330,7 +329,7 @@ object:
     other_y_slot = 1 + y_slot;
     other_counter_slot = 1 + counter_slot;
     other_cycles_slot = 1 + cycles_slot;
-    ship_outline_entry = *home(outline_slot);
+    draw_outline = (compiled_outline *)*home(outline_slot);
 compare:
     word other = *home(other_routine_slot);
     if (other <= 0)
@@ -374,13 +373,13 @@ next_object:
     ++cycles_slot;
     ++dx_slot;
     ++dy_slot;
-    ++spin_slot;
+    ++angular_momentum_slot;
     ++angle_slot;
     ++stray_cursor;
     ++fuel_slot;
     ++torpedoes_slot;
     ++outline_slot;
-    ++old_control_slot;
+    ++previous_control_slot;
     ++saved_routine_slot;
     ++jumps_left_slot;
     ++recharge_slot;

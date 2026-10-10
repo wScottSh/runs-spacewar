@@ -80,7 +80,9 @@ class State:
 
 
 def _lasting(facts: frozenset[Fact]) -> frozenset[Fact]:
-    return frozenset(f for f in facts if isinstance(f, (Local, AddressBits, Outer)))
+    """Facts no store through a pointer can break: a C pointer never points
+    at a HOMED pointer's home, which has no address in the C."""
+    return frozenset(f for f in facts if isinstance(f, (Local, AddressBits, Outer, PointerBits)))
 
 
 def _into_inline(facts: frozenset[Fact]) -> frozenset[Fact]:
@@ -203,11 +205,6 @@ def rotate_swap() -> list[ir.Word]:
     return [W("rcl", "EX-MOVE", ir.ShiftCount(SWAP_HALF), via=("SWAP",)) for _ in range(2)]
 
 
-def _homed_operand(e: ir.Expr) -> bool:
-    homed = lambda x: isinstance(x, ir.Var) and isinstance(x.storage, ir.Homed)
-    return isinstance(e, ir.Binary) and e.op == "+" and (homed(e.left) or homed(e.right))
-
-
 @dataclass
 class _Loop:
     top: str
@@ -241,6 +238,8 @@ class FunctionLowerer:
     label_out: dict[str, State | None] = field(default_factory=dict)
     byname_cell_done: bool = False
     fell_through: bool = False      # a tail call elided its jump to the next item
+    exits: dict[str, str] = field(default_factory=dict)    # BLOCK -> the exit cell it returns through
+    address_value: bool = False     # lowering the value a dap stores: HOMED pointers may be read
 
     def label(self) -> str:
         return self.namer.fresh()
@@ -255,6 +254,11 @@ class FunctionLowerer:
         if fn.sig.conv is ir.Conv.JSP and (target := _forwarded(fn.body)) is not None:
             return self.forward(target)
         tails = _tail_calls(fn.body)
+        skipping = any(isinstance(n, ir.SkipReturn) for n in inline.iter_nodes(fn.body)) or \
+            any(t.value.sig.skips for t in tails)
+        if skipping != fn.sig.skips:
+            raise SelectError(f"{fn.sig.name}: declare it SKIPS exactly when it calls skip_return() "
+                              "or tail-calls a SKIPS BLOCK, so its callers lay out the word it skips")
         jumps = [r for r in _returns(fn.body) if isinstance(r.value, ir.IndirectCall)]
         plain = [r for r in _returns(fn.body) if r not in tails and r not in jumps]
         if tails:
@@ -328,12 +332,12 @@ class FunctionLowerer:
     def header(self) -> list[ir.Item]:
         items: list[ir.Item] = [ir.LabelDef(self.sig.sym)]
         if self.sig.conv is ir.Conv.JDA:
-            exit_sym = (self.adopted or self.sig).exit_sym
+            exit_sym = self.exit_cell().name
             items += [W(None, "JDA-ENTRY", ir.Num(0), note="entry word = parameter"),
                       W("dap", "JDA-PROLOGUE", ir.Sym(exit_sym),
                         via=("LAY-ADOPT",) if self.adopted else ())]
         elif self.sig.conv is ir.Conv.JSP:
-            exit_sym = (self.adopted or self.sig).exit_sym
+            exit_sym = self.exit_cell().name
             items.append(W("dap", "JSP-PROLOGUE", ir.Sym(exit_sym),
                            via=("LAY-ADOPT",) if self.adopted else ()))
         return items
@@ -362,8 +366,6 @@ class FunctionLowerer:
             case ir.Goto():
                 self.label_out[s.label] = meet(self.label_out.get(s.label), st)
                 return [W("jmp", "GOTO", ir.Sym(s.label))], None
-            case ir.Assign(target=ir.HomeLoad() as h):
-                return self.home_store(h, s.value, st)
             case ir.Assign():
                 return self.assign(s.target, s.value, st)
             case ir.Eval(expr=ir.ComputedCall() as c):
@@ -390,12 +392,17 @@ class FunctionLowerer:
                     items = []
                 elif isinstance(s.value, ir.Var) and isinstance(s.value.storage, ir.Homed):
                     items, st = self.to_ac(ir.HomeWord(s.value, self.home_op(s.value), False), st)
-                elif _homed_operand(s.value):
-                    items, st = self.homed_value(s.value, st)
                 else:
-                    items, st = self.to_ac(s.value, st)
+                    self.address_value = True
+                    try:
+                        items, st = self.to_ac(s.value, st)
+                    finally:
+                        self.address_value = False
+                st = st.write_mem(fact(s.target))
                 return items + [W("dap", "EX-STORE-ADDR", cell(s.target), via=_via(s.target))], \
-                    st.write_mem(fact(s.target))
+                    State(st.ac | {PointerBits(cell(s.target).name)}, st.io)
+            case ir.HomeStore():
+                return self.home_store(s, st)
             case ir.HomedSwitch():
                 return self.homed_switch(s, st)
             case ir.OprCombine():
@@ -410,6 +417,8 @@ class FunctionLowerer:
                 return self.pair_op(p, st)
             case ir.Eval(expr=ir.Call() as c):
                 return self.call(c, st)
+            case ir.Eval(expr=ir.IndirectCall() as c):
+                return self.to_ac(c, st)
             case ir.Eval(expr=ir.Hw(name=name)):
                 return [hardware_word(name)], hardware_after(name, st)
             case ir.If():
@@ -453,10 +462,33 @@ class FunctionLowerer:
         items, st = self.to_ac(value, st)
         return items + [self.through(d, "dac", "EX-STORE")], self.after_store_through(st)
 
+    def home_store(self, s: ir.HomeStore, st: State):
+        """*home(p) = e is the store that holds p: `p, dac .`, `p, dzm .` for
+        0, or `p, dio .` from a register local; home(p)->addr = e is
+        `p, dap .`."""
+        p = s.pointer
+        items: list[ir.Item] = []
+        if s.addr:
+            items, st = self.to_ac(s.value, st)
+            op, rule = "dap", "EX-STORE-ADDR"
+        elif s.value == ir.Const(0):
+            op, rule = "dzm", "EX-STORE-ZERO"
+        elif isinstance(s.value, ir.Var) and isinstance(s.value.storage, ir.Io):
+            self.need_io(s.value, st)
+            op, rule = "dio", "EX-STORE-IO"
+        else:
+            items, st = self.to_ac(s.value, st)
+            op, rule = "dac", "EX-STORE"
+        if self.home_op(p) != op:
+            raise SelectError(f"{p.name}'s home is `{self.home_op(p)} .`, not `{op} .`")
+        return items + [ir.LabelDef(p.storage.sym),
+                        W(op, "HOMED-HOME", home_address(p), via=(rule, *_via(p)))], \
+            self.after_store_through(st)
+
     def xct(self, x: ir.Xct, st: State):
         """The argument into AC (and IO), then the instruction run: `xct (w`
         for a constant, the home `p, xct .` of a HOMED pointer p, or the
-        HOMED insn itself, run where it stands. Only a constant shift of AC
+        HOMED shift itself, run where it stands. Only a constant shift of AC
         is known to leave IO alone."""
         items, st = self.to_ac(x.hi, st)
         if x.lo is not None:
@@ -477,35 +509,6 @@ class FunctionLowerer:
                             note="run in place")]
         keeps_io = isinstance(x.insn, ir.Insn) and x.insn.op in AC_SHIFTS
         return items, State(frozenset(), st.io if keeps_io else frozenset())
-
-    def home_store(self, h: ir.HomeLoad, value: ir.Expr, st: State):
-        """*home(p) = e: the home is the store, `dac .` (`dzm .` for 0, `dio .`
-        from a register local), which writes the word p points to."""
-        p = h.pointer
-        items: list[ir.Item] = []
-        if value == ir.Const(0):
-            want = "dzm"
-        elif isinstance(value, ir.Var) and isinstance(value.storage, ir.Io):
-            self.need_io(value, st)
-            want = "dio"
-        else:
-            items, st = self.to_ac(value, st)
-            want = "dac"
-        if self.home_op(p) != want:
-            raise SelectError(f"{p.name}'s home is `{self.home_op(p)} .`, not `{want} .`")
-        return items + [ir.LabelDef(p.storage.sym), W(want, "HOMED-HOME", home_address(p), via=_via(p))], \
-            self.after_store_through(st)
-
-    def homed_value(self, e: ir.Binary, st: State):
-        """p + n or n + p for a HOMED p, stored by dap: the word at p's home
-        has p in its address field, so adding to it adds to p there."""
-        if isinstance(e.left, ir.Var) and isinstance(e.left.storage, ir.Homed):
-            items = [W("lac", "HOMED-VALUE", cell(e.left), via=_via(e.left))]
-            word = W(BIN_MNEMONIC[e.op], "EX-BIN", self.memory_operand(e.right), via=_via_operand(e.right))
-            return items + [word], State(frozenset(), st.io)
-        items, st = self.to_ac(e.left, st)
-        return items + [W(BIN_MNEMONIC[e.op], "HOMED-VALUE", cell(e.right), via=_via(e.right))], \
-            State(frozenset(), st.io)
 
     def computed_call(self, c: ir.ComputedCall, st: State):
         """((f *)e)(): e, its address into the call (`dap L`), then `L, jsp .`."""
@@ -660,7 +663,9 @@ class FunctionLowerer:
         return items, None
 
     def exit_cell(self) -> ir.Sym:
-        return ir.Sym((self.adopted or self.sig).exit_sym)
+        if self.adopted is None:
+            return ir.Sym(self.sig.exit_sym)
+        return ir.Sym(self.exits.get(self.adopted.name, self.adopted.exit_sym))
 
     def assign(self, t: ir.Var | ir.Deref, value: ir.Expr, st: State):
         if isinstance(t, ir.Deref):
@@ -753,7 +758,7 @@ class FunctionLowerer:
 
     def if_(self, s: ir.If, st: State):
         c = s.cond
-        operand = None
+        operand, indirect = None, False
         if isinstance(c, ir.FlagTest):
             pre, after, table = [], st, ("SKIP-FLAG",)
             skip_c = skips.flag_skip_when(c.n, c.negated)
@@ -767,8 +772,9 @@ class FunctionLowerer:
         elif c.against is not None:
             pre, after = self.to_ac(c.operand, st)
             if isinstance(c.against, ir.Deref):
-                raise SelectError("compare with *p: load it first")
-            operand = self.memory_operand(c.against)
+                operand, indirect = cell(c.against.pointer), True
+            else:
+                operand = self.memory_operand(c.against)
             table = ("SKIP-SAME",) + _via_operand(c.against)
             skip_c = skips.same_skip_when(c.op)
             skip_not_c = skips.same_skip_when(skips.NEGATE[c.op])
@@ -805,7 +811,7 @@ class FunctionLowerer:
                 return replace(self.through(t, "isp", rule), note=f"++*{t.pointer.name} {c.op} 0")
             if op == "isp":
                 return W("isp", rule, mem(t), note=f"++{t.name} {c.op} 0", via=_via(t))
-            return W(op, rule, operand, note=what, via=table)
+            return W(op, rule, operand, i=indirect, note=what, via=table)
 
         then_items, then_end = self.stmt(s.then, after)
         single = (s.orelse is None and skip_not_c is not None
@@ -912,6 +918,12 @@ class FunctionLowerer:
         if c.sig.conv is not ir.Conv.BLOCK:
             raise SelectError(f"a tail call through {c.pointer.name} needs a BLOCK function type")
         items, _ = self.block_args(c.sig, c.args, st)
+        if c.home:
+            p = c.pointer
+            return items + [ir.LabelDef(p.storage.sym),
+                            W("jmp", "HOMED-HOME", home_address(p), via=("TAIL-CALL-INDIRECT", *_via(p)))], None
+        if isinstance(c.pointer.storage, ir.Homed):
+            raise SelectError(f"jump through HOMED {c.pointer.name} at its home: (*home({c.pointer.name}))()")
         return items + [W("jmp", "TAIL-CALL-INDIRECT", mem(c.pointer), i=True)], None
 
     def block_args(self, sig: ir.Signature, args, st: State):
@@ -960,6 +972,8 @@ class FunctionLowerer:
                 items.append(W("lac", "JDA-BYNAME-ARG", self.memory_operand(arg), via=via))
             elif p.kind is ir.ParamKind.INLINE:
                 items.append(W(None, "JDA-INLINE-ARG", self.inline_word(arg)))
+        if c.sig.skips:
+            items.append(W("opr", "SKIP-SLOT", note="runs only when the call does not skip it"))
         if self.keeps_io.get(c.sig.sym):
             return items, State(frozenset(), st.without_memory().io)
         return items, State()
@@ -992,9 +1006,17 @@ class FunctionLowerer:
                 return self.byname_read(), State(frozenset(), st.io)
             case ir.Var(storage=ir.Inline()):
                 return [W("lac", "INLINE-READ", self.exit_cell(), i=True)], State(frozenset(), st.io)
-            case ir.Var(storage=ir.Homed()):
-                raise SelectError(f"{e.name} is HOMED: its value is the address field of an "
-                                  "instruction; read through it with *home(...)")
+            case ir.Var(storage=ir.Homed()) if self.address_value and PointerBits(e.storage.sym) in st.ac:
+                return [], st
+            case ir.Var(storage=ir.Homed()) if self.address_value:
+                return [W("lac", "HOMED-VALUE", cell(e), via=_via(e))], \
+                    State(frozenset({PointerBits(e.storage.sym)}), st.io)
+            case ir.Var(storage=ir.Homed()) | ir.Binary(right=ir.Var(storage=ir.Homed())) \
+                    if not self.address_value:
+                p = e if isinstance(e, ir.Var) else e.right
+                raise SelectError(f"{p.name} is HOMED: its value is the address field of an "
+                                  "instruction; read through it with *home(...), or store it "
+                                  "with a dap (p = ..., x.addr = ...)")
             case ir.Insn():
                 return [W("lac", "EX-CONST-AC", ir.Lit(e), via=_via_operand(e))], \
                     State(frozenset({address_fact(e)} - {None}), st.io)
@@ -1038,7 +1060,11 @@ class FunctionLowerer:
             case ir.Binary(right=ir.HomeLoad(pointer=p)):
                 items, st = self.to_ac(e.left, st)
                 return items + [ir.LabelDef(p.storage.sym),
-                                W(BIN_MNEMONIC[e.op], "HOMED-HOME", home_address(p), via=_via(p))], \
+                                W(BIN_MNEMONIC[e.op], "HOMED-HOME", home_address(p), via=("EX-BIN", *_via(p)))], \
+                    State(frozenset(), st.io)
+            case ir.Binary(right=ir.Var(storage=ir.Homed()) as p) if self.address_value:
+                items, st = self.to_ac(e.left, st)
+                return items + [W(BIN_MNEMONIC[e.op], "HOMED-VALUE", cell(p), via=("EX-BIN", *_via(p)))], \
                     State(frozenset(), st.io)
             case ir.Binary():
                 items, st = self.to_ac(e.left, st)
@@ -1064,14 +1090,26 @@ class FunctionLowerer:
                 return self.call(e, st)
             case ir.Half(which="hi"):
                 return self.call(e.call, st)
+            case ir.IndirectCall(pointer=p, sig=sig, home=False) if sig.conv is ir.Conv.JSP and \
+                    isinstance(p.storage, ir.Memory):
+                return self.indirect_call(e, st)
             case ir.IndirectCall(pointer=p):
                 raise SelectError(f"a call through {p.name} is a jump: write `return {p.name}(...)`")
-            case ir.CodeRef(sig=sig, flags=0):
+            case ir.CodeRef(sig=sig, flags=0, word=False):
                 return [W("law", "EX-CODE", ir.Sym(sig.sym))], State(frozenset(), st.io)
             case ir.CodeRef(sig=sig, flags=flags):
                 return [W("lac", "EX-CODE", ir.Lit(ir.Sym(sig.sym, offset=flags)), note="address with flags")], \
                     State(frozenset(), st.io)
         raise SelectError(f"no rule puts {e} in AC")
+
+    def indirect_call(self, c: ir.IndirectCall, st: State):
+        """p(...) through a pointer word p to a JSP function: a register
+        argument already in IO, then `jsp i p`."""
+        for p, arg in zip(c.sig.params, c.args):
+            if not (isinstance(arg, ir.Var) and isinstance(arg.storage, ir.Io)):
+                raise SelectError(f"{c.pointer.name}: pass a register local for {p.name}")
+            self.need_io(arg, st)
+        return [W("jsp", "CALL-INDIRECT", mem(c.pointer), i=True, via=_via(c.pointer))], State()
 
     def byname_read(self) -> list[ir.Item]:
         """The first read is the cell R itself (`R, xct`, address patched by the
@@ -1086,6 +1124,8 @@ class FunctionLowerer:
     def const_ac(v: int) -> ir.Word:
         if v == 0:
             return W("cla", "EX-CONST-AC")
+        if v == ir.WORD_MASK:
+            return W("clc", "EX-CONST-AC", note="cla cma: -0")
         if v <= LAW_MAX:
             return W("law", "EX-CONST-AC", ir.Num(v))
         if v ^ ir.WORD_MASK <= LAW_MAX:

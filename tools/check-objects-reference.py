@@ -8,18 +8,16 @@ random number and the sense switches. In SIMH the cursors are the main
 loop's and the spaceship calc routine's instruction words and pool words,
 deposited with the slot's addresses; natively they are the C pointers,
 pointed into a table laid out as the machine's. Then the routine runs once,
-entered as the main loop enters it (`jsp`), or for the spaceship-in-star
-routine by a jump, with the spaceship calc routine's exit patched to
-return.
+entered as the main loop enters it (`jsp`).
 
 After each call the whole object table, the random number, the particle
-count, the heading pass count and the delay counter are compared, and for
+count and the heading pass count are compared, and for
 the explosion the two words it builds (the `xct` that picks the spread and
 the shift run in place); so is every point plotted, in order.
 
 Each routine gets seeded random objects plus edge states: counters about
 to expire and just past it, the hyperspace jump count and uncertainty at
-their limits, and sense switch 5 both ways.
+their limits.
 
 Usage: uv run python tools/check-objects-reference.py"""
 import random
@@ -91,11 +89,6 @@ def any_word(rng: random.Random) -> int:
     return rng.randrange(1 << 18)
 
 
-def short_wait(rng: random.Random) -> int:
-    """A cycle count whose count-up ends soon: positive, or down to -7777."""
-    return rng.choice([0o2000, rng.randrange(0o10000), neg(rng.randrange(0o10000))])
-
-
 def edges(base: State, field: int, values: list[int]) -> list[State]:
     return [State(base.slot, base.words[:field] + (v,) + base.words[field + 1:], base.ran) for v in values]
 
@@ -118,8 +111,6 @@ ROUTINES = [
     Routine("breakout", "", "jsp", True, any_word,
             ((9, [neg(1), MASK, 0, neg(0o10), 0o377777]),
              (11, [0, 0o340000, 0o377777, 0o400000, neg(0o40000), MASK]))),
-    Routine("spaceship_in_star", "pof", "jmp", True, short_wait,
-            ((4, [0, 1, MASK, neg(1), neg(5), 0o2000]),)),
 ]
 
 
@@ -150,8 +141,7 @@ def native(routine: Routine, unit: ir.Unit, address: dict[str, int], placed,
                + points + f"\n    random_number = word::bits(s[{len(PROPERTIES) + 1}]);\n}}\n")
     sig = unit.signatures[routine.name]
     return reference.build(LIFT, ROOT / "build/ref" / routine.name, reference.call_expr(sig),
-                           watch=watch, placed=placed, scratch=scratch, setup="pdp1_setup(ac);",
-                           bodies={"spaceship_done": "return;"})
+                           watch=watch, placed=placed, scratch=scratch, setup="pdp1_setup(ac);")
 
 
 def cursor_deposits(state: State, address: dict[str, int], image: dict[int, int]) -> dict[int, int]:
@@ -216,7 +206,7 @@ def main() -> int:
             states += edges(base, field, values)
         watch = [(f"table {a:05o}", a, f"pdp1_table[0{a - mtb:o}]") for a in range(mtb, nnn)]
         watch += [("ran", address["ran"], "random_number"), ("mxc", sym("particles"), "particles"),
-                  ("hpt", sym("angle_steps"), "angle_steps"), ("ssn", address["ssn"], "sine_step")]
+                  ("hpt", sym("angle_steps"), "angle_steps")]
         if routine.name == "explosion":
             msh = address[obj["spread_scale"].sym]
             watch += [("msh", msh, "word::bits(0100000 | pdp1_address(spread_scale))"),
@@ -224,10 +214,9 @@ def main() -> int:
         senses = [s & 0o77 for s in (rng.randrange(1 << 6) for _ in states)]
         calls = [Inputs(k, rng.randrange(1 << 18), 0, senses[k]) for k in range(len(states))]
         entry = address[routine.sym] if routine.sym else address[unit.signatures[routine.name].sym]
-        deposits = {address["srt"]: 0o600000 | simh.CALL + 1} if routine.op == "jmp" else {}
         want = simh.run_jda(ROOT / "build/pdp1", ROOT / "build/oracle.rim", entry, calls,
                             watch=[a for _, a, _ in watch], op=routine.op, display=display,
-                            deposits=deposits, each=[cursor_deposits(s, address, image) for s in states])
+                            each=[cursor_deposits(s, address, image) for s in states])
         got = reference.run(native(routine, unit, address, placed, states, [w for *_, w in watch]), calls)
         failed |= compare(f"{routine.name}", calls, want, got, [k for k, *_ in watch])
         print("  routine word after the call: " + outcomes(states, want, address, mtb))

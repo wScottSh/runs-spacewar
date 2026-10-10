@@ -29,6 +29,8 @@ flag   a program flag n (stf, clf, flag, I_STF, I_CLF, I_SZF) becomes n + 1:
 
 The flags c of `f | (word)c`, a function's address with flags above it,
 become c + 1, which sets an address bit: the edit is predicted refused.
+The mask m of a shift's count bits, I_SCL_BITS(w & m), becomes m + 1 as a
+const edit, predicted refused when m + 1 has a bit above the count field.
 
 A constant inside a constant expression (`8192 - 1537`, `0400 - 010`)
 changes the expression's value: the prediction is the const rewrite of the
@@ -92,6 +94,8 @@ LineCopies = dict[ir.Construct, str]
 def load_const(v: int) -> str:
     if v == 0:
         return "cla"
+    if v == MASK:
+        return "clc"
     if v <= LAW_MAX:
         return f"law {v:o}"
     if v ^ MASK <= LAW_MAX:
@@ -105,6 +109,7 @@ def chunks(n: int) -> list[str]:
 
 OCTAL = r"([0-7]+)"
 FORMS = [(re.compile(r"cla$"), "load", lambda m: 0),
+         (re.compile(r"clc$"), "load", lambda m: MASK),
          (re.compile(r"law i " + OCTAL + "$"), "load", lambda m: int(m.group(1), 8) ^ MASK),
          (re.compile(r"law " + OCTAL + "$"), "load", lambda m: int(m.group(1), 8)),
          (re.compile(r"lac \(" + OCTAL + "$"), "load", lambda m: int(m.group(1), 8)),
@@ -264,8 +269,8 @@ class Leaves:
 
     def __init__(self, unit: ir.Unit, ast: c_ast.FileAST):
         self.unit = unit
-        self.arrays = {name for name, d in (unit.data or {}).items() if d.array} | \
-            {t.name for t in unit.items if isinstance(t, ir.Space) and t.array}
+        self.arrays = {e.name for e in ast.ext
+                       if isinstance(e, c_ast.Decl) and isinstance(e.type, c_ast.ArrayDecl)}
         self.locals: dict[str, set[str]] = {}
         self.registers: dict[str, set[str]] = {}
         for ext in ast.ext:
@@ -352,6 +357,11 @@ def sites(ast: c_ast.FileAST, unit: ir.Unit) -> list[Site]:
             old = dialect.to_word(token, node)
             add(replace(const_site(index, node, old, old + 1), error="flags must lie above"))
             continue
+        if shift_mask(node, ctx):
+            old = dialect.to_word(token, node)
+            site = const_site(index, node, old, old + 1)
+            add(replace(site, error="the count bits are") if old + 1 & ~dialect.SHIFT_COUNT_FIELD else site)
+            continue
         if (place := array_place(node, ctx.get("ancestors", ()), leaves.arrays)) is not None:
             root, address = place
             sym = unit.objects[root].sym
@@ -432,6 +442,14 @@ def code_flags(node: c_ast.Node, ctx: dict, unit: ir.Unit) -> bool:
         isinstance(chain[-2], c_ast.BinaryOp) and chain[-2].op == "|" and \
         chain[-2].right is chain[-1] and isinstance(chain[-2].left, c_ast.ID) and \
         chain[-2].left.name in unit.signatures
+
+
+def shift_mask(node: c_ast.Node, ctx: dict) -> bool:
+    """The mask m of I_SCL_BITS(w & m) or I_SCL_BITS(m & w)."""
+    chain = [n for n, _ in ctx.get("ancestors", ())]
+    return len(chain) >= 3 and isinstance(chain[-1], c_ast.BinaryOp) and chain[-1].op == "&" and \
+        isinstance(chain[-2], c_ast.ExprList) and isinstance(chain[-3], c_ast.FuncCall) and \
+        isinstance(chain[-3].name, c_ast.ID) and chain[-3].name.name in dialect.INSN_SHIFT_BITS
 
 
 def field_arg(parent, ctx: dict, field: str) -> tuple[str, bool, int] | None:
