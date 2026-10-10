@@ -12,6 +12,10 @@ from .rules import check
 
 BIN_MNEMONIC = {"+": "add", "-": "sub", "&": "and", "|": "ior", "^": "xor"}
 SHIFT_MNEMONIC = {"<<": "sal", ">>": "sar"}
+IO_SHIFT_MNEMONIC = {"<<": "sil", ">>": "sir"}
+# The shift group, which xct runs; those that change IO need xct(w, hi, lo).
+AC_SHIFTS = {"ral", "rar", "sal", "sar"}
+PAIR_OR_IO_SHIFTS = {"rcl", "rcr", "scl", "scr", "ril", "rir", "sil", "sir"}
 LAW_MAX = (1 << 12) - 1
 SWAP_HALF = 9           # rcr 9s twice exchanges AC and IO
 MAX_PASSES = 20
@@ -51,7 +55,15 @@ class PointerBits:
     sym: str
 
 
-Fact = Local | Cell | AddressBits | PointerBits
+@dataclass(frozen=True)
+class Outer:
+    """A caller's local, carried through a static inline body: it lasts
+    while the body leaves that register alone, and no name in the body
+    can match it."""
+    fact: Local
+
+
+Fact = Local | Cell | AddressBits | PointerBits | Outer
 
 
 @dataclass(frozen=True)
@@ -68,11 +80,15 @@ class State:
 
 
 def _lasting(facts: frozenset[Fact]) -> frozenset[Fact]:
-    return frozenset(f for f in facts if isinstance(f, (Local, AddressBits)))
+    return frozenset(f for f in facts if isinstance(f, (Local, AddressBits, Outer)))
 
 
-def _without_locals(facts: frozenset[Fact]) -> frozenset[Fact]:
-    return frozenset(f for f in facts if not isinstance(f, Local))
+def _into_inline(facts: frozenset[Fact]) -> frozenset[Fact]:
+    return frozenset(Outer(f) if isinstance(f, Local) else f for f in facts)
+
+
+def _out_of_inline(facts: frozenset[Fact]) -> frozenset[Fact]:
+    return frozenset(f.fact if isinstance(f, Outer) else f for f in facts if not isinstance(f, Local))
 
 
 def meet(a: State | None, b: State | None) -> State | None:
@@ -111,7 +127,13 @@ def _via(v: ir.Var) -> tuple[str, ...]:
         return ("ST-POOL",)
     if isinstance(v.storage, ir.Homed):
         return ("ST-HOMED",)
+    if isinstance(v.storage, ir.HomedInsn):
+        return ("ST-HOMED-INSN",)
     return ()
+
+
+def _via_deref(d: ir.Deref) -> tuple[str, ...]:
+    return ("EX-DEREF",) + _via(d.pointer)
 
 
 def _via_operand(e: ir.Expr) -> tuple[str, ...]:
@@ -119,6 +141,8 @@ def _via_operand(e: ir.Expr) -> tuple[str, ...]:
     or an instruction constant (and a pool name inside it)."""
     if isinstance(e, ir.Var):
         return _via(e)
+    if isinstance(e, ir.Deref):
+        return _via_deref(e)
     if isinstance(e, ir.Insn):
         pool = isinstance(e.operand, ir.Sym) and e.operand.pool
         return ("EX-INSN",) + (("ST-POOL",) if pool else ())
@@ -322,6 +346,8 @@ class FunctionLowerer:
             case ir.AssignPair():
                 items, st = self.to_ac(s.value, st)
                 return items, State(frozenset({fact(s.hi)}), frozenset({fact(s.lo)}))
+            case ir.Eval(expr=ir.PreInc(target=ir.Deref() as d)):
+                return [self.through(d, "idx", "EX-INC")], self.after_store_through(st, frozenset())
             case ir.Eval(expr=ir.PreInc(target=t)):
                 return [W("idx", "EX-INC", cell(t), via=_via(t))], self.after_idx(t, st)
             case ir.Eval(expr=ir.Flag(op=op, n=n)):
@@ -374,6 +400,52 @@ class FunctionLowerer:
             case ir.ArgsDone():
                 return [W("idx", "ARGS", self.exit_cell())], State(frozenset(), st.io)
         raise SelectError(f"no rule for statement {s}")
+
+    @staticmethod
+    def through(d: ir.Deref, op: str, rule: str) -> ir.Word:
+        """op on the word d's pointer points to: the pointer's cell, indirect."""
+        return W(op, rule, cell(d.pointer), i=True, via=_via_deref(d))
+
+    @staticmethod
+    def after_store_through(st: State, ac: frozenset | None = None) -> State:
+        """A store through a pointer can change any word: keep register facts only."""
+        st = st.without_memory()
+        return State(st.ac if ac is None else ac, st.io)
+
+    def store_through(self, d: ir.Deref, value: ir.Expr, st: State):
+        """*p = e: dzm i p for 0, dio i p from a register local, else e; dac i p."""
+        if value == ir.Const(0):
+            return [self.through(d, "dzm", "EX-STORE-ZERO")], self.after_store_through(st)
+        if isinstance(value, ir.Var) and isinstance(value.storage, ir.Io):
+            self.need_io(value, st)
+            return [self.through(d, "dio", "EX-STORE-IO")], self.after_store_through(st)
+        items, st = self.to_ac(value, st)
+        return items + [self.through(d, "dac", "EX-STORE")], self.after_store_through(st)
+
+    def xct(self, x: ir.Xct, st: State):
+        """The argument into AC (and IO), then the instruction run: `xct (w`
+        for a constant, the home `p, xct .` of a HOMED pointer p, or the
+        HOMED insn itself, run where it stands. Only a constant shift of AC
+        is known to leave IO alone."""
+        items, st = self.to_ac(x.hi, st)
+        if x.lo is not None:
+            self.need_io(x.lo, st)
+        match x.insn:
+            case ir.Insn(op=op) as w:
+                if op not in AC_SHIFTS | PAIR_OR_IO_SHIFTS:
+                    raise SelectError(f"xct runs a shift; `{op}` is not one")
+                if x.lo is None and op in PAIR_OR_IO_SHIFTS:
+                    raise SelectError(f"xct of `{op}` changes IO: write xct(w, hi, lo)")
+                items.append(W("xct", "EX-XCT", ir.Lit(w), via=_via_operand(w)))
+            case ir.HomeLoad(pointer=p):
+                items += [ir.LabelDef(p.storage.sym),
+                          W("xct", "HOMED-HOME", home_address(p), via=("EX-XCT",) + _via(p))]
+            case ir.Var(storage=ir.HomedInsn(sym=sym, init=init)):
+                items += [ir.LabelDef(sym),
+                          W(None, "ST-HOMED-INSN", init, via=("EX-XCT",) + _via_operand(init),
+                            note="run in place")]
+        keeps_io = isinstance(x.insn, ir.Insn) and x.insn.op in AC_SHIFTS
+        return items, State(frozenset(), st.io if keeps_io else frozenset())
 
     @staticmethod
     def after_idx(t: ir.Var, st: State) -> State:
@@ -456,7 +528,7 @@ class FunctionLowerer:
                     raise SelectError(f"{c.sig.name}: pass a register local for {p.name}")
                 self.need_io(arg, st)
                 io.add(fact(var))
-        entry = State(_without_locals(st.ac) | ac, _without_locals(st.io) | io)
+        entry = State(_into_inline(st.ac) | ac, _into_inline(st.io) | io)
         body = _rename_labels(fn.body, self.namer)
         if not _ends_in_transfer(body):
             if c.sig.returns != "void":
@@ -476,7 +548,7 @@ class FunctionLowerer:
                  if isinstance(w, ir.Word) else w for w in words]
         if inst.exits:
             words.append(ir.LabelDef(inst.after))
-        return items + words, State(_without_locals(out.ac), _without_locals(out.io))
+        return items + words, State(_out_of_inline(out.ac), _out_of_inline(out.io))
 
     def store_next(self, s: ir.StoreNext, st: State):
         """*p++ = e: e from AC (dac i p) or from a register local (dio i p), then idx p."""
@@ -523,7 +595,9 @@ class FunctionLowerer:
     def exit_cell(self) -> ir.Sym:
         return ir.Sym((self.adopted or self.sig).exit_sym)
 
-    def assign(self, t: ir.Var, value: ir.Expr, st: State):
+    def assign(self, t: ir.Var | ir.Deref, value: ir.Expr, st: State):
+        if isinstance(t, ir.Deref):
+            return self.store_through(t, value, st)
         match t.storage:
             case ir.Acc():
                 items, st = self.to_ac(value, st)
@@ -566,6 +640,12 @@ class FunctionLowerer:
             case ir.HomeLoad(pointer=p):
                 return [ir.LabelDef(p.storage.sym), W("lio", "HOMED-HOME", home_address(p), via=_via(p))], \
                     State(st.ac - {kt}, frozenset({kt}))
+            case ir.Deref() as d:
+                return [self.through(d, "lio", "EX-LOAD-IO")], State(st.ac - {kt}, frozenset({kt}))
+            case ir.Shift(op=op, operand=v) if v == t:
+                self.need_io(v, st)
+                words = [W(IO_SHIFT_MNEMONIC[op], "EX-SHIFT", ir.ShiftCount(n)) for n in shift_chunks(value.count)]
+                return words, State(st.ac, frozenset({kt}))
             case ir.Hw(name="tyi"):
                 return [W("tyi", "EX-HW")], State(st.ac - {kt}, frozenset({kt}))
             case ir.Rot(op=op, operand=v) if op in ir.IO_ROTATES:
@@ -607,6 +687,8 @@ class FunctionLowerer:
             what = ("!" if c.negated else "") + f"sense({c.n})"
         elif c.against is not None:
             pre, after = self.to_ac(c.operand, st)
+            if isinstance(c.against, ir.Deref):
+                raise SelectError("compare with *p: load it first")
             operand = self.memory_operand(c.against)
             table = ("SKIP-SAME",) + _via_operand(c.against)
             skip_c = skips.same_skip_when(c.op)
@@ -616,7 +698,10 @@ class FunctionLowerer:
             t = c.operand.target
             pre: list[ir.Item] = []
             table = ()
-            after = State(frozenset({fact(t)}), st.io - {fact(t)})
+            if isinstance(t, ir.Deref):
+                after = self.after_store_through(st, frozenset())
+            else:
+                after = State(frozenset({fact(t)}), st.io - {fact(t)})
             skip_c = skips.isp_skip_when(c.op)
             skip_not_c = skips.isp_skip_when(skips.NEGATE[c.op])
         elif isinstance(c.operand, ir.Var) and isinstance(c.operand.storage, ir.Io):
@@ -634,6 +719,8 @@ class FunctionLowerer:
             what = f"{c.op} 0"
 
         def skip_word(op: str, rule: str) -> ir.Word:
+            if op == "isp" and isinstance(t, ir.Deref):
+                return replace(self.through(t, "isp", rule), note=f"++*{t.pointer.name} {c.op} 0")
             if op == "isp":
                 return W("isp", rule, mem(t), note=f"++{t.name} {c.op} 0", via=_via(t))
             return W(op, rule, operand, note=what, via=table)
@@ -842,6 +929,12 @@ class FunctionLowerer:
                 return [W("lac", "EX-LOAD", mem(e), via=_via(e))], State(frozenset({fact(e)}), st.io)
             case ir.Const(value=v):
                 return [self.const_ac(v)], State(frozenset(), st.io)
+            case ir.Deref() as d:
+                return [self.through(d, "lac", "EX-LOAD")], State(frozenset(), st.io)
+            case ir.PreInc(target=ir.Deref() as d):
+                return [self.through(d, "idx", "EX-INC")], self.after_store_through(st, frozenset())
+            case ir.Xct():
+                return self.xct(e, st)
             case ir.PreInc(target=t):
                 return [W("idx", "EX-INC", cell(t), via=_via(t))], self.after_idx(t, st)
             case ir.Neg():
@@ -849,8 +942,11 @@ class FunctionLowerer:
                 return items + [W("cma", "EX-UNARY")], State(frozenset(), st.io)
             case ir.Binary():
                 items, st = self.to_ac(e.left, st)
-                operand = self.memory_operand(e.right)
                 via = _via_operand(e.right)
+                if isinstance(e.right, ir.Deref):
+                    return items + [W(BIN_MNEMONIC[e.op], "EX-BIN", cell(e.right.pointer), i=True,
+                                      via=via)], State(frozenset(), st.io)
+                operand = self.memory_operand(e.right)
                 return items + [W(BIN_MNEMONIC[e.op], "EX-BIN", operand, via=via)], \
                     State(frozenset(), st.io)
             case ir.Shift():
@@ -870,8 +966,11 @@ class FunctionLowerer:
                 return self.call(e.call, st)
             case ir.IndirectCall(pointer=p):
                 raise SelectError(f"a call through {p.name} is a jump: write `return {p.name}(...)`")
-            case ir.CodeRef(sig=sig):
+            case ir.CodeRef(sig=sig, flags=0):
                 return [W("law", "EX-CODE", ir.Sym(sig.sym))], State(frozenset(), st.io)
+            case ir.CodeRef(sig=sig, flags=flags):
+                return [W("lac", "EX-CODE", ir.Lit(ir.Sym(sig.sym, offset=flags)), note="address with flags")], \
+                    State(frozenset(), st.io)
         raise SelectError(f"no rule puts {e} in AC")
 
     def byname_read(self) -> list[ir.Item]:

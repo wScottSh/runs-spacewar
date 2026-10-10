@@ -62,7 +62,7 @@ def placements(unit: ir.Unit, symbols: dict[str, int]) -> list[Placement]:
     listing places. unit must be lowered with the assembly's label prefix."""
     out = []
     for name, storage in unit.objects.items():
-        if isinstance(storage, (ir.Placed, ir.Pool)) and storage.sym in symbols:
+        if isinstance(storage, (ir.Placed, ir.Pool, ir.HomedInsn)) and storage.sym in symbols:
             out.append(Placement(f"&{name}", unit.words(name), symbols[storage.sym]))
     out += [Placement(f"&{name}", 1, symbols[s.sym], function=True)
             for name, s in unit.signatures.items() if s.sym in symbols]
@@ -157,11 +157,12 @@ def units(c_files: list[Path]) -> dict[Path, ir.Unit]:
     return {f: dialect.lower_unit(front.parse(f)) for f in c_files}
 
 
-def stub(sig: ir.Signature) -> str:
+def stub(sig: ir.Signature, body: str = "std::abort();") -> str:
     """A definition for a function the linked files declare but none defines:
-    an unlifted routine. The reference run must never reach it."""
+    an unlifted routine. The reference run must never reach it, unless the
+    check gives it a body that stands for the unlifted code."""
     params = ", ".join(native_param(p) for p in sig.params)
-    return f"{sig.returns} {sig.name}({params}) {{ std::abort(); }}\n"
+    return f"{sig.returns} {sig.name}({params}) {{ {body} }}\n"
 
 
 def call_expr(sig: ir.Signature, native: str | None = None) -> str:
@@ -169,7 +170,9 @@ def call_expr(sig: ir.Signature, native: str | None = None) -> str:
 
 
 def build(c_files: list[Path], out: Path, call: str, inline_words: int = 0, watch: list[str] = (),
-          placed: list[Placement] = (), scratch: str = "", setup: str = "") -> Path:
+          placed: list[Placement] = (), scratch: str = "", setup: str = "",
+          bodies: dict[str, str] | None = None) -> Path:
+    """bodies: a native body for an unlifted function the lifted code calls."""
     out.parent.mkdir(parents=True, exist_ok=True)
     parsed = units(c_files)
     sigs = {name: s for u in parsed.values() for name, s in u.signatures.items()}
@@ -186,10 +189,15 @@ def build(c_files: list[Path], out: Path, call: str, inline_words: int = 0, watc
         copy.write_text(f'#line 1 "{f.resolve()}"\n' + bind(f, mine))
         bound.append(copy)
     stubs = src / "stubs.h"
-    stubs.write_text("".join(stub(s) for name, s in sigs.items() if name not in defined)
+    bodies = bodies or {}
+    if unknown := bodies.keys() - (sigs.keys() - defined):
+        raise BindError(f"reference: bodies for {sorted(unknown)}, which are not unlifted functions")
+    stubs.write_text("".join(stub(s, *([bodies[name]] if name in bodies else []))
+                             for name, s in sigs.items() if name not in defined)
                      + scratch + symbol_table(list(placed)))
     watch_expr = "".join(f' printf(" %06o", pdp1_value({w}));' for w in watch)
     includes = [a for f in [cells, *bound, stubs] for a in ("-include", str(f))]
+    includes += [a for d in sorted({f.resolve().parent for f in c_files}) for a in ("-iquote", str(d))]
     subprocess.run(
         ["g++", "-std=c++14", "-O2", "-Wall", "-Wno-register", "-Wno-unused-label", "-Wno-array-bounds",
          "-Werror",

@@ -27,12 +27,12 @@ FLAG_OPS = {"stf", "clf"}
 INSN_MEMORY = {f"I_{m.upper()}": m for m in
                ("lac", "lio", "dac", "dio", "add", "sub", "and", "xor", "jmp", "idx")}
 INSN_FLAG = {"I_STF": "stf", "I_CLF": "clf", "I_SZF": "szf"}
-INSN_SHIFT = {"I_RCL": "rcl", "I_RAL": "ral"}
-INSN_CONSTANT = {"I_CMA": ir.Insn("cma"),
+INSN_SHIFT = {"I_RCL": "rcl", "I_RAL": "ral", "I_SCL": "scl", "I_SCR": "scr", "I_SAR": "sar"}
+INSN_CONSTANT = {"I_CMA": ir.Insn("cma"), "I_HLT": ir.Insn("hlt"),
                  "I_IOH": ir.Insn("iot", None, True),         # ioh: iot i, wait for completion
                  "I_DPY_NOWAIT": ir.Insn(ir.DPY_NOWAIT)}
 MAX_FLAG = 7                        # flag 7 names all six program flags
-MAX_INSN_SHIFT = 9                  # one shift instruction moves 1..9 places
+MAX_INSN_SHIFT = 9                  # one shift instruction moves 0..9 places
 MACRO_SYMBOL = re.compile(r"[a-z][a-z0-9]{0,%d}" % (MACRO_SYMBOL_LEN - 1))
 
 
@@ -82,6 +82,11 @@ def _base_type(t: c_ast.Node) -> str | None:
         name = " ".join(t.type.names)
         return "word" if name in WORD_TYPES else name
     return None
+
+
+def _is_insn(t: c_ast.Node) -> bool:
+    return isinstance(t, c_ast.TypeDecl) and isinstance(t.type, c_ast.IdentifierType) \
+        and t.type.names == ["insn"]
 
 
 def _word_type(t: c_ast.Node) -> str | None:
@@ -285,6 +290,12 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
                 raise _err(ext, f"{ext.name}: ENTRY_CELL names a JDA function with an AC "
                                 "parameter, declared above")
             globals_[ext.name] = ir.Entry(owner.sym, alias=True)
+        elif "homed" in attrs and _is_insn(ext.type):
+            if ext.init is None or not is_insn(ext.init, sigs):
+                raise _err(ext, f"{ext.name}: a HOMED insn is the instruction at its home; "
+                                "initialize it with the instruction it holds first")
+            globals_[ext.name] = ir.HomedInsn(_symbol(ext.name, attrs, namer, ext),
+                                         insn(ext.init, _Scope(globals_), sigs, arrays))
         elif "pool" in attrs or "homed" in attrs:
             if ext.init is not None and ("pool" in attrs or _word_type(ext.type) != "word*"):
                 raise _err(ext, f"{ext.name}: a POOL object or a HOMED word has no initializer")
@@ -337,7 +348,7 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
             items.append(ir.RegionBreak())
         elif isinstance(ext, c_ast.Decl) and not _is_function(ext.type) and not _in_header(ext):
             attrs = _attrs(ext)
-            if isinstance(globals_[ext.name], ir.Homed):
+            if isinstance(globals_[ext.name], (ir.Homed, ir.HomedInsn)):
                 continue
             if ext.init is None and "reserve" not in attrs:
                 if "at" in attrs:
@@ -462,9 +473,9 @@ def insn(node: c_ast.Node, scope: _Scope, sigs: dict[str, ir.Signature],
             raise _err(node, f"{name}({n}): program flags are 1..6, and 7 for all")
         return ir.Insn(INSN_FLAG[name], ir.Num(n))
     if name in INSN_SHIFT:
-        if not 1 <= n <= MAX_INSN_SHIFT:
-            raise _err(node, f"{name}({n}): one instruction shifts 1..9 places")
-        return ir.Insn(INSN_SHIFT[name], ir.ShiftCount(n))
+        if not 0 <= n <= MAX_INSN_SHIFT:
+            raise _err(node, f"{name}({n}): one instruction shifts 0..9 places")
+        return ir.Insn(INSN_SHIFT[name], ir.ShiftCount(n) if n else None)
     raise _err(node, f"{name} is not an instruction constructor")
 
 
@@ -598,6 +609,8 @@ class _Lowerer:
                 if var is None or not isinstance(var.storage, ir.Memory):
                     raise _err(node, "x.addr = e needs a word x in memory")
                 return ir.AssignAddr(var, self.expr(node.rvalue))
+            case c_ast.Assignment(op="=", lvalue=c_ast.UnaryOp(op="*")):
+                return ir.Assign(self.lvalue(node.lvalue), self.expr(node.rvalue))
             case c_ast.Assignment(op="=", lvalue=c_ast.ID()) if self._homed(node.lvalue.name):
                 return ir.AssignAddr(self.scope.lookup(node.lvalue), self.expr(node.rvalue))
             case c_ast.Assignment(op="="):
@@ -724,7 +737,9 @@ class _Lowerer:
         return (self.scope.lookup(c_ast.ID(node.name + ".hi", node.coord)),
                 self.scope.lookup(c_ast.ID(node.name + ".lo", node.coord)))
 
-    def lvalue(self, node: c_ast.Node) -> ir.Var:
+    def lvalue(self, node: c_ast.Node) -> ir.Var | ir.Deref:
+        if isinstance(node, c_ast.UnaryOp) and node.op == "*":
+            return self.deref(node)
         if isinstance(node, c_ast.StructRef) and node.type == "." and isinstance(node.name, c_ast.ID) \
                 and node.name.name in self.scope.pairs and node.field.name in ("hi", "lo"):
             return self.scope.lookup(c_ast.ID(f"{node.name.name}.{node.field.name}", node.coord))
@@ -785,6 +800,11 @@ class _Lowerer:
                 if var is None or not isinstance(var.storage, ir.Homed):
                     raise _err(node, "*home(p) names a HOMED pointer p")
                 return ir.HomeLoad(var)
+            case c_ast.UnaryOp(op="*"):
+                return self.deref(node)
+            case c_ast.BinaryOp(op="|", left=c_ast.ID()) if node.left.name in self.sigs \
+                    and not self._is_variable(node.left.name):
+                return self.code_flags(node)
             case c_ast.ID() if node.name in self.arrays and not self._is_local(node.name):
                 return ir.AddrOf(_operand_of(node, self.scope, self.sigs, self.arrays))
             case c_ast.UnaryOp(op="&", expr=c_ast.ID()):
@@ -817,6 +837,37 @@ class _Lowerer:
             case c_ast.FuncCall(name=c_ast.ID(name=name)):
                 return self.call(node, name)
         raise _err(node, f"expression {type(node).__name__} is not in the implemented dialect yet")
+
+    def deref(self, node: c_ast.UnaryOp) -> ir.Deref:
+        """*p for a pointer p held in a memory word or in a homed address field."""
+        var = self.scope.lookup(node.expr) if isinstance(node.expr, c_ast.ID) else None
+        if var is None or not isinstance(var.storage, ir.Memory + (ir.Homed,)) \
+                or isinstance(var.storage, ir.HomedInsn):
+            raise _err(node, "*p reads through a pointer p held in memory or a homed address field")
+        return ir.Deref(var)
+
+    def code_flags(self, node: c_ast.BinaryOp) -> ir.CodeRef:
+        """f | c: a function's address with flag bits c above the address field."""
+        flags = const_word(node.right)
+        if flags & ir.ADDR_MASK:
+            raise _err(node, f"{node.left.name} | {flags:o}: the flags must lie above the "
+                             "address field (no bits in 07777)")
+        return ir.CodeRef(self.sigs[node.left.name], flags)
+
+    def xct(self, node: c_ast.FuncCall, args: list[c_ast.Node]) -> ir.Xct:
+        """xct(w, a) runs instruction word w on AC; xct(w, hi, lo) on AC:IO.
+        w is an instruction constant, *home(p) for a HOMED pointer p (the
+        `xct .` that holds p), or a HOMED insn (the word itself, run in place)."""
+        if len(args) not in (2, 3):
+            raise _err(node, "xct(w, a) or xct(w, hi, lo)")
+        w = self.expr(args[0])
+        if not (isinstance(w, (ir.Insn, ir.HomeLoad))
+                or (isinstance(w, ir.Var) and isinstance(w.storage, ir.HomedInsn))):
+            raise _err(node, "xct runs an instruction constant, *home(p) or a HOMED insn")
+        lo = self.lvalue(args[2]) if len(args) == 3 else None
+        if lo is not None and not (isinstance(lo, ir.Var) and isinstance(lo.storage, ir.Io)):
+            raise _err(node, "xct(w, hi, lo): lo is a register local")
+        return ir.Xct(w, self.expr(args[1]), lo)
 
     def home_word(self, node: c_ast.FuncCall, op: str) -> ir.HomeWord | None:
         args = node.args.exprs if node.args else []
@@ -855,6 +906,8 @@ class _Lowerer:
             if not 0 <= intensity <= MAX_INTENSITY:
                 raise _err(node, "dpy(x, y, n): the intensity n is 0..7")
             return ir.Dpy(self.expr(args[0]), self.lvalue(args[1]), intensity)
+        if name == "xct" and _builtin(name, self.sigs):
+            return self.xct(node, args)
         if name in self.pointers and self._is_variable(name):
             sig = self.pointers[name]
             if len(args) != len(sig.params):

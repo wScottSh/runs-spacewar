@@ -8,7 +8,12 @@ counts as a change: the hint was needed.
 
 SYM is the exception: deleting it always renames a label, so that test
 cannot catch a stale one. A SYM earns its place while unlifted source text
-still names the symbol it pins; the gate fails when nothing unlifted does."""
+still names the symbol it pins, or while another lifted file pins the same
+symbol: the two files name one object, and without the pin each would give
+it a symbol of its own. The gate fails when neither holds.
+
+A header the files include with `#include "x.h"` is checked too: a hint
+deleted there must change the output of some file that includes it."""
 from __future__ import annotations
 
 import re
@@ -25,6 +30,7 @@ HINT = re.compile(r"\b(?:PLACE|ARGS_DONE)\s*\([^()]*\)\s*;"
                   r"|\b(?:JDA|BLOCK|BYNAME|INLINE|XCT|JSP|POOL|HOMED|RESERVE|register|home)\b")
 COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
 DIRECTIVE = re.compile(r"^[ \t]*#[^\n]*", re.M)
+INCLUDE = re.compile(r'^[ \t]*#[ \t]*include[ \t]+"([^"]+)"', re.M)
 
 
 @dataclass(frozen=True)
@@ -54,14 +60,36 @@ def output(path: Path) -> str:
         return f"error: {e}"
 
 
-def without(h: Hint) -> str:
-    """The output with hint h deleted. The copy sits next to the original so
-    that its #include lines resolve the same way."""
+def without(h: Hint, includers: tuple[Path, ...] = ()) -> str | tuple[str, ...]:
+    """The output with hint h deleted: of h's file, or for a header, of each
+    file that includes it. Copies sit next to the originals so that their
+    #include lines resolve the same way."""
     text = h.path.read_text()
-    with tempfile.NamedTemporaryFile("w", suffix=".c", dir=h.path.parent, prefix=".g5-") as f:
+    with tempfile.NamedTemporaryFile("w", suffix=h.path.suffix, dir=h.path.parent, prefix=".g5-") as f:
         f.write(text[:h.start] + text[h.end:])
         f.flush()
+        if not includers:
+            return output(Path(f.name))
+        return tuple(including(c, h.path.name, Path(f.name)) for c in includers)
+
+
+def including(c: Path, header: str, replacement: Path) -> str:
+    """The output of c with its #include of header naming replacement instead."""
+    text = INCLUDE.sub(lambda m: m.group(0).replace(m.group(1), str(replacement))
+                       if m.group(1) == header else m.group(0), c.read_text())
+    with tempfile.NamedTemporaryFile("w", suffix=".c", dir=c.parent, prefix=".g5-") as f:
+        f.write(text)
+        f.flush()
         return output(Path(f.name))
+
+
+def headers_of(files: list[Path]) -> dict[Path, tuple[Path, ...]]:
+    """Each quoted header the files include, with the files that include it."""
+    out: dict[Path, list[Path]] = {}
+    for f in files:
+        for name in INCLUDE.findall(f.read_text()):
+            out.setdefault((f.parent / name).resolve(), []).append(f)
+    return {h: tuple(cs) for h, cs in out.items()}
 
 
 def pinned(h: Hint) -> str | None:
@@ -69,22 +97,31 @@ def pinned(h: Hint) -> str | None:
     return m.group(1) if m else None
 
 
-def stale(h: Hint, unlifted: str) -> bool:
-    """unlifted: the source text no region covers, comments removed."""
-    return not re.search(rf"(?<!\w){pinned(h)}(?!\w)", unlifted)
+def stale(h: Hint, unlifted: str, pins: dict[Path, set[str]]) -> bool:
+    """unlifted: the source text no region covers, comments removed. pins:
+    the symbols each file's SYMs pin."""
+    shared = any(pinned(h) in syms for f, syms in pins.items() if f != h.path)
+    return not shared and not re.search(rf"(?<!\w){pinned(h)}(?!\w)", unlifted)
 
 
 def gate(files: list[Path], unlifted: str) -> int:
+    headers = headers_of(files)
+    files = files + list(headers)
     hints = [h for f in files for h in hints_in(f)]
     syms = [h for h in hints if pinned(h)]
+    pins: dict[Path, set[str]] = {}
+    for h in syms:
+        pins.setdefault(h.path, set()).add(pinned(h))
     others = [h for h in hints if not pinned(h)]
+    sources = [f for f in files if f not in headers]
     with ProcessPoolExecutor() as pool:
-        base = dict(zip(files, pool.map(output, files)))
-        changed = list(pool.map(without, others))
+        base: dict[Path, str | tuple[str, ...]] = dict(zip(sources, pool.map(output, sources)))
+        base |= {h: tuple(base[c] for c in cs) for h, cs in headers.items()}
+        changed = list(pool.map(without, others, [headers.get(h.path, ()) for h in others]))
     bad = {h: "deleting it leaves the output unchanged"
            for h, out in zip(others, changed) if out == base[h.path]}
     bad |= {h: "no unlifted source text names the symbol it pins"
-            for h in syms if stale(h, unlifted)}
+            for h in syms if stale(h, unlifted, pins)}
     for f in files:
         mine = [h for h in hints if h.path == f]
         lines = f.read_text().count("\n") or 1

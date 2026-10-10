@@ -15,5 +15,11 @@ PREDEFINED = frozenset({
 })
 
 
+# macro1 reads a symbol it has not seen defined as any pseudo-op that shares
+# its first three characters (`lookup`), so `\state` is `start`.
+PSEUDO_PREFIXES = frozenset(p[:3] for p in ("consta", "define", "repeat", "start", "variab", "text",
+                                            "noinpu", "expung", "charac", "decima", "flexo", "octal"))
+
+
 def predefined(sym: str) -> bool:
-    return sym[:6] in PREDEFINED
+    return sym[:6] in PREDEFINED or sym[:3] in PSEUDO_PREFIXES

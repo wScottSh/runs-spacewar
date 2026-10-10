@@ -46,7 +46,8 @@ def built_symbols() -> dict[str, int]:
     if not lst.exists() or hashlib.sha256(rim.read_bytes()).hexdigest() != cfg["oracle_sha256"]:
         raise SystemExit("build/lift does not hold a build matching the oracle: "
                          "run `uv run pdp1cc build lift.toml`")
-    if any(f.stat().st_mtime > lst.stat().st_mtime for f in [toml, *(r.c for r in regions)]):
+    lifted = [toml, *(r.c for r in regions), *(ROOT / "lift").glob("*.h")]
+    if any(f.stat().st_mtime > lst.stat().st_mtime for f in lifted):
         raise SystemExit("build/lift is older than the lifted C: run `uv run pdp1cc build lift.toml`")
     return splice.symbols(lst.read_text(errors="replace"))
 
