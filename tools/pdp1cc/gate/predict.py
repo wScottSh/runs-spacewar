@@ -256,8 +256,8 @@ class Leaves:
             return None
         sig = self.unit.signatures.get(function)
         if sig is not None and any(p.name == node.name for p in sig.params):
-            entry = next((p for p in sig.params if p.kind == "ac"), None)
-            return sig.sym if sig.conv == "jda" and entry and entry.name == node.name else None
+            entry = next((p for p in sig.params if p.kind is ir.ParamKind.AC), None)
+            return sig.sym if sig.conv is ir.Conv.JDA and entry and entry.name == node.name else None
         storage = self.unit.objects.get(node.name)
         return storage.sym if isinstance(storage, ir.Memory) else None
 
@@ -457,7 +457,7 @@ def refuse_lengthening(site: Site, unit: ir.Unit, function: str | None, ctx: dic
     if site.kind != "count" or len(chunks(site.n + 1)) <= len(chunks(site.n)):
         return site
     sig = unit.signatures.get(function or "")
-    if sig is not None and sig.conv == "xct":
+    if sig is not None and sig.conv is ir.Conv.XCT:
         return replace(site, error="must lower to exactly one word")
     if ctx.get("in_duff_case") or function in ctx.get("duff_inlines", ()):
         return replace(site, error="power of two of words")

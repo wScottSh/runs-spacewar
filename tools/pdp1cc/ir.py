@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Union
 
 WORD_BITS = 18
@@ -121,10 +122,30 @@ class PairOp:           # rcl(h, l, n) / mus(h, l, m) etc: h in AC, l in IO, bot
     operand: Expr | None = None     # memory operand of a multiply/divide step
 
 
+class Conv(Enum):
+    """How a function is entered and left."""
+    JDA = "jda"
+    JSP = "jsp"
+    XCT = "xct"
+    BLOCK = "block"
+    INLINE = "inline"   # static inline: laid out at each call, no entry of its own
+
+
+class ParamKind(Enum):
+    AC = "ac"           # in AC (a JDA function's entry word)
+    IO = "io"           # a register parameter, in IO
+    BYNAME = "byname"   # the caller's word after the call, fetched with xct
+    INLINE = "inline"   # the constant word after the call
+
+    @property
+    def after_call(self) -> bool:
+        return self in (ParamKind.BYNAME, ParamKind.INLINE)
+
+
 @dataclass(frozen=True)
 class Param:
     name: str
-    kind: str           # "ac": entry word / AC, "io": register, "byname" / "inline": a word after the call
+    kind: ParamKind
     pointer: bool = False
 
 
@@ -132,7 +153,7 @@ class Param:
 class Signature:
     name: str           # C name
     sym: str            # Macro symbol of the entry
-    conv: str
+    conv: Conv
     params: tuple[Param, ...]
     returns: str        # "word" | "word*" | "dword" | "void"
     exit_sym: str       # the cell returns go through: exit `jmp .` or the by-name `xct`
@@ -140,12 +161,12 @@ class Signature:
     @property
     def inline_count(self) -> int:
         """Words after the call that the function returns past."""
-        return sum(p.kind in ("byname", "inline") for p in self.params)
+        return sum(p.kind.after_call for p in self.params)
 
     @property
     def byname(self) -> bool:
         """Returns through the by-name `xct` cell (`jmp i R`), not an exit `jmp .`."""
-        return any(p.kind == "byname" for p in self.params)
+        return any(p.kind is ParamKind.BYNAME for p in self.params)
 
 
 @dataclass(frozen=True)

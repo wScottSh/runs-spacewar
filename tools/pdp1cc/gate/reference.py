@@ -29,14 +29,15 @@ from .simh import Inputs, Outcome
 HEADER = Path(__file__).parent.parent / "include" / "pdp1.h"
 DRIVER = Path(__file__).parent / "driver.cpp"
 COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
-INPUT = {"ac": "ac", "io": "io", "byname": "byname", "inline": "byname"}
+INPUT = {ir.ParamKind.AC: "ac", ir.ParamKind.IO: "io", ir.ParamKind.BYNAME: "byname",
+         ir.ParamKind.INLINE: "byname"}
 
 
 def native_param(p: ir.Param) -> str:
-    if p.kind == "byname":
+    if p.kind is ir.ParamKind.BYNAME:
         return "const word &"
     if p.pointer:
-        return "const word *" if p.kind == "inline" else "word *"
+        return "const word *" if p.kind is ir.ParamKind.INLINE else "word *"
     return "word"
 
 
@@ -103,9 +104,9 @@ REWRITES = (
 
 def entry(sig: ir.Signature) -> ir.Param | None:
     """The parameter a JDA call stores in the entry word."""
-    if sig.conv != "jda":
+    if sig.conv is not ir.Conv.JDA:
         return None
-    return next((p for p in sig.params if p.kind == "ac"), None)
+    return next((p for p in sig.params if p.kind is ir.ParamKind.AC), None)
 
 
 class BindError(ValueError):

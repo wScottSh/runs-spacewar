@@ -28,9 +28,9 @@ def random_pairs(seed: int, n: int) -> list[Inputs]:
 def main() -> int:
     sigs = dialect.lower_unit(front.parse(ROOT / LIFT)).signatures
     failed = 0
-    for n, sig in enumerate(s for s in sigs.values() if s.conv == "xct"):
+    for n, sig in enumerate(s for s in sigs.values() if s.conv is ir.Conv.XCT):
         kinds = [p.kind for p in sig.params]
-        if kinds == ["ac"]:
+        if kinds == [ir.ParamKind.AC]:
             calls, domain = every_word(n), "every AC word"
         elif kinds == []:
             calls, domain = random_pairs(n, 1000), "1000 seeded random AC:IO pairs"

@@ -229,7 +229,7 @@ class FunctionLowerer:
     # ------------------------------------------------------------ function
     def lower(self) -> list[ir.Item]:
         fn = self.fn
-        if fn.sig.conv == "jsp" and (target := _forwarded(fn.body)) is not None:
+        if fn.sig.conv is ir.Conv.JSP and (target := _forwarded(fn.body)) is not None:
             return self.forward(target)
         tails = _tail_calls(fn.body)
         jumps = [r for r in _returns(fn.body) if isinstance(r.value, ir.IndirectCall)]
@@ -274,7 +274,7 @@ class FunctionLowerer:
             self.strides_prev = dict(self.strides_out)
         else:
             raise SelectError(f"{fn.sig.name}: label states did not converge")
-        if fn.sig.conv == "xct":
+        if fn.sig.conv is ir.Conv.XCT:
             return self.xct_body(items)
         return items
 
@@ -299,12 +299,12 @@ class FunctionLowerer:
 
     def header(self) -> list[ir.Item]:
         items: list[ir.Item] = [ir.LabelDef(self.sig.sym)]
-        if self.sig.conv == "jda":
+        if self.sig.conv is ir.Conv.JDA:
             exit_sym = (self.adopted or self.sig).exit_sym
             items += [W(None, "JDA-ENTRY", ir.Num(0), note="entry word = parameter"),
                       W("dap", "JDA-PROLOGUE", ir.Sym(exit_sym),
                         via=("LAY-ADOPT",) if self.adopted else ())]
-        elif self.sig.conv == "jsp":
+        elif self.sig.conv is ir.Conv.JSP:
             exit_sym = (self.adopted or self.sig).exit_sym
             items.append(W("dap", "JSP-PROLOGUE", ir.Sym(exit_sym),
                            via=("LAY-ADOPT",) if self.adopted else ()))
@@ -313,7 +313,7 @@ class FunctionLowerer:
     def entry_state(self) -> State:
         ac = frozenset(Local(p.name) for p in self.fn.params if isinstance(p.storage, ir.Acc))
         io = frozenset(Local(p.name) for p in self.fn.params if isinstance(p.storage, ir.Io))
-        return State(ac if self.sig.conv in ("block", "xct") else frozenset(), io)
+        return State(ac if self.sig.conv in (ir.Conv.BLOCK, ir.Conv.XCT) else frozenset(), io)
 
     # ----------------------------------------------------------- statements
     def stmt(self, s: ir.Stmt, st: State | None) -> tuple[list[ir.Item], State | None]:
@@ -464,7 +464,7 @@ class FunctionLowerer:
         items: list[ir.Item] = []
         ac, io = set(), set()
         for p, var, arg in zip(c.sig.params, fn.params, c.args):
-            if p.kind == "ac":
+            if p.kind is ir.ParamKind.AC:
                 more, st = self.to_ac(arg, st)
                 items += more
                 ac.add(fact(var))
@@ -706,12 +706,12 @@ class FunctionLowerer:
     def return_(self, s: ir.Return, st: State):
         if self.instances:
             return self.instance_return(s, st)
-        if isinstance(s.value, ir.Call) and s.value.sig.conv == "block":
+        if isinstance(s.value, ir.Call) and s.value.sig.conv is ir.Conv.BLOCK:
             return self.tail_call(s.value, st, s is self.final)
         if isinstance(s.value, ir.IndirectCall):
             return self.indirect_tail_call(s.value, st)
         items, st = self.return_value(s, st)
-        if self.sig.conv == "xct":
+        if self.sig.conv is ir.Conv.XCT:
             return items, None
         if self.sig.byname:
             return items + [W("jmp", "RET-INDIRECT", self.exit_cell(), i=True)], None
@@ -722,7 +722,7 @@ class FunctionLowerer:
     def instance_return(self, s: ir.Return, st: State):
         inst = self.instances[-1]
         if isinstance(s.value, ir.IndirectCall) or \
-                (isinstance(s.value, ir.Call) and s.value.sig.conv == "block"):
+                (isinstance(s.value, ir.Call) and s.value.sig.conv is ir.Conv.BLOCK):
             raise SelectError(f"{inst.sig.name}: a static inline function cannot tail-call")
         items, st = self.return_value(s, st)
         if s is inst.final:
@@ -747,7 +747,7 @@ class FunctionLowerer:
 
     def indirect_tail_call(self, c: ir.IndirectCall, st: State):
         """return p(...): the arguments, then a jump through p."""
-        if c.sig.conv != "block":
+        if c.sig.conv is not ir.Conv.BLOCK:
             raise SelectError(f"a tail call through {c.pointer.name} needs a BLOCK function type")
         items, _ = self.block_args(c.sig, c.args, st)
         return items + [W("jmp", "TAIL-CALL-INDIRECT", mem(c.pointer), i=True)], None
@@ -755,10 +755,10 @@ class FunctionLowerer:
     def block_args(self, sig: ir.Signature, args, st: State):
         items: list[ir.Item] = []
         for p, arg in zip(sig.params, args):
-            if p.kind == "ac":
+            if p.kind is ir.ParamKind.AC:
                 more, st = self.to_ac(arg, st)
                 items += more
-            elif p.kind == "io":
+            elif p.kind is ir.ParamKind.IO:
                 if not (isinstance(arg, ir.Var) and isinstance(arg.storage, ir.Io)):
                     raise SelectError(f"{sig.name}: pass a register local for {p.name}")
                 self.need_io(arg, st)
@@ -776,27 +776,27 @@ class FunctionLowerer:
     def call(self, c: ir.Call, st: State) -> tuple[list[ir.Item], State]:
         """A JDA, JSP or XCT call: AC argument, the call word, then for JDA one
         inline word per BYNAME argument."""
-        if c.sig.conv == "block":
+        if c.sig.conv is ir.Conv.BLOCK:
             raise SelectError(f"{c.sig.name} is a BLOCK: only `return {c.sig.name}(...)` enters it")
-        if c.sig.conv == "inline":
+        if c.sig.conv is ir.Conv.INLINE:
             return self.inline_call(c, st)
         items: list[ir.Item] = []
         args = dict(zip((p.kind for p in c.sig.params), c.args))
-        if "ac" in args:
-            items, st = self.to_ac(args["ac"], st)
-        if "io" in args:
-            arg = args["io"]
+        if ir.ParamKind.AC in args:
+            items, st = self.to_ac(args[ir.ParamKind.AC], st)
+        if ir.ParamKind.IO in args:
+            arg = args[ir.ParamKind.IO]
             if not (isinstance(arg, ir.Var) and isinstance(arg.storage, ir.Io)):
                 raise SelectError(f"{c.sig.name}: pass a register local as the IO argument")
             self.need_io(arg, st)
-        op, rule = {"jda": ("jda", "JDA-CALL"), "jsp": ("jsp", "JSP-CALL"),
-                    "xct": ("xct", "XCT-CALL")}[c.sig.conv]
+        op, rule = {ir.Conv.JDA: ("jda", "JDA-CALL"), ir.Conv.JSP: ("jsp", "JSP-CALL"),
+                    ir.Conv.XCT: ("xct", "XCT-CALL")}[c.sig.conv]
         items.append(W(op, rule, ir.Sym(c.sig.sym)))
         for p, arg in zip(c.sig.params, c.args):
-            if p.kind == "byname":
+            if p.kind is ir.ParamKind.BYNAME:
                 via = _via(arg) if isinstance(arg, ir.Var) else ()
                 items.append(W("lac", "JDA-BYNAME-ARG", self.memory_operand(arg), via=via))
-            elif p.kind == "inline":
+            elif p.kind is ir.ParamKind.INLINE:
                 items.append(W(None, "JDA-INLINE-ARG", self.inline_word(arg)))
         if self.keeps_io.get(c.sig.sym):
             return items, State(frozenset(), st.registers_only().io)
@@ -877,7 +877,7 @@ class FunctionLowerer:
                 items, st = self.to_ac(e.operand, st)
                 words = [W(op, "EX-ROT", ir.ShiftCount(n)) for n in shift_chunks(e.count)]
                 return items + words, State(frozenset(), st.io)
-            case ir.Call() if e.sig.returns in ("word", "word*", "dword") and e.sig.conv == "inline":
+            case ir.Call() if e.sig.returns in ("word", "word*", "dword") and e.sig.conv is ir.Conv.INLINE:
                 return self.inline_call(e, st)
             case ir.Call() if e.sig.returns in ("word", "word*", "dword"):
                 return self.call(e, st)
@@ -944,7 +944,7 @@ def hardware_after(name: str, st: State) -> State:
 def _forwarded(body: ir.Block) -> ir.Call | None:
     """g(...) when the whole body is `return g(...)` for a JSP g."""
     if len(body.stmts) == 1 and isinstance(r := body.stmts[0], ir.Return) \
-            and isinstance(r.value, ir.Call) and r.value.sig.conv == "jsp":
+            and isinstance(r.value, ir.Call) and r.value.sig.conv is ir.Conv.JSP:
         return r.value
     return None
 
@@ -981,7 +981,7 @@ def _returns(node) -> list[ir.Return]:
 
 def _tail_calls(node) -> list[ir.Return]:
     return [r for r in _returns(node)
-            if isinstance(r.value, ir.Call) and r.value.sig.conv == "block"]
+            if isinstance(r.value, ir.Call) and r.value.sig.conv is ir.Conv.BLOCK]
 
 
 def hardware_word(name: str) -> ir.Word:

@@ -15,8 +15,8 @@ BIN_OPS = {"+", "-", "&", "|", "^"}
 MACRO_SYMBOL_LEN = 6
 CMP_OPS = {"<", ">=", "==", "!=", "<=", ">"}
 ATTR = re.compile(r"pdp1_(\w+)(?:\((.*)\))?$")
-CONVS = {"jda", "block", "xct", "jsp"}
-ATTRIBUTES = CONVS | {"byname", "inline", "sym", "entry_cell", "at", "reserve", "pool", "homed"}
+CONVS = {c.value: c for c in ir.Conv if c is not ir.Conv.INLINE}     # by attribute name
+ATTRIBUTES = CONVS.keys() | {"byname", "inline", "sym", "entry_cell", "at", "reserve", "pool", "homed"}
 HARDWARE = {"tyi", "lsm", "ioh"}    # builtins that are one instruction with no operand
 DISPLAY = {"dpy", "dpy_nowait"}
 MAX_SENSE = 6
@@ -185,16 +185,16 @@ def _symbol(name: str, attrs: dict[str, str], namer: Namer, node: c_ast.Node) ->
 def _signature(decl: c_ast.Decl, namer: Namer, symbol: bool = True) -> ir.Signature:
     """symbol=False: a function type (typedef), which has no entry of its own."""
     attrs = _attrs(decl)
-    convs = CONVS & attrs.keys()
+    convs = [CONVS[a] for a in attrs if a in CONVS]
     if "inline" in (getattr(decl, "funcspec", None) or []) and "static" in decl.storage:
         if convs:
             raise _err(decl, f"{decl.name}: a static inline function is laid out at each call; "
                              "it has no calling convention")
-        convs = {"inline"}
+        convs = [ir.Conv.INLINE]
     if len(convs) != 1:
         raise _err(decl, f"{decl.name}: a function needs exactly one calling convention "
                          "(JDA, JSP, XCT or BLOCK)")
-    conv = convs.pop()
+    conv = convs[0]
     ftype = decl.type
     params: list[ir.Param] = []
     for p in (ftype.args.params if ftype.args else []):
@@ -207,28 +207,28 @@ def _signature(decl: c_ast.Decl, namer: Namer, symbol: bool = True) -> ir.Signat
         if "byname" in p_attrs and "inline" in p_attrs:
             raise _err(p, f"{p.name}: a parameter is BYNAME or INLINE, not both")
         if "byname" in p_attrs:
-            kind = "byname"
+            kind = ir.ParamKind.BYNAME
         elif "inline" in p_attrs:
-            kind = "inline"
+            kind = ir.ParamKind.INLINE
         elif "register" in p.storage:
-            kind = "io"
+            kind = ir.ParamKind.IO
         else:
-            kind = "ac"
-        if kind == "byname" and kind_of_type != "word":
+            kind = ir.ParamKind.AC
+        if kind is ir.ParamKind.BYNAME and kind_of_type != "word":
             raise _err(p, f"{p.name}: a BYNAME parameter is a `word`")
         params.append(ir.Param(p.name, kind, kind_of_type == "word*"))
     kinds = [p.kind for p in params]
-    after = ("byname", "inline")
-    if kinds.count("ac") > 1 or kinds.count("io") > 1:
+    after = sum(k.after_call for k in kinds)
+    if kinds.count(ir.ParamKind.AC) > 1 or kinds.count(ir.ParamKind.IO) > 1:
         raise _err(decl, f"{decl.name}: at most one AC parameter and one register parameter")
-    if sum(k in after for k in kinds) > 1:
+    if after > 1:
         raise _err(decl, f"{decl.name}: more than one word after the call is not implemented yet")
-    if any(k in after for k in kinds) and kinds[-1] not in after:
+    if after and not kinds[-1].after_call:
         raise _err(decl, f"{decl.name}: BYNAME and INLINE parameters come last, as the words "
                          "after the call")
-    if any(k in after for k in kinds) and conv in ("xct", "jsp", "inline"):
-        raise _err(decl, f"{decl.name}: an {conv.upper()} function has no inline words")
-    if "ac" in kinds and conv == "jsp":
+    if after and conv in (ir.Conv.XCT, ir.Conv.JSP, ir.Conv.INLINE):
+        raise _err(decl, f"{decl.name}: an {conv.name} function has no inline words")
+    if ir.ParamKind.AC in kinds and conv is ir.Conv.JSP:
         raise _err(decl, f"{decl.name}: a JSP function receives its return address in AC; "
                          "pass a register parameter")
     returns = _word_type(ftype.type) or _base_type(ftype.type)
@@ -281,7 +281,8 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
                             "name different storage; use one")
         if "entry_cell" in attrs:
             owner = sigs.get(attrs["entry_cell"])
-            if owner is None or owner.conv != "jda" or not any(p.kind == "ac" for p in owner.params):
+            if owner is None or owner.conv is not ir.Conv.JDA or \
+                    not any(p.kind is ir.ParamKind.AC for p in owner.params):
                 raise _err(ext, f"{ext.name}: ENTRY_CELL names a JDA function with an AC "
                                 "parameter, declared above")
             globals_[ext.name] = ir.Entry(owner.sym, alias=True)
@@ -326,7 +327,7 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
         if isinstance(ext, c_ast.FuncDef):
             fn = _lower_function(ext, sigs[ext.decl.name], globals_, sigs, pointers, namer,
                                  data, arrays)
-            if fn.sig.conv == "inline":
+            if fn.sig.conv is ir.Conv.INLINE:
                 if _origin(ext.decl) is not None:
                     raise _err(ext, f"{fn.sig.name}: a static inline function is laid out at "
                                     "its calls; AT does not apply")
@@ -535,11 +536,11 @@ def _lower_function(fn: c_ast.FuncDef, sig: ir.Signature, globals_: dict[str, ir
     frame: dict[str, ir.Storage] = {}
     params: list[ir.Var] = []
     for p in sig.params:
-        if p.kind == "ac":
-            storage = ir.Entry(sig.sym) if sig.conv == "jda" else ir.Acc(p.name)
-        elif p.kind == "io":
+        if p.kind is ir.ParamKind.AC:
+            storage = ir.Entry(sig.sym) if sig.conv is ir.Conv.JDA else ir.Acc(p.name)
+        elif p.kind is ir.ParamKind.IO:
             storage = ir.Io(p.name)
-        elif p.kind == "inline":
+        elif p.kind is ir.ParamKind.INLINE:
             storage = ir.Inline(p.name)
         else:
             storage = ir.ByName(p.name)
