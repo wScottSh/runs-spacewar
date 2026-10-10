@@ -28,9 +28,9 @@ POOL word particles;                /* particles still to draw this frame, count
 /* A particle's spread from the object, set for each particle: a right
  * shift of AC:IO, run through a pointer held in the xct that runs it, then
  * a random left shift built for the particle and run where it stands. */
-HOMED const insn *spread_scale;
-HOMED insn particle_shift = I_HLT;
-extern insn spread_scales[2];
+HOMED const shift *spread_scale;
+HOMED shift particle_shift = SHIFT_UNSET;
+extern shift spread_scales[2];
 
 /* An exploding object keeps drifting and is drawn as a cloud of dots, one
  * per 8 instructions of its calc routine's time, for as many frames as its
@@ -52,7 +52,7 @@ JSP SYM("mex") void explosion(void)
     if (count - 0140 >= 0)
         ++spread_scale;
 particle:
-    particle_shift = (next_random() & 0777) | I_SCL(0);
+    particle_shift = I_SCL_BITS(next_random() & 0777);
     spot.hi = next_random();
     scr(spot.hi, spot.lo, 9);           /* a random half in each register */
     spot.lo = spot.lo >> 9;
@@ -69,7 +69,7 @@ particle:
     *routine_slot = 0;
 }
 
-insn spread_scales[2] = { I_SCR(1), I_SCR(3) };
+shift spread_scales[2] = { I_SCR(1), I_SCR(3) };
 
 /* ------------------------------------------------------------ torpedo */
 

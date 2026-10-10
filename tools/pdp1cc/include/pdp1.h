@@ -63,18 +63,22 @@
  *
  * Instruction words. An `insn` is a word that holds an instruction. The
  * I_* constructors build one: I_LAC(&x) is the word `lac x`, I_JMP(f) is
- * `jmp f`, I_STF(n) is `stf n`, I_RCL(n) is `rcl ns` (I_RCL(0) shifts
- * nothing; its low nine bits are free for a count built at run time);
- * I_LIO(0) names address 0. For a HOMED pointer p, I_LIO(p) is its home
- * instruction word when that is `lio .`. Code generated at run time is
- * these words written to memory and entered by a jump; nothing in this
- * header executes such code. One shift instruction word may be executed:
- * xct(w, a) runs w on AC, xct(w, hi, lo) on AC:IO, and the reference build
- * defines that for the shift group alone. w is a constant (`xct (w`), *home(p) for a
- * HOMED pointer p to an instruction (`p, xct .`), or a HOMED insn. A HOMED
- * insn is the instruction at its home, which is its xct: it runs where it
- * stands, `x = e` stores the whole word there, and its initializer is the
- * word it holds first.
+ * `jmp f`, I_STF(n) is `stf n`; I_LIO(0) names address 0. For a HOMED
+ * pointer p, I_LIO(p) is its home instruction word when that is `lio .`.
+ * Code generated at run time is these words written to memory and entered
+ * by a jump; nothing in this header executes such code.
+ *
+ * Shifts. A `shift` is a shift instruction: I_RCL(n) is `rcl ns`, and
+ * I_RCL_BITS(m) is `rcl` by as many places as the mask m has bits set
+ * (`m | (rcl`); m is `w & c` with c within 0777. SHIFT_UNSET is the `hlt`
+ * a shift slot holds before the program first builds its shift. A shift
+ * stored where an insn is wanted is its instruction word. A shift is the
+ * one instruction that may be executed: xct(s, a) runs s on AC, xct(s, hi,
+ * lo) on AC:IO. s is a constructor (`xct (s`), *home(p) for a HOMED
+ * pointer p to a shift (`p, xct .`), or a HOMED shift. A HOMED shift is
+ * the instruction at its home, which is its xct: it runs where it stands,
+ * `x = e` stores the whole word there, and its initializer is the word it
+ * holds first. Only a shift is stored in a shift.
  * `switch ((int)w)` over cases 0..n is a jump table indexed by w; a value
  * outside 0..n is undefined, as on the machine. When w is a HOMED word the
  * switch is Duff's device: the switch is w's home, the jump into the cases,
@@ -97,6 +101,7 @@
 
 typedef int word;
 typedef word insn;
+typedef word shift;
 typedef struct dword { word hi, lo; } dword;
 #define JDA __attribute__((pdp1_jda))
 #define BLOCK __attribute__((pdp1_block))
@@ -127,8 +132,11 @@ void dpy(word x, word y, int intensity);
 void dpy_nowait(word x, word y);
 insn I_LAC(), I_LIO(), I_DAC(), I_DIO(), I_ADD(), I_SUB(), I_AND(), I_XOR(), I_JMP(), I_IDX();
 insn I_STF(int n), I_CLF(int n), I_SZF(int n);
-insn I_RCL(int n), I_RAL(int n), I_SCL(int n), I_SCR(int n), I_SAR(int n);
-extern const insn I_CMA, I_IOH, I_DPY_NOWAIT, I_HLT;
+shift I_RCL(int n), I_RAL(int n), I_SCL(int n), I_SCR(int n), I_SAR(int n);
+shift I_RCL_BITS(word m), I_RAL_BITS(word m), I_SCL_BITS(word m), I_SCR_BITS(word m),
+    I_SAR_BITS(word m);
+extern const shift SHIFT_UNSET;
+extern const insn I_CMA, I_IOH, I_DPY_NOWAIT;
 dword xct();
 word tyi(void);
 void lsm(void);
@@ -298,19 +306,43 @@ static const pdp1_bits PDP1_I = 1u << 12;           /* the indirect (or IOT wait
 static inline insn I_STF(int n) { return pdp1_insn(PDP1_OPR, 010 | (n & 7)); }
 static inline insn I_CLF(int n) { return pdp1_insn(PDP1_OPR, n & 7); }
 static inline insn I_SZF(int n) { return pdp1_insn(PDP1_SKP, n & 7); }
-static inline insn pdp1_shift(pdp1_bits kind, int n) {
+
+/* A shift instruction as a value: what it does and its count field. The
+ * constructors build it, xct runs it by its kind, and storing it where an
+ * insn is wanted encodes it. */
+enum class pdp1_shift_kind : std::uint16_t {    /* each named by its field in the word */
+    unset = 0, ral = 01, rcl = 03, scl = 07, sar = 015, scr = 017
+};
+struct shift {
+    pdp1_shift_kind kind;
+    std::uint16_t count_bits;           /* shifts as many places as bits set */
+    operator word() const {             /* the instruction word */
+        if (kind == pdp1_shift_kind::unset)
+            return word::bits(PDP1_OPR << 12 | 0400);                   /* hlt */
+        return pdp1_insn(PDP1_SHIFT, (pdp1_bits)kind << 9 | count_bits);
+    }
+};
+/* A shift array is laid out one word per shift. */
+static_assert(sizeof(shift) == sizeof(pdp1_bits), "shift is one word");
+static const shift SHIFT_UNSET = {pdp1_shift_kind::unset, 0};
+static inline shift pdp1_shift(pdp1_shift_kind kind, int n) {
     if (n < 0 || n > 9) std::abort();               /* one instruction shifts 0..9 */
-    return pdp1_insn(PDP1_SHIFT, kind << 9 | ((1u << n) - 1));
+    return shift{kind, (std::uint16_t)((1u << n) - 1)};
 }
-static inline insn I_RAL(int n) { return pdp1_shift(01, n); }
-static inline insn I_RCL(int n) { return pdp1_shift(03, n); }
-static inline insn I_SCL(int n) { return pdp1_shift(07, n); }
-static inline insn I_SAR(int n) { return pdp1_shift(015, n); }
-static inline insn I_SCR(int n) { return pdp1_shift(017, n); }
+static inline shift pdp1_shift_bits(pdp1_shift_kind kind, word m) {
+    if (m.v & ~0777u) std::abort();                 /* the count field is nine bits */
+    return shift{kind, (std::uint16_t)m.v};
+}
+#define PDP1_SHIFT_CONSTRUCTORS(name, kind) \
+    static inline shift name(int n) { return pdp1_shift(pdp1_shift_kind::kind, n); } \
+    static inline shift name##_BITS(word m) { return pdp1_shift_bits(pdp1_shift_kind::kind, m); }
+PDP1_SHIFT_CONSTRUCTORS(I_RAL, ral) PDP1_SHIFT_CONSTRUCTORS(I_RCL, rcl)
+PDP1_SHIFT_CONSTRUCTORS(I_SCL, scl) PDP1_SHIFT_CONSTRUCTORS(I_SAR, sar)
+PDP1_SHIFT_CONSTRUCTORS(I_SCR, scr)
+#undef PDP1_SHIFT_CONSTRUCTORS
 static const insn I_CMA = word::bits(PDP1_OPR << 12 | 01000);
 static const insn I_IOH = word::bits(PDP1_IOT << 12 | PDP1_I);     /* iot i: wait for completion */
 static const insn I_DPY_NOWAIT = word::bits((PDP1_IOT << 12 | PDP1_I | 07) - 04000);  /* dpy-4000 */
-static const insn I_HLT = word::bits(PDP1_OPR << 12 | 0400);
 
 struct pdp1_point { pdp1_bits instruction, x, y; };
 static std::vector<pdp1_point> pdp1_plotted;
@@ -394,42 +426,30 @@ static inline void dis(word &h, word &l, word m) {
     h.v = ac;
 }
 
-/* Executing an instruction word: xct(w, a) runs w on AC, xct(w, hi, lo)
- * on the AC:IO pair. The reference build gives meaning to the shift group
- * alone, the words built by I_RCL, I_SCL and the rest; any other word,
- * a halt among them, stops the run. A shift's count is the number of bits
- * set in its low nine. xct(w, a) takes only a shift of AC. */
-static inline void pdp1_shift_pair(insn w, word &h, word &l) {
-    if (w.v >> 13 != PDP1_SHIFT >> 1)
-        std::abort();
-    int n = 0;
-    for (pdp1_bits m = w.v & 0777; m; m >>= 1)
-        n += m & 1;
-    switch (w.v >> 9 & 017) {
-    case 001: h = ral(h, n); return;
-    case 002: l = ril(l, n); return;
-    case 003: rcl(h, l, n); return;
-    case 005: h = h << n; return;
-    case 006: l = l << n; return;
-    case 007: scl(h, l, n); return;
-    case 011: h = rar(h, n); return;
-    case 012: l = rir(l, n); return;
-    case 013: rcr(h, l, n); return;
-    case 015: h = h >> n; return;
-    case 016: l = l >> n; return;
-    case 017: scr(h, l, n); return;
+/* Executing a shift: xct(s, a) runs s on AC, xct(s, hi, lo) on the AC:IO
+ * pair. A slot still SHIFT_UNSET holds `hlt`, which stops the run.
+ * xct(s, a) takes only a shift of AC. */
+static inline void pdp1_xct(shift s, word &h, word &l) {
+    int n = __builtin_popcount(s.count_bits);
+    switch (s.kind) {
+    case pdp1_shift_kind::ral: h = ral(h, n); return;
+    case pdp1_shift_kind::sar: h = h >> n; return;
+    case pdp1_shift_kind::rcl: rcl(h, l, n); return;
+    case pdp1_shift_kind::scl: scl(h, l, n); return;
+    case pdp1_shift_kind::scr: scr(h, l, n); return;
+    case pdp1_shift_kind::unset: break;
     }
     std::abort();
 }
-static inline word xct(insn w, word a) {
-    if (w.v >> 9 & 02)                  /* the shift reaches IO: use the pair form */
-        std::abort();
+static inline word xct(shift s, word a) {
+    if (s.kind != pdp1_shift_kind::ral && s.kind != pdp1_shift_kind::sar)
+        std::abort();                   /* the shift reaches IO: use the pair form */
     word io;
-    pdp1_shift_pair(w, a, io);
+    pdp1_xct(s, a, io);
     return a;
 }
-static inline dword xct(insn w, word hi, word lo) {
-    pdp1_shift_pair(w, hi, lo);
+static inline dword xct(shift s, word hi, word lo) {
+    pdp1_xct(s, hi, lo);
     return dword{hi, lo};
 }
 

@@ -293,6 +293,20 @@ Deviations from the design, and why:
 - **The native header executes shift instructions.** The playbook says the reference build never executes generated code, and mex runs a shift it builds at run time. The M5 brief allows exactly this form: a shift word run by `xct` whose C meaning the header defines. It decodes one instruction group into the same `rcl`, `scl`, `sar` and the rest the lifted C calls; any other word aborts, and the compiler refuses `xct` of a constant outside the group. Code the outline compiler generates and enters by a jump is still never run natively. The operator should confirm this reading.
 - **pof's busy wait is a label and a goto.** `while (c);` is not implemented; M7's `count \mtc, .` will want it.
 
+### Typed shifts (after M5)
+
+The operator ruled out the M5 native `xct`, which decoded encoded instruction words: pdp1.h holds no interpreter. A shift is now a value of its own type, and the emitted Macro is unchanged (every lifted file and corpus program lowers byte-identical).
+
+- **`shift`** is the type of a shift instruction. `I_RAL`, `I_RCL`, `I_SCL`, `I_SAR` and `I_SCR` return one. `I_SCL_BITS(w & m)`, with m a constant within 0777, is `scl` by as many places as `w & m` has bits set; it lowers to `w & m` then `ior (scl`, the words the old `(w & 0777) | I_SCL(0)` gave. `SHIFT_UNSET` replaces `I_HLT` as the `hlt` a shift slot holds before the program first builds its shift.
+- **Executable slots are shifts.** `HOMED shift x` replaces `HOMED insn x`, and `xct(*home(p), ...)` needs p to be a `const shift *`. The compiler refuses a store of anything but a shift into a shift, a shift array or through a pointer to a shift, a pointer to a shift that is not given the address of a shift, a shift function that returns a word, and an `_BITS` argument that is not `w & m` with m within 0777 (rejects `shift-*`, `xct-word-pointer`). A shift stored where an `insn` is wanted is its instruction word, as the outline compiler's `I_RCL(9)` is.
+- **The native build** holds a shift as `{kind, count bits}`. `xct` switches on the kind and calls the same `ral`, `rcl`, `scl`, `sar` and `scr` the lifted C calls, with the count the number of bits set in the count field the constructor stored. `SHIFT_UNSET` aborts. Encoding a shift into a word is construction only: the watched `mi1` word and the outline compiler's stored `rcl 9s` need it. Nothing decodes a word.
+- **macro1's predefined names** are read from `tools/macro1.c`'s `pseudos` and `permanent_symbols` tables, not a hand-copied list. Reject `sym-pseudo-prefix` covers a symbol refused only for its three-letter pseudo-op prefix.
+
+## Open questions and risks
+
+- Runtime-generated code: M3 settles the writing side (data written through a pointer, no execution spec). M6 must still choose the C form for entering the compiled outline (`sp5, jmp .` patched by `dap`) and for its return at `sq6`.
+- `mex`'s runtime-built shift: settled by a HOMED shift run in place, with a typed native `xct` (Typed shifts section).
+
 ### M6 spaceship (ss1, ss2 through srt, and pof)
 
 Source lines 1079-1333 compile from `lift/spaceship.c`, one region. It takes pof (1312-1333) over from the objects region, which is now 946-1077: see the deviations. Lifted coverage is 2168/2514 words (86.2%). `lift/inertia.h` now holds `move_x` and `move_y` (the `diff` macro), which objects and the spaceship share.
