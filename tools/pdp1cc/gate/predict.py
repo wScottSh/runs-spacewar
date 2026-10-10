@@ -283,6 +283,11 @@ class Leaves:
         return isinstance(node, c_ast.ID) and node.name in self.registers.get(function, ())
 
     def memory_symbol(self, node: c_ast.Node, function: str) -> str | None:
+        if isinstance(node, c_ast.ArrayRef) and fold(node.subscript) is not None and \
+                (root := array_root(node.name, self.arrays)) is not None:
+            k = offset(node)
+            sym = self.unit.objects[root].sym
+            return f"{sym}+{k:o}" if k else sym
         if not isinstance(node, c_ast.ID) or node.name in self.locals.get(function, ()) \
                 or node.name in self.arrays:
             return None
@@ -291,6 +296,8 @@ class Leaves:
             entry = next((p for p in sig.params if p.kind is ir.ParamKind.AC), None)
             return sig.sym if sig.conv is ir.Conv.JDA and entry and entry.name == node.name else None
         storage = self.unit.objects.get(node.name)
+        if isinstance(storage, ir.Pool):
+            return "\\" + storage.sym
         return storage.sym if isinstance(storage, ir.Memory) else None
 
     def constant(self, node: c_ast.Node) -> int | None:
@@ -345,11 +352,10 @@ def sites(ast: c_ast.FileAST, unit: ir.Unit) -> list[Site]:
             old = dialect.to_word(token, node)
             add(replace(const_site(index, node, old, old + 1), error="flags must lie above"))
             continue
-        if isinstance(parent, c_ast.BinaryOp) and parent.op == "+" and field == "right" and \
-                isinstance(parent.left, c_ast.ID) and parent.left.name in leaves.arrays:
-            expr = top if top is not None else node
-            sym = unit.objects[parent.left.name].sym
-            add(offset_site(index, node, sym, fold(expr), fold(expr, node)))
+        if (place := array_place(node, ctx.get("ancestors", ()), leaves.arrays)) is not None:
+            root, address = place
+            sym = unit.objects[root].sym
+            add(offset_site(index, node, sym, offset(address), offset(address, node)))
             continue
         if top is not None:
             if isinstance(parent, c_ast.BinaryOp) and field == "right" and parent.op in SHIFT:
@@ -381,6 +387,41 @@ def sites(ast: c_ast.FileAST, unit: ir.Unit) -> list[Site]:
         new = dialect.to_word(-(token + 1) if negated else token + 1, node)
         add(const_site(index, node, old, new))
     return out
+
+
+def array_root(node: c_ast.Node, arrays: set[str]) -> str | None:
+    """The array an address `a + n + m ...` starts from."""
+    while isinstance(node, c_ast.BinaryOp) and node.op == "+" and fold(node.right) is not None:
+        node = node.left
+    return node.name if isinstance(node, c_ast.ID) and node.name in arrays else None
+
+
+def array_place(node: c_ast.Node, ancestors, arrays: set[str]):
+    """(array, the address or element expression) when node is a constant
+    in an offset into a file-scope array (`a + n`, `(a + n) + m`, `a[k]`):
+    editing it moves the word the address names."""
+    found = None
+    for anc, _field in reversed(ancestors):
+        if isinstance(anc, c_ast.BinaryOp) and anc.op == "+" and fold(anc.right) is not None \
+                and array_root(anc, arrays):
+            found = anc
+        elif isinstance(anc, c_ast.ArrayRef) and fold(anc.subscript) is not None \
+                and array_root(anc.name, arrays):
+            found = anc
+        elif found is not None or fold(anc) is None:   # a constant subexpression may lead in
+            break
+    if found is None:
+        return None
+    return array_root(found.name if isinstance(found, c_ast.ArrayRef) else found, arrays), found
+
+
+def offset(address: c_ast.Node, bump: c_ast.Node | None = None) -> int:
+    """The word offset an address or element expression names past its array."""
+    if isinstance(address, c_ast.ArrayRef):
+        return offset(address.name, bump) + fold(address.subscript, bump)
+    if isinstance(address, c_ast.BinaryOp):
+        return offset(address.left, bump) + fold(address.right, bump)
+    return 0
 
 
 def code_flags(node: c_ast.Node, ctx: dict, unit: ir.Unit) -> bool:

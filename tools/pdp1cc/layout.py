@@ -7,7 +7,7 @@ from dataclasses import replace
 from . import inline, ir
 from .dialect import Namer
 from .rules import check
-from .select import FunctionLowerer, W, datum_words, preserves_io
+from .select import BIN_MNEMONIC, FunctionLowerer, W, datum_words, preserves_io
 
 
 class LayoutError(Exception):
@@ -21,17 +21,21 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Emitted]:
     keeps_io: dict[str, bool] = {}
     inlines = unit.inlines or {}
     homes = home_ops([t for t in unit.items if isinstance(t, ir.Function)] + list(inlines.values()))
+    exitless = frozenset(t.sig.name for t in unit.items if isinstance(t, ir.Function)
+                         and t.sig.conv is ir.Conv.BLOCK and len(tail_targets(t)) > 1)
     for n, top in enumerate(unit.items):
         if top.at is not None:
             items.append(ir.Origin(top.at, check("LAY-AT")))
         match top:
             case ir.RegionBreak():
                 items.append(ir.Break())
+            case ir.Directive(name=name):
+                items.append(ir.PoolPlacement(name, check("LAY-POOL")))
             case ir.Function():
                 after = unit.items[n + 1] if n + 1 < len(unit.items) else None
                 following = after.sym if isinstance(after, (ir.Function, ir.Datum, ir.Space)) and \
                     after.at is None else None
-                lowerer = FunctionLowerer(top, namer, following, keeps_io, inlines, homes)
+                lowerer = FunctionLowerer(top, namer, following, keeps_io, inlines, homes, exitless)
                 own = lowerer.lower()
                 keeps_io[top.sym] = preserves_io(own) and not lowerer.fell_through
                 if entered_by_fallthrough:
@@ -42,25 +46,43 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Emitted]:
                 items += datum_words(top)
             case ir.Space():
                 items += [ir.LabelDef(top.sym), ir.Reserve(top.size, check("ST-RESERVE"))]
+    labels = {i.name for i in items if isinstance(i, ir.LabelDef)}
     homeless = [name for name, s in unit.objects.items() if isinstance(s, ir.HomedInsn)
-                and not any(isinstance(i, ir.LabelDef) and i.name == s.sym for i in items)]
+                and s.sym not in labels]
     if homeless:
         raise LayoutError(f"HOMED insn {', '.join(homeless)} has no home: run it with xct(x, ...)")
+    homeless = [name for name, s in unit.objects.items()
+                if isinstance(s, ir.Homed) and s.here and s.sym not in labels]
+    if homeless:
+        raise LayoutError(f"HOMED pointer {', '.join(homeless)} has no home: use it once as "
+                          "*home(p), or declare it extern when other text holds its home")
     return attach_labels(items)
 
 
 def home_ops(functions: list[ir.Function]) -> dict[str, str]:
+    """The instruction at each HOMED pointer's home: what *home(p) does there."""
     ops: dict[str, str] = {}
     for fn in functions:
         for n in inline.iter_nodes(fn.body):
             if isinstance(n, ir.Xct) and isinstance(n.insn, ir.HomeLoad):
                 ops[n.insn.pointer.storage.sym] = "xct"
+            elif isinstance(n, ir.Assign) and isinstance(n.target, ir.HomeLoad):
+                v = n.value
+                ops[n.target.pointer.storage.sym] = "dzm" if v == ir.Const(0) else \
+                    "dio" if isinstance(v, ir.Var) and isinstance(v.storage, ir.Io) else "dac"
+            elif isinstance(n, ir.Binary) and isinstance(n.right, ir.HomeLoad):
+                ops[n.right.pointer.storage.sym] = BIN_MNEMONIC[n.op]
             elif isinstance(n, ir.Assign) and isinstance(n.value, ir.HomeLoad):
                 op = "lio" if isinstance(n.target, ir.Var) and isinstance(n.target.storage, ir.Io) else "lac"
                 ops[n.value.pointer.storage.sym] = op
             elif isinstance(n, ir.HomeLoad):
                 ops.setdefault(n.pointer.storage.sym, "lac")
     return ops
+
+
+def tail_targets(fn: ir.Function) -> set[str]:
+    return {n.value.sig.name for n in inline.iter_nodes(fn.body) if isinstance(n, ir.Return)
+            and isinstance(n.value, ir.Call) and n.value.sig.conv is ir.Conv.BLOCK}
 
 
 def _tag_first_word(items: list[ir.Item], rule: str) -> list[ir.Item]:
@@ -80,7 +102,7 @@ def attach_labels(items: list[ir.Item]) -> list[ir.Emitted]:
             defined.add(it.name)
             pending.append(it.name)
             continue
-        if isinstance(it, (ir.Break, ir.Origin)):
+        if isinstance(it, (ir.Break, ir.Origin, ir.PoolPlacement)):
             if pending:
                 raise LayoutError(f"labels {pending} come before an origin")
             words.append(it)

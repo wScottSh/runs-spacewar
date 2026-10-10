@@ -20,6 +20,12 @@ def ac_skip_when(op: str) -> str:
     return AC_SKIP[op]
 
 
+def flip_i(skip: str) -> str:
+    """The same test with the i bit flipped, which skips on the complement:
+    SKIPNOT(c) skips when c fails with `spa i` where skip_when(!c) is `sma`."""
+    return skip[:-2] if skip.endswith(" i") else skip + " i"
+
+
 # IO compared with 0: the skip group tests only IO's sign.
 IO_SKIP: dict[str, str] = {
     "<": "spi i",

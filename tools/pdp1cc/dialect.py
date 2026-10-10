@@ -3,6 +3,7 @@ rejects anything outside the dialect with a message naming the construct."""
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 
 from pycparser import c_ast, c_generator
 
@@ -16,16 +17,17 @@ CMP_OPS = {"<", ">=", "==", "!=", "<=", ">"}
 ATTR = re.compile(r"pdp1_(\w+)(?:\((.*)\))?$")
 CONVS = {c.value: c for c in ir.Conv if c is not ir.Conv.INLINE}
 ATTRIBUTES = CONVS.keys() | {"byname", "inline", "sym", "entry_cell", "at", "reserve", "pool", "homed"}
-HARDWARE = {"tyi", "lsm", "ioh"}    # builtins that are one instruction with no operand
+HARDWARE = {"tyi", "lsm", "ioh", "lat", "control_boxes"}   # one instruction, no operand
 DISPLAY = {"dpy", "dpy_nowait"}
 MAX_SENSE = 6
 MAX_INTENSITY = 7
 REGION_BREAK = "pdp1_region_break"
+DIRECTIVES = {"pdp1_constants": "constants", "pdp1_variables": "variables"}
 WORD_TYPES = {"word", "insn"}       # an insn is a word that holds an instruction
 FLAG_OPS = {"stf", "clf"}
 # Instruction-word constructors: an I_* name, its mnemonic, and its operand.
 INSN_MEMORY = {f"I_{m.upper()}": m for m in
-               ("lac", "lio", "dac", "dio", "add", "sub", "and", "xor", "jmp", "idx")}
+               ("lac", "lio", "dac", "dio", "add", "sub", "and", "xor", "jmp", "idx", "dzm")}
 INSN_FLAG = {"I_STF": "stf", "I_CLF": "clf", "I_SZF": "szf"}
 INSN_SHIFT = {"I_RCL": "rcl", "I_RAL": "ral", "I_SCL": "scl", "I_SCR": "scr", "I_SAR": "sar"}
 INSN_CONSTANT = {"I_CMA": ir.Insn("cma"), "I_HLT": ir.Insn("hlt"),
@@ -236,8 +238,9 @@ def _signature(decl: c_ast.Decl, namer: Namer, symbol: bool = True) -> ir.Signat
         raise _err(decl, f"{decl.name}: a JSP function receives its return address in AC; "
                          "pass a register parameter")
     returns = _word_type(ftype.type) or _base_type(ftype.type)
-    if returns not in ("word", "word*", "dword", "void"):
-        raise _err(decl, f"{decl.name}: returns word, a pointer to word, dword or void")
+    returns = "io" if returns == "io_word" else returns
+    if returns not in ("word", "word*", "dword", "io", "void"):
+        raise _err(decl, f"{decl.name}: returns word, a pointer to word, dword, io_word or void")
     if not symbol:
         return ir.Signature(decl.name, "", conv, tuple(params), returns, "")
     return ir.Signature(decl.name, _symbol(decl.name, attrs, namer, decl), conv, tuple(params),
@@ -251,7 +254,7 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
     for ext in ast.ext:
         decl = ext.decl if isinstance(ext, c_ast.FuncDef) else ext
         if isinstance(decl, c_ast.Decl) and _is_function(decl.type) and not _in_header(decl) \
-                and decl.name != REGION_BREAK:
+                and decl.name != REGION_BREAK and decl.name not in DIRECTIVES:
             if "at" in _attrs(decl) and not isinstance(ext, c_ast.FuncDef):
                 raise _err(decl, f"{decl.name}: AT places a definition, not a declaration")
             if decl.name not in sigs:
@@ -302,13 +305,14 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
             if "homed" in attrs and _word_type(ext.type) is None:
                 raise _err(ext, f"{ext.name}: HOMED declares a pointer, or a word that "
                                 "indexes the switch that is its home")
-            if "pool" in attrs and _word_type(ext.type) is None:
+            if "pool" in attrs and _word_type(ext.type) is None and ext.name not in pointers:
                 raise _err(ext, f"{ext.name}: a POOL object is a `word` or a pointer")
             sym = _symbol(ext.name, attrs, namer, ext)
             if "pool" in attrs:
                 globals_[ext.name] = ir.Pool(sym)
             else:
-                globals_[ext.name] = ir.Homed(sym, _home_init(ext, globals_, sigs, arrays))
+                defined = any("extern" not in o.storage for o in objects if o.name == ext.name)
+                globals_[ext.name] = ir.Homed(sym, _home_init(ext, globals_, sigs, arrays), defined)
         elif ext.init is not None or "reserve" in attrs:
             globals_[ext.name] = ir.Placed(_symbol(ext.name, attrs, namer, ext))
     for ext in objects:
@@ -336,7 +340,7 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
     for ext in ast.ext:
         if isinstance(ext, c_ast.FuncDef):
             fn = _lower_function(ext, sigs[ext.decl.name], globals_, sigs, pointers, namer,
-                                 data, arrays)
+                                 data, arrays, types)
             if fn.sig.conv is ir.Conv.INLINE:
                 if _origin(ext.decl) is not None:
                     raise _err(ext, f"{fn.sig.name}: a static inline function is laid out at "
@@ -346,6 +350,8 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
             items.append(ir.Function(fn.sig, fn.params, fn.body, _origin(ext.decl)))
         elif isinstance(ext, c_ast.Decl) and ext.name == REGION_BREAK:
             items.append(ir.RegionBreak())
+        elif isinstance(ext, c_ast.Decl) and ext.name in DIRECTIVES:
+            items.append(ir.Directive(DIRECTIVES[ext.name]))
         elif isinstance(ext, c_ast.Decl) and not _is_function(ext.type) and not _in_header(ext):
             attrs = _attrs(ext)
             if isinstance(globals_[ext.name], (ir.Homed, ir.HomedInsn)):
@@ -431,9 +437,9 @@ def _data_value(node: c_ast.Node, globals_: dict[str, ir.Storage],
 def _operand_of(node: c_ast.Node, scope: _Scope, sigs: dict[str, ir.Signature],
                 arrays: set[str]) -> ir.Sym:
     if isinstance(node, c_ast.BinaryOp) and node.op == "+" and is_c_int(node.right):
-        base = _operand_of(node.left, scope, sigs, arrays)
-        if not (isinstance(node.left, c_ast.ID) and node.left.name in arrays):
+        if not _array_address(node.left, arrays):
             raise _err(node, "an offset address is `array + n`")
+        base = _operand_of(node.left, scope, sigs, arrays)
         return ir.Sym(base.name, base.pool, base.offset + c_int(node.right))
     if isinstance(node, c_ast.UnaryOp) and node.op == "&" and isinstance(node.expr, c_ast.ArrayRef) \
             and isinstance(node.expr.name, c_ast.ID) and node.expr.name.name in arrays:
@@ -450,6 +456,14 @@ def _operand_of(node: c_ast.Node, scope: _Scope, sigs: dict[str, ir.Signature],
             not any(node.name in f for f in scope.frames):
         return ir.Sym(sigs[node.name].sym)
     raise _err(node, "an instruction's address is &object, an array or a function")
+
+
+def _array_address(node: c_ast.Node, arrays: set[str]) -> bool:
+    """An array's name, or `a + n` for such an address a and a constant n."""
+    if isinstance(node, c_ast.ID):
+        return node.name in arrays
+    return isinstance(node, c_ast.BinaryOp) and node.op == "+" and is_c_int(node.right) \
+        and _array_address(node.left, arrays)
 
 
 def insn(node: c_ast.Node, scope: _Scope, sigs: dict[str, ir.Signature],
@@ -541,7 +555,8 @@ def _same_declaration(a: c_ast.Decl, b: c_ast.Decl) -> bool:
 
 def _lower_function(fn: c_ast.FuncDef, sig: ir.Signature, globals_: dict[str, ir.Storage],
                     sigs: dict[str, ir.Signature], pointers: dict[str, ir.Signature],
-                    namer: Namer, data: dict[str, ir.Datum], arrays: set[str]) -> ir.Function:
+                    namer: Namer, data: dict[str, ir.Datum], arrays: set[str],
+                    types: dict[str, ir.Signature]) -> ir.Function:
     scope = _Scope(globals_)
     frame: dict[str, ir.Storage] = {}
     params: list[ir.Var] = []
@@ -557,7 +572,7 @@ def _lower_function(fn: c_ast.FuncDef, sig: ir.Signature, globals_: dict[str, ir
         frame[p.name] = storage
         params.append(ir.Var(p.name, storage))
     scope.frames.append(frame)
-    lowerer = _Lowerer(scope, sigs, pointers, namer, data, arrays)
+    lowerer = _Lowerer(scope, sigs, pointers, namer, data, arrays, types)
     body = lowerer.block(fn.body)
     if missing := lowerer.labels_used - lowerer.labels_defined:
         raise _err(fn, f"{sig.name}: goto to undefined label(s) {sorted(missing)}")
@@ -567,8 +582,9 @@ def _lower_function(fn: c_ast.FuncDef, sig: ir.Signature, globals_: dict[str, ir
 class _Lowerer:
     def __init__(self, scope: _Scope, sigs: dict[str, ir.Signature],
                  pointers: dict[str, ir.Signature], namer: Namer,
-                 data: dict[str, ir.Datum], arrays: set[str]):
+                 data: dict[str, ir.Datum], arrays: set[str], types: dict[str, ir.Signature]):
         self.scope, self.sigs, self.pointers, self.namer = scope, sigs, pointers, namer
+        self.types = types
         self.data, self.arrays = data, arrays
         self.labels: dict[str, str] = {}
         self.labels_used: set[str] = set()
@@ -725,8 +741,8 @@ class _Lowerer:
                 return None
             hi, lo = self.pair_halves(c_ast.ID(node.name, node.coord))
             return ir.AssignPair(hi, lo, self.expr(node.init))
-        if kind != "word":
-            raise _err(node, f"{node.name}: locals must be `word`, `insn` or `dword`")
+        if kind != "word" and _word_type(node.type) != "word*":
+            raise _err(node, f"{node.name}: locals must be `word`, `insn`, `dword` or `word *`")
         storage = ir.Io(node.name) if "register" in node.storage else ir.Acc(node.name)
         self.scope.frames[-1][node.name] = storage
         if node.init is None:
@@ -737,9 +753,16 @@ class _Lowerer:
         return (self.scope.lookup(c_ast.ID(node.name + ".hi", node.coord)),
                 self.scope.lookup(c_ast.ID(node.name + ".lo", node.coord)))
 
-    def lvalue(self, node: c_ast.Node) -> ir.Var | ir.Deref:
+    def lvalue(self, node: c_ast.Node) -> ir.Var | ir.Deref | ir.HomeLoad:
+        if isinstance(node, c_ast.UnaryOp) and node.op == "*" and isinstance(node.expr, c_ast.FuncCall):
+            home = self.expr(node)
+            if not isinstance(home, ir.HomeLoad):
+                raise _err(node, "*f(...) is not something to assign; *home(p) is")
+            return home
         if isinstance(node, c_ast.UnaryOp) and node.op == "*":
             return self.deref(node)
+        if isinstance(node, c_ast.ArrayRef):
+            return self.element(node)
         if isinstance(node, c_ast.StructRef) and node.type == "." and isinstance(node.name, c_ast.ID) \
                 and node.name.name in self.scope.pairs and node.field.name in ("hi", "lo"):
             return self.scope.lookup(c_ast.ID(f"{node.name.name}.{node.field.name}", node.coord))
@@ -751,6 +774,15 @@ class _Lowerer:
         return var
 
     def cond(self, node: c_ast.Node) -> ir.Compare | ir.FlagTest:
+        if isinstance(node, c_ast.FuncCall) and isinstance(node.name, c_ast.ID) \
+                and node.name.name == "pdp1_skipnot":
+            args = node.args.exprs if node.args else []
+            c = self.cond(args[0]) if len(args) == 1 else None
+            if not isinstance(c, ir.Compare) or c.against is not None or c.op not in ("<", ">=") \
+                    or isinstance(c.operand, ir.PreInc) \
+                    or (isinstance(c.operand, ir.Var) and isinstance(c.operand.storage, ir.Io)):
+                raise _err(node, "SKIPNOT(c) takes a sign test of AC: `e < 0` or `e >= 0`")
+            return replace(c, skipnot=True)
         negated = isinstance(node, c_ast.UnaryOp) and node.op == "!"
         test = node.expr if negated else node
         if isinstance(test, c_ast.FuncCall) and isinstance(test.name, c_ast.ID) \
@@ -781,6 +813,8 @@ class _Lowerer:
                 return ir.Const(to_word(c_int(node), node))
             case c_ast.Cast(to_type=c_ast.Typename(type=c_ast.PtrDecl())):
                 return self.expr(node.expr)         # an address is the same word as any pointer
+            case c_ast.Cast() if _base_type(node.to_type.type) == "word" and not _is_constant(node.expr):
+                return self.expr(node.expr)         # a pointer is the word that holds its address
             case c_ast.Cast() | c_ast.UnaryOp(op="-" | "~", expr=c_ast.Cast()):
                 return ir.Const(const_word(node))
             case c_ast.FuncCall(name=c_ast.ID(name=name)) if name in INSN_MEMORY and \
@@ -790,9 +824,11 @@ class _Lowerer:
                 return insn(node, self.scope, self.sigs, self.arrays)
             case c_ast.BinaryOp() if is_c_int(node):
                 return ir.Const(to_word(c_int(node), node))
-            case c_ast.BinaryOp(op="+", left=c_ast.ID()) if node.left.name in self.arrays \
-                    and not self._is_local(node.left.name) and is_c_int(node.right):
+            case c_ast.BinaryOp(op="+") if _array_address(node, self.arrays) \
+                    and not self._is_local(_array_root(node).name):
                 return ir.AddrOf(_operand_of(node, self.scope, self.sigs, self.arrays))
+            case c_ast.ArrayRef():
+                return self.element(node)
             case c_ast.UnaryOp(op="*", expr=c_ast.FuncCall(name=c_ast.ID(name="home"))) \
                     if _builtin("home", self.sigs):
                 args = node.expr.args.exprs if node.expr.args else []
@@ -836,7 +872,33 @@ class _Lowerer:
                 return ir.Pair(self.expr(node.init.exprs[0]), self.expr(node.init.exprs[1]))
             case c_ast.FuncCall(name=c_ast.ID(name=name)):
                 return self.call(node, name)
+            case c_ast.FuncCall(name=c_ast.Cast()):
+                return self.computed_call(node)
         raise _err(node, f"expression {type(node).__name__} is not in the implemented dialect yet")
+
+    def element(self, node: c_ast.ArrayRef) -> ir.Var:
+        """a[k] for a file-scope array a (or an address a + n into one) and a
+        constant k: the word k past a, named as a memory operand."""
+        if not (_array_address(node.name, self.arrays) and is_c_int(node.subscript)) \
+                or self._is_local(_array_root(node.name).name):
+            raise _err(node, "a[k] indexes a file-scope array (or an address in one) by a constant")
+        at = _operand_of(node.name, self.scope, self.sigs, self.arrays)
+        offset = at.offset + c_int(node.subscript)
+        return ir.Var(f"{at.name}[{offset:o}]", ir.Element(at.name, offset))
+
+    def computed_call(self, node: c_ast.FuncCall) -> ir.ComputedCall:
+        """((f *)e)(): call the routine at the address in e's address field,
+        for f a function type declared with typedef."""
+        cast = node.name
+        t = cast.to_type.type
+        sig = self.types.get(_base_type(t.type)) if isinstance(t, c_ast.PtrDecl) else None
+        if sig is None:
+            raise _err(node, "a computed call casts to a pointer to a function type declared with typedef")
+        if sig.params or node.args:
+            raise _err(node, "a computed call takes no arguments")
+        if sig.conv is not ir.Conv.JSP:
+            raise _err(node, "a computed call is `jsp`: the function type is JSP")
+        return ir.ComputedCall(self.expr(cast.expr), sig)
 
     def deref(self, node: c_ast.UnaryOp) -> ir.Deref:
         """*p for a pointer p held in a memory word or in a homed address field."""
@@ -892,6 +954,17 @@ class _Lowerer:
 
     def call(self, node: c_ast.FuncCall, name: str) -> ir.Expr:
         args = node.args.exprs if node.args else []
+        if name == "pdp1_swap":
+            if len(args) != 1:
+                raise _err(node, "SWAP(x) takes one value")
+            return ir.Swapped(self.expr(args[0]))
+        if name == "halt" and _builtin(name, self.sigs):
+            if len(args) != 2:
+                raise _err(node, "halt(ac, io) takes two arguments")
+            io = self.lvalue(args[1])
+            if not (isinstance(io, ir.Var) and isinstance(io.storage, ir.Io)):
+                raise _err(node, "halt(ac, io): io is a register local")
+            return ir.Halt(self.expr(args[0]), io)
         if name in HARDWARE and _builtin(name, self.sigs):
             if args:
                 raise _err(node, f"{name}() takes no arguments")
@@ -944,6 +1017,20 @@ def _cases(node: c_ast.Switch, switch: str, its_cases: str) -> list[list[c_ast.N
     if len(cases) < 2:
         raise _err(node, f"{switch} has at least two cases")
     return cases
+
+
+def _is_constant(node: c_ast.Node) -> bool:
+    try:
+        const_word(node)
+    except DialectError:
+        return False
+    return True
+
+
+def _array_root(node: c_ast.Node) -> c_ast.ID:
+    while isinstance(node, c_ast.BinaryOp):
+        node = node.left
+    return node
 
 
 def _builtin(name: str, sigs: dict[str, ir.Signature]) -> bool:

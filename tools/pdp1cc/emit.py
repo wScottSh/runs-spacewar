@@ -37,9 +37,11 @@ def word_text(w: ir.Word) -> str:
     return " ".join(parts)
 
 
-def line_text(w: ir.Word | ir.Origin | ir.Reserve, trace: bool = True) -> str:
+def line_text(w: ir.Word | ir.Origin | ir.Reserve | ir.PoolPlacement, trace: bool = True) -> str:
     if isinstance(w, ir.Origin):
         line = f"{w.n:o}/"
+    elif isinstance(w, ir.PoolPlacement):
+        line = f"\t{w.name}"
     else:
         label = "".join(f"{lab}, " for lab in w.labels)[:-1]
         line = f"{label}\t" + (f". {w.n:o}/" if isinstance(w, ir.Reserve) else word_text(w))

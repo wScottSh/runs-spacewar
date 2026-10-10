@@ -80,6 +80,16 @@ RULES: dict[str, str] = {
               "constant, `p, xct .` for *home(p), the word itself for a HOMED insn",
     "ST-HOMED-INSN": "HOMED insn x: the instruction at its home, xct(x, ...), laid out there with its initial "
                "word; x = e stores the whole word (dac x)",
+    "EX-ELEMENT": "a[k] for a file-scope array a, or an address a + n in one, and a constant k: "
+                  "the memory operand a+n+k",
+    "HOMED-VALUE": "p + n / n + p for a HOMED p, stored by dap: the arithmetic names p's home word "
+                   "(`add p`, `lac p`), whose address field is p",
+    "CALL-COMPUTED": "((f *)e)() for a JSP function type f: e into AC, `dap L`, `L, jsp .`",
+    "SKIPNOT": "SKIPNOT(c) for a sign test of AC: skip when c fails on c's own skip with the i bit "
+               "flipped (`spa i`, not `sma`)",
+    "SWAP": "SWAP(x): x moved between AC and IO by `rcl 9s` twice, the `swap` turn, instead of `rcr`",
+    "LAY-POOL": "CONSTANTS() / VARIABLES(): the `constants` / `variables` directive, where macro1 "
+                "lays out the literal and pool words",
 }
 
 

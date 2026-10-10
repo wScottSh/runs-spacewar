@@ -27,6 +27,8 @@ AC_IN, IO_IN, BYNAME_IN = 0o7760, 0o7761, 0o7762
 STUB = 0o7763
 CALL = STUB + 2
 HALTS = 4
+HLT = 0o76 << 12 | 0o400  # opr with the halt bit: a halt in a routine shows AC and IO on the lights,
+                          # recorded like a point
 HALT = re.compile(r"HALT instruction, PC: ([0-7]+)")
 BREAK = re.compile(r"Breakpoint, PC: ([0-7]+)")
 EXAMINE = re.compile(r"^(?:sim> )*(AC|IO|PF|[0-7]+):\s+([0-7]+)$")
@@ -42,6 +44,7 @@ class Inputs:
     io: int = 0
     byname: int = 0
     sense: int = 0              # sense switches 1..6 as bits 040..01
+    test_word: int = 0          # the test word switches, which `lat` reads
 
 
 @dataclass(frozen=True)
@@ -71,11 +74,13 @@ def run_jda(simh: Path, rim: Path, entry: int, calls: list[Inputs], byname: bool
         words.append(f"lac {BYNAME_IN:o}")
     words += ["hlt"] * HALTS
     script = ["set cpu nomdv", f"load {rim}", "dep IOS 1"]
-    script += [f"break {a:o};ex AC;ex IO;continue" for a in sorted(display or {})]
+    script += [f"break {a:o};ex AC;ex IO;" + (f"dep PC {a + 1:o};" if w == HLT else "") + "continue"
+               for a, w in sorted((display or {}).items())]
     script += [f"dep {STUB + i:o} {w}" for i, w in enumerate(words)]
     script += [f"dep {a:o} {v:o}" for a, v in (deposits or {}).items()]
     for n, c in enumerate(calls):
-        script += [f"dep {AC_IN:o} {c.ac:o}", f"dep {IO_IN:o} {c.io:o}", f"dep SS {c.sense:o}"]
+        script += [f"dep {AC_IN:o} {c.ac:o}", f"dep {IO_IN:o} {c.io:o}", f"dep SS {c.sense:o}",
+                   f"dep TW {c.test_word:o}"]
         script += [f"dep {a:o} {v:o}" for a, v in (each[n] if each else {}).items()]
         if inline:
             script.append(f"dep {CALL + 1:o} {c.byname:o}")

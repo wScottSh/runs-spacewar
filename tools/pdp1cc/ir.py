@@ -61,6 +61,13 @@ class Pool:         # POOL object: a `\x` word macro1 allocates at `variables`
 class Homed:        # HOMED pointer: the address field of its home instruction
     sym: str
     init: "Sym | Num | None" = None
+    here: bool = True   # defined in this file, so its home is here; extern: in other text
+
+
+@dataclass(frozen=True)
+class Element:      # a[k] with k constant: the word k past the start of a file-scope array
+    sym: str
+    offset: int
 
 
 @dataclass(frozen=True)
@@ -69,8 +76,8 @@ class HomedInsn:    # HOMED insn: the instruction at its home, executed where it
     init: "Insn"
 
 
-Storage = Union[Acc, Io, Placed, Extern, Entry, ByName, Inline, Pool, Homed, HomedInsn]
-Memory = (Placed, Extern, Entry, Pool, HomedInsn)
+Storage = Union[Acc, Io, Placed, Extern, Entry, ByName, Inline, Pool, Homed, HomedInsn, Element]
+Memory = (Placed, Extern, Entry, Pool, HomedInsn, Element)
 
 
 def mem_sym(s: Storage) -> str:
@@ -170,7 +177,7 @@ class Signature:
     sym: str            # Macro symbol of the entry
     conv: Conv
     params: tuple[Param, ...]
-    returns: str        # "word" | "word*" | "dword" | "void"
+    returns: str        # "word" | "word*" | "dword" | "io" (a word returned in IO) | "void"
     exit_sym: str       # the cell returns go through: exit `jmp .` or the by-name `xct`
 
     @property
@@ -201,6 +208,23 @@ class IndirectCall:     # p(args) through a pointer-to-function object p
     pointer: Var
     sig: Signature      # the pointed-to function type
     args: tuple[Expr, ...]
+
+
+@dataclass(frozen=True)
+class ComputedCall:     # ((f *)e)(): a call of the routine whose address e's address field holds
+    target: Expr
+    sig: Signature
+
+
+@dataclass(frozen=True)
+class Halt:             # halt(ac, io): stop with ac and io on the console lights
+    ac: "Expr"
+    io: "Var"
+
+
+@dataclass(frozen=True)
+class Swapped:          # SWAP(x): x moved between AC and IO by the swap rotation (rcl)
+    operand: "Expr"
 
 
 @dataclass(frozen=True)
@@ -277,7 +301,7 @@ class Xct:              # xct(w, a) / xct(w, hi, lo): execute instruction word w
 
 Expr = Union[Const, Var, PreInc, Neg, Binary, Shift, Rot, PairShift, PairStep, Call, Half, Pair,
              CodeRef, IndirectCall, Hw, Insn, AddrOf, HomeLoad, Flag, Dpy, DpyNowait, HomeWord,
-             Deref, Xct]
+             Deref, Xct, ComputedCall, Halt, Swapped]
 
 
 @dataclass(frozen=True)
@@ -285,6 +309,7 @@ class Compare:
     op: str
     operand: Expr
     against: Expr | None = None
+    skipnot: bool = False   # SKIPNOT(c): skip on c's own skip with the i bit flipped
 
 
 @dataclass(frozen=True)
@@ -303,7 +328,7 @@ class SenseTest:
 
 @dataclass(frozen=True)
 class Assign:
-    target: "Var | Deref"
+    target: "Var | Deref | HomeLoad"
     value: Expr
 
 
@@ -454,7 +479,13 @@ class RegionBreak:
     at: None = None
 
 
-TopItem = Union[Function, Datum, Space, RegionBreak]
+@dataclass(frozen=True)
+class Directive:        # CONSTANTS() / VARIABLES(): where macro1 places the literal or pool words
+    name: str
+    at: None = None
+
+
+TopItem = Union[Function, Datum, Space, RegionBreak, Directive]
 
 
 @dataclass(frozen=True)
@@ -564,5 +595,12 @@ class Break:
     labels: tuple[str, ...] = ()
 
 
-Item = Union[Word, LabelDef, Origin, Reserve, Break]
-Emitted = Union[Word, Origin, Reserve, Break]
+@dataclass(frozen=True)
+class PoolPlacement:    # `constants` / `variables`: macro1 lays the literal or pool words out here
+    name: str
+    rule: str
+    via: tuple[str, ...] = ()
+
+
+Item = Union[Word, LabelDef, Origin, Reserve, Break, PoolPlacement]
+Emitted = Union[Word, Origin, Reserve, Break, PoolPlacement]

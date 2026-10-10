@@ -19,10 +19,11 @@ static auto pdp1_result(F f) -> typename std::enable_if<std::is_void<decltype(f(
 }
 
 int main() {
-    unsigned ac, io, byname, sense;
-    while (std::scanf("%o %o %o %o", &ac, &io, &byname, &sense) == 4) {
+    unsigned ac, io, byname, sense, test_word;
+    while (std::scanf("%o %o %o %o %o", &ac, &io, &byname, &sense, &test_word) == 5) {
         pdp1_skips = 0;
         pdp1_sense_switches = sense;
+        pdp1_test_word = word::bits(test_word);
         pdp1_plotted.clear();
         SETUP
         auto r = pdp1_result([&] { return CALL; });
