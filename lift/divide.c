@@ -7,59 +7,59 @@
  * (|high dividend| >= |divisor|). Then they return to that word, with
  * |divisor| (signed like a quotient) in AC and the high dividend in IO. */
 
-JDA SKIPS dword integer_divide(word dividend, register word lo, BYNAME word divisor);
-JDA SKIPS dword divide(word hi, register word lo, BYNAME word divisor);
-BLOCK SKIPS dword divide_steps(register word lo, BYNAME word divisor);
+JDA SKIPS dword integer_divide(word dividend, register word low, BYNAME word divisor);
+JDA SKIPS dword divide(word high, register word low, BYNAME word divisor);
+BLOCK SKIPS dword divide_steps(register word low, BYNAME word divisor);
 
-ENTRY_CELL(divide) word dividend_hi;        /* dvd's entry word; later the remainder */
+ENTRY_CELL(divide) word dividend_high;      /* dvd's entry word; later the remainder */
 ENTRY_CELL(integer_divide) word quotient;   /* idv's entry word: |divisor|, then the quotient */
 
-JDA SKIPS dword integer_divide(word dividend, register word lo, BYNAME word divisor)  /* idv */
+JDA SKIPS dword integer_divide(word dividend, register word low, BYNAME word divisor)  /* idv */
 {
-    word h = dividend;
-    scr(h, lo, 17);                 /* the dividend becomes the 36-bit AC:IO pair;
-                                       IO's old sign lands in its lowest bit */
-    dividend_hi = h;
-    return divide_steps(lo, divisor);
+    word high = dividend;
+    scr(high, low, 17);             /* the dividend becomes the 36-bit AC:IO pair;
+                                   IO's old sign lands in its lowest bit */
+    dividend_high = high;
+    return divide_steps(low, divisor);
 }
 
-JDA SKIPS dword divide(word hi, register word lo, BYNAME word divisor)   /* dvd */
+JDA SKIPS dword divide(word high, register word low, BYNAME word divisor)  /* dvd */
 {
-    dividend_hi = hi;               /* the same cell: no code */
-    return divide_steps(lo, divisor);
+    dividend_high = high;           /* the same cell: no code */
+    return divide_steps(low, divisor);
 }
 
-BLOCK SKIPS dword divide_steps(register word lo, BYNAME word divisor)
+BLOCK SKIPS dword divide_steps(register word low, BYNAME word divisor)
 {
-    word h = divisor;
-    if (h < 0)
-        h = -h;
-    quotient = h;
-    h = dividend_hi;
-    if (h < 0) {                    /* negate the 36-bit dividend */
-        h = -h;
-        rcr(h, lo, 18);
-        h = -h;
-        rcr(h, lo, 18);
+    word magnitude = divisor;
+    if (magnitude < 0)
+        magnitude = -magnitude;
+    quotient = magnitude;
+    word high = dividend_high;
+    if (high < 0) {                 /* negate the 36-bit dividend */
+        high = -high;
+        rcr(high, low, 18);
+        high = -high;
+        rcr(high, low, 18);
     }
-    h = h - quotient;
-    if (h >= 0)
+    high = high - quotient;
+    if (high >= 0)
         goto overflow;
     for (int i = 0; i < 022; i++)   /* 18 divide steps */
-        dis(h, lo, quotient);
-    h = h + quotient;               /* restore the last step's remainder */
-    quotient = lo;
-    lo = 0;
-    rcr(h, lo, 1);
-    lo = dividend_hi;
-    if (lo < 0)
-        h = -h;                     /* the remainder takes the dividend's sign */
-    dividend_hi = h;
-    lo = divisor ^ dividend_hi;     /* negative when the quotient is */
+        dis(high, low, quotient);
+    high = high + quotient;         /* restore the last step's remainder */
+    quotient = low;
+    low = 0;
+    rcr(high, low, 1);
+    low = dividend_high;
+    if (low < 0)
+        high = -high;               /* the remainder takes the dividend's sign */
+    dividend_high = high;
+    low = divisor ^ dividend_high;  /* negative when the quotient is */
     skip_return();
 overflow:
-    h = quotient;
-    if (lo < 0)
-        h = -h;
-    return (dword){ h, dividend_hi };
+    high = quotient;
+    if (low < 0)
+        high = -high;
+    return (dword){ high, dividend_high };
 }

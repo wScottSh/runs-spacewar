@@ -67,35 +67,35 @@ HOMED word line_dots_skipped;
  * line mirrored through the center. Flag 6 says the mirror is drawn. */
 JSP void star_line(void)
 {
-    word skipped;
-    dword pen;
+    word dots_skipped;
+    dword dot;
 
-    skipped = next_random() >> 14;      /* -7..7 */
-    if (skipped < 0)
-        skipped = -skipped;
-    line_dots_skipped = skipped;
-    pen.hi = 0, pen.lo = 0, clf(6);     /* the pen at the center */
-    dpy_nowait(pen.hi, pen.lo);
+    dots_skipped = next_random() >> 14;  /* -7..7 */
+    if (dots_skipped < 0)
+        dots_skipped = -dots_skipped;
+    line_dots_skipped = dots_skipped;
+    dot.hi = 0, dot.lo = 0, clf(6);     /* the dot at the center */
+    dpy_nowait(dot.hi, dot.lo);
     for (;;) {
         switch ((int)line_dots_skipped) {
-        case 0: pen = line_step(pen.hi, pen.lo);
-        case 1: pen = line_step(pen.hi, pen.lo);
-        case 2: pen = line_step(pen.hi, pen.lo);
-        case 3: pen = line_step(pen.hi, pen.lo);
-        case 4: pen = line_step(pen.hi, pen.lo);
-        case 5: pen = line_step(pen.hi, pen.lo);
-        case 6: pen = line_step(pen.hi, pen.lo);
+        case 0: dot = line_step(dot.hi, dot.lo);
+        case 1: dot = line_step(dot.hi, dot.lo);
+        case 2: dot = line_step(dot.hi, dot.lo);
+        case 3: dot = line_step(dot.hi, dot.lo);
+        case 4: dot = line_step(dot.hi, dot.lo);
+        case 5: dot = line_step(dot.hi, dot.lo);
+        case 6: dot = line_step(dot.hi, dot.lo);
         case 7:
             for (int i = 0; i < 9; i++)
-                pen = line_step(pen.hi, pen.lo);
+                dot = line_step(dot.hi, dot.lo);
         }
         if (flag(6))
             return;
         stf(6);                         /* mirror the end of the line through the center */
-        pen.hi = -pen.hi;
-        rcl(pen.hi, pen.lo, 18);
-        pen.hi = -pen.hi;
-        rcl(pen.hi, pen.lo, 18);
+        dot.hi = -dot.hi;
+        rcl(dot.hi, dot.lo, 18);
+        dot.hi = -dot.hi;
+        rcl(dot.hi, dot.lo, 18);
     }
 }
 
