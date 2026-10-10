@@ -488,10 +488,22 @@ Operand = Union[Sym, Num, Lit, Here, ShiftCount]
 
 
 @dataclass(frozen=True)
+class InlineBody:       # a static inline function's body, laid out at each call
+    function: str
+
+
+@dataclass(frozen=True)
+class UnrolledBody:     # an unrolled loop's body, laid out once per iteration
+    at: str             # the loop's source position
+
+
+Construct = Union[InlineBody, UnrolledBody]
+
+
+@dataclass(frozen=True)
 class Copy:
-    """One copy of replicated C: `inline f` at one call, or `unroll <at>` in one
-    iteration. instance tells copies of the same construct apart."""
-    construct: str
+    """One copy of replicated C. instance tells copies of one construct apart."""
+    construct: Construct
     instance: str
 
 

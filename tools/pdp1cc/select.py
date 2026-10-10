@@ -483,7 +483,7 @@ class FunctionLowerer:
             out = meet(out, e)
         if out is None:
             raise SelectError(f"{c.sig.name}: never returns")
-        copy = ir.Copy(f"inline {c.sig.name}", inst.after)
+        copy = ir.Copy(ir.InlineBody(c.sig.name), inst.after)
         words = [replace(w, via=w.via + ("INLINE-CALL",), copies=(copy, *w.copies))
                  if isinstance(w, ir.Word) else w for w in words]
         if inst.exits:
@@ -696,7 +696,7 @@ class FunctionLowerer:
             items, st = self.stmt(s.body, st)
             if any(isinstance(i, ir.LabelDef) for i in items):
                 raise SelectError("an unrolled body cannot hold labels")
-            copy = ir.Copy(f"unroll {s.at}", str(n))
+            copy = ir.Copy(ir.UnrolledBody(s.at), str(n))
             out += [replace(w, via=w.via + ("LOOP-UNROLL",), copies=(copy, *w.copies)) for w in items]
         return out, st
 

@@ -77,7 +77,7 @@ FOLD = {"+": lambda a, b: a + b, "-": lambda a, b: a - b, "*": lambda a, b: a * 
         "<<": lambda a, b: a << b, ">>": lambda a, b: a >> b}
 
 Line = tuple[str, str]          # (label, instruction text)
-Where = dict[str, str]          # the copies a line was laid out in: construct -> instance
+Where = dict[ir.Construct, str]  # the copies a line was laid out in: construct -> instance
 
 
 # ------------------------------------------------------------ rule tables
@@ -131,7 +131,7 @@ class Site:
     rewrites: Callable[[list[Line]], list[Rewrite]]     # where one copy of the edit may land
     edit: Callable[[c_ast.Node], None]
     copies: int = 1             # the site's C is laid out this many times
-    replicas: tuple[str, ...] = ()  # the constructs that replicate it: `inline f`, `unroll <at>`
+    replicas: tuple[ir.Construct, ...] = ()     # the constructs that lay it out more than once
     error: str | None = None    # the edit must be refused with this message instead
     n: int = 0                  # a count site's count
 
@@ -178,7 +178,7 @@ def walk(node: c_ast.Node, ctx: dict) -> Iterator[tuple[c_ast.Node, c_ast.Node |
             sub["function"] = node.decl.name
             sub["copies"] = ctx.get("inline_copies", {}).get(node.decl.name, 1)
             inline = node.decl.name in ctx.get("inline_copies", {})
-            sub["replicas"] = (f"inline {node.decl.name}",) if inline else ()
+            sub["replicas"] = (ir.InlineBody(node.decl.name),) if inline else ()
         if isinstance(node, c_ast.Switch) and _homed_switch(node, ctx) and \
                 isinstance(child, c_ast.Compound):
             sub["duff_cases"] = child.block_items[:-1] if child.block_items else []
@@ -190,7 +190,7 @@ def walk(node: c_ast.Node, ctx: dict) -> Iterator[tuple[c_ast.Node, c_ast.Node |
             sub["call_node"] = node
         if isinstance(node, c_ast.For) and name == "stmt" and isinstance(node.cond, c_ast.BinaryOp):
             sub["copies"] = ctx.get("copies", 1) * dialect.c_int(node.cond.right)
-            sub["replicas"] = ctx.get("replicas", ()) + (f"unroll {node.coord}",)
+            sub["replicas"] = ctx.get("replicas", ()) + (ir.UnrolledBody(str(node.coord)),)
         yield child, node, name, sub
         yield from walk(child, sub)
 
