@@ -16,8 +16,8 @@ set and clear).
 Usage: uv run python tools/check-outline-reference.py"""
 import sys
 
-from oracle_check import ROOT, Inputs, built_symbols, lifted_signatures
-from pdp1cc import dialect, front, ir, splice
+from oracle_check import ROOT, Inputs, built_symbols, lifted_units
+from pdp1cc import ir
 from pdp1cc.gate import corpus, reference, simh
 
 LIFT = ["lift/outline_compiler.c", "lift/outlines.c"]
@@ -38,12 +38,9 @@ SYNTHETIC = {
 
 def main() -> int:
     files = [ROOT / f for f in LIFT]
-    sigs = lifted_signatures(files)
-    sig = sigs["outline_compiler"]
+    units = lifted_units(files)
+    sig = units[files[0]].signatures["outline_compiler"]
     address = built_symbols()
-    _, regions = splice.load(ROOT / "lift.toml")
-    prefix = {r.c.resolve(): r.prefix for r in regions}
-    units = {f: dialect.lower_unit(front.parse(f), prefix[f.resolve()]) for f in files}
     placed = [p for u in units.values() for p in reference.placements(u, address)]
 
     tables, words = [], []
@@ -67,8 +64,8 @@ def main() -> int:
 
     named = [("ot1", address["ot1"]), ("ot2", address["ot2"])] + tables
     calls = [Inputs(CODE, 0, table) for _, table in named]
-    native = reference.build(files, sig, ROOT / "build/ref/outline_compiler",
-                             [expr for *_, expr in watch], placed, scratch)
+    native = reference.build(files, ROOT / "build/ref/outline_compiler", reference.call_expr(sig),
+                             sig.inline_count, [expr for *_, expr in watch], placed, scratch)
     want = simh.run_jda(ROOT / "build/pdp1", ROOT / "build/oracle.rim", address[sig.sym], calls,
                         watch=[where for _, where, _ in watch], inline=True,
                         deposits={TABLES + k: w for k, w in enumerate(words)})

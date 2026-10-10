@@ -12,7 +12,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from .. import dialect, emit, front, ir, layout
+from .. import dialect, emit, front, ir, layout, splice
 from ..rules import RULES
 from . import reference, simh
 
@@ -103,8 +103,7 @@ def assemble(prog: Program, macro1: Path, work: Path) -> tuple[Path, dict[str, i
     lst = mac.with_suffix(".lst").read_text()
     if "No errors detected" not in lst:
         raise SystemExit(f"{mac}: macro1 reported errors")
-    symbols = {s: int(v, 8) for s, v in re.findall(r"^ (\w+)\s+([0-7]{6})$", lst, re.M)}
-    return mac.with_suffix(".rim"), symbols
+    return mac.with_suffix(".rim"), splice.symbols(lst)
 
 
 DISPLAY_WORD = re.compile(r"^\s*\d*\s+([0-7]{5}) ([0-7]{6})\s+(?:\w+,)?\s*dpy\b", re.M)
@@ -153,7 +152,7 @@ def watched(prog: Program) -> list[tuple[str, str, int, str]]:
             out += [(f"{s.name}[{k}]", s.sym, k, f"{s.name}[{k}]") if s.array else
                     (s.name, s.sym, 0, s.name) for k in range(s.size)]
     out += [(f"entry word of {f.sig.name}", f.sig.sym, 0, reference.cell(f.sig.name))
-            for f in prog.functions if reference.entry_param(f.sig)]
+            for f in prog.functions if reference.entry(f.sig)]
     return out
 
 
@@ -179,9 +178,9 @@ def run_program(prog: Program, simh_bin: Path, macro1: Path, work: Path) -> list
                                [symbols[sym] + k for _, sym, k, _ in watch],
                                inline=sig.inline_count > sig.byname,
                                display=display_words(rim.with_suffix(".lst")))
-        binary = reference.build([prog.path], sig, work / f"{prog.path.stem}-{sig.name}",
-                                 [expr for *_, expr in watch], placed,
-                                 native=prog.native.get(sig.name))
+        binary = reference.build([prog.path], work / f"{prog.path.stem}-{sig.name}",
+                                 reference.call_expr(sig, prog.native.get(sig.name)),
+                                 sig.inline_count, [expr for *_, expr in watch], placed)
         native = reference.run(binary, prog.calls)
         diffs += [f"{sig.name} {d}" for d in
                   compare(prog.calls, machine, native, sig, [label for label, *_ in watch])]

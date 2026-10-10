@@ -10,13 +10,12 @@ from . import ir, macro
 
 PAIR_SHIFTS = {"rcl", "rcr", "scl", "scr"}
 PAIR_STEPS = {"mus", "dis"}
-ROTATES = {"ral": "ac", "rar": "ac", "ril": "io", "rir": "io"}
 BIN_OPS = {"+", "-", "&", "|", "^"}
 MACRO_SYMBOL_LEN = 6
 CMP_OPS = {"<", ">=", "==", "!=", "<=", ">"}
 ATTR = re.compile(r"pdp1_(\w+)(?:\((.*)\))?$")
-CONVS = {"jda", "block", "xct", "jsp"}
-ATTRIBUTES = CONVS | {"byname", "inline", "sym", "entry_cell", "at", "reserve", "pool", "homed"}
+CONVS = {c.value: c for c in ir.Conv if c is not ir.Conv.INLINE}
+ATTRIBUTES = CONVS.keys() | {"byname", "inline", "sym", "entry_cell", "at", "reserve", "pool", "homed"}
 HARDWARE = {"tyi", "lsm", "ioh"}    # builtins that are one instruction with no operand
 DISPLAY = {"dpy", "dpy_nowait"}
 MAX_SENSE = 6
@@ -31,7 +30,7 @@ INSN_FLAG = {"I_STF": "stf", "I_CLF": "clf", "I_SZF": "szf"}
 INSN_SHIFT = {"I_RCL": "rcl", "I_RAL": "ral"}
 INSN_CONSTANT = {"I_CMA": ir.Insn("cma"),
                  "I_IOH": ir.Insn("iot", None, True),         # ioh: iot i, wait for completion
-                 "I_DPY_NOWAIT": ir.Insn("dpy-4000")}          # plot, ask for a completion pulse
+                 "I_DPY_NOWAIT": ir.Insn(ir.DPY_NOWAIT)}
 MAX_FLAG = 7                        # flag 7 names all six program flags
 MAX_INSN_SHIFT = 9                  # one shift instruction moves 1..9 places
 MACRO_SYMBOL = re.compile(r"[a-z][a-z0-9]{0,%d}" % (MACRO_SYMBOL_LEN - 1))
@@ -185,16 +184,16 @@ def _symbol(name: str, attrs: dict[str, str], namer: Namer, node: c_ast.Node) ->
 def _signature(decl: c_ast.Decl, namer: Namer, symbol: bool = True) -> ir.Signature:
     """symbol=False: a function type (typedef), which has no entry of its own."""
     attrs = _attrs(decl)
-    convs = CONVS & attrs.keys()
+    convs = [CONVS[a] for a in attrs if a in CONVS]
     if "inline" in (getattr(decl, "funcspec", None) or []) and "static" in decl.storage:
         if convs:
             raise _err(decl, f"{decl.name}: a static inline function is laid out at each call; "
                              "it has no calling convention")
-        convs = {"inline"}
+        convs = [ir.Conv.INLINE]
     if len(convs) != 1:
         raise _err(decl, f"{decl.name}: a function needs exactly one calling convention "
                          "(JDA, JSP, XCT or BLOCK)")
-    conv = convs.pop()
+    conv = convs[0]
     ftype = decl.type
     params: list[ir.Param] = []
     for p in (ftype.args.params if ftype.args else []):
@@ -207,28 +206,28 @@ def _signature(decl: c_ast.Decl, namer: Namer, symbol: bool = True) -> ir.Signat
         if "byname" in p_attrs and "inline" in p_attrs:
             raise _err(p, f"{p.name}: a parameter is BYNAME or INLINE, not both")
         if "byname" in p_attrs:
-            kind = "byname"
+            kind = ir.ParamKind.BYNAME
         elif "inline" in p_attrs:
-            kind = "inline"
+            kind = ir.ParamKind.INLINE
         elif "register" in p.storage:
-            kind = "io"
+            kind = ir.ParamKind.IO
         else:
-            kind = "ac"
-        if kind == "byname" and kind_of_type != "word":
+            kind = ir.ParamKind.AC
+        if kind is ir.ParamKind.BYNAME and kind_of_type != "word":
             raise _err(p, f"{p.name}: a BYNAME parameter is a `word`")
         params.append(ir.Param(p.name, kind, kind_of_type == "word*"))
     kinds = [p.kind for p in params]
-    after = ("byname", "inline")
-    if kinds.count("ac") > 1 or kinds.count("io") > 1:
+    after = sum(k.after_call for k in kinds)
+    if kinds.count(ir.ParamKind.AC) > 1 or kinds.count(ir.ParamKind.IO) > 1:
         raise _err(decl, f"{decl.name}: at most one AC parameter and one register parameter")
-    if sum(k in after for k in kinds) > 1:
+    if after > 1:
         raise _err(decl, f"{decl.name}: more than one word after the call is not implemented yet")
-    if any(k in after for k in kinds) and kinds[-1] not in after:
+    if after and not kinds[-1].after_call:
         raise _err(decl, f"{decl.name}: BYNAME and INLINE parameters come last, as the words "
                          "after the call")
-    if any(k in after for k in kinds) and conv in ("xct", "jsp", "inline"):
-        raise _err(decl, f"{decl.name}: an {conv.upper()} function has no inline words")
-    if "ac" in kinds and conv == "jsp":
+    if after and conv in (ir.Conv.XCT, ir.Conv.JSP, ir.Conv.INLINE):
+        raise _err(decl, f"{decl.name}: an {conv.name} function has no inline words")
+    if ir.ParamKind.AC in kinds and conv is ir.Conv.JSP:
         raise _err(decl, f"{decl.name}: a JSP function receives its return address in AC; "
                          "pass a register parameter")
     returns = _word_type(ftype.type) or _base_type(ftype.type)
@@ -281,7 +280,8 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
                             "name different storage; use one")
         if "entry_cell" in attrs:
             owner = sigs.get(attrs["entry_cell"])
-            if owner is None or owner.conv != "jda" or not any(p.kind == "ac" for p in owner.params):
+            if owner is None or owner.conv is not ir.Conv.JDA or \
+                    not any(p.kind is ir.ParamKind.AC for p in owner.params):
                 raise _err(ext, f"{ext.name}: ENTRY_CELL names a JDA function with an AC "
                                 "parameter, declared above")
             globals_[ext.name] = ir.Entry(owner.sym, alias=True)
@@ -326,7 +326,7 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
         if isinstance(ext, c_ast.FuncDef):
             fn = _lower_function(ext, sigs[ext.decl.name], globals_, sigs, pointers, namer,
                                  data, arrays)
-            if fn.sig.conv == "inline":
+            if fn.sig.conv is ir.Conv.INLINE:
                 if _origin(ext.decl) is not None:
                     raise _err(ext, f"{fn.sig.name}: a static inline function is laid out at "
                                     "its calls; AT does not apply")
@@ -535,11 +535,11 @@ def _lower_function(fn: c_ast.FuncDef, sig: ir.Signature, globals_: dict[str, ir
     frame: dict[str, ir.Storage] = {}
     params: list[ir.Var] = []
     for p in sig.params:
-        if p.kind == "ac":
-            storage = ir.Entry(sig.sym) if sig.conv == "jda" else ir.Acc(p.name)
-        elif p.kind == "io":
+        if p.kind is ir.ParamKind.AC:
+            storage = ir.Entry(sig.sym) if sig.conv is ir.Conv.JDA else ir.Acc(p.name)
+        elif p.kind is ir.ParamKind.IO:
             storage = ir.Io(p.name)
-        elif p.kind == "inline":
+        elif p.kind is ir.ParamKind.INLINE:
             storage = ir.Inline(p.name)
         else:
             storage = ir.ByName(p.name)
@@ -655,16 +655,7 @@ class _Lowerer:
             raise _err(node, "a jump table switches on a word cast to int: switch ((int)w)")
         if isinstance(cond.expr, c_ast.ID) and self._homed(cond.expr.name):
             return self.homed_switch(node, self.scope.lookup(cond.expr))
-        body = node.stmt.block_items or [] if isinstance(node.stmt, c_ast.Compound) else []
-        cases: list[list[c_ast.Node]] = []
-        for item in body:
-            if isinstance(item, c_ast.Default) or not isinstance(item, c_ast.Case):
-                raise _err(item, "a jump table has cases 0..n and no default")
-            if c_int(item.expr) != len(cases):
-                raise _err(item, f"case {c_int(item.expr)}: a jump table's cases are 0, 1, ... in order")
-            cases.append(item.stmts or [])
-        if len(cases) < 2:
-            raise _err(node, "a jump table has at least two cases")
+        cases = _cases(node, "a jump table", "a jump table's cases")
         slots: list[ir.Stmt | None] = []
         for stmts in cases[:-1]:
             if not stmts:
@@ -679,16 +670,7 @@ class _Lowerer:
         return ir.Switch(self.expr(cond.expr), tuple(slots), last)
 
     def homed_switch(self, node: c_ast.Switch, index: ir.Var) -> ir.HomedSwitch:
-        body = node.stmt.block_items or [] if isinstance(node.stmt, c_ast.Compound) else []
-        cases: list[list[c_ast.Node]] = []
-        for item in body:
-            if isinstance(item, c_ast.Default) or not isinstance(item, c_ast.Case):
-                raise _err(item, "a switch has cases 0..n and no default")
-            if c_int(item.expr) != len(cases):
-                raise _err(item, f"case {c_int(item.expr)}: the cases are 0, 1, ... in order")
-            cases.append(item.stmts or [])
-        if len(cases) < 2:
-            raise _err(node, "a switch has at least two cases")
+        cases = _cases(node, "a switch", "the cases")
         lowered = []
         for stmts in cases:
             self.scope.frames.append({})
@@ -715,7 +697,7 @@ class _Lowerer:
             raise _err(node, "a counted loop must be `for (int i = 0; i < N; i++)` (unrolled)")
         if _mentions(node.stmt, init[0].name):
             raise _err(node, f"the unrolled body must not use the counter {init[0].name}")
-        return ir.Unroll(c_int(node.cond.right), self.stmt(node.stmt))
+        return ir.Unroll(c_int(node.cond.right), self.stmt(node.stmt), str(node.coord))
 
     def local(self, node: c_ast.Decl) -> ir.Stmt | None:
         if "static" in node.storage or "extern" in node.storage:
@@ -867,8 +849,10 @@ class _Lowerer:
             want = 3 if name == "dpy" else 2
             if len(args) != want:
                 raise _err(node, f"{name} takes {want} arguments")
-            intensity = c_int(args[2]) if name == "dpy" else None
-            if intensity is not None and not 0 <= intensity <= MAX_INTENSITY:
+            if name == "dpy_nowait":
+                return ir.DpyNowait(self.expr(args[0]), self.lvalue(args[1]))
+            intensity = c_int(args[2])
+            if not 0 <= intensity <= MAX_INTENSITY:
                 raise _err(node, "dpy(x, y, n): the intensity n is 0..7")
             return ir.Dpy(self.expr(args[0]), self.lvalue(args[1]), intensity)
         if name in self.pointers and self._is_variable(name):
@@ -881,9 +865,9 @@ class _Lowerer:
                 raise _err(node, f"{name}(hi, lo, x) takes three arguments")
             hi, lo = self.lvalue(args[0]), self.lvalue(args[1])
             if name in PAIR_SHIFTS:
-                return ir.PairOp(name, hi, lo, count=c_int(args[2]))
-            return ir.PairOp(name, hi, lo, operand=self.expr(args[2]))
-        if name in ROTATES:
+                return ir.PairShift(name, hi, lo, c_int(args[2]))
+            return ir.PairStep(name, hi, lo, self.expr(args[2]))
+        if name in ir.AC_ROTATES | ir.IO_ROTATES:
             if len(args) != 2:
                 raise _err(node, f"{name}(x, n) takes two arguments")
             return ir.Rot(name, self.lvalue(args[0]), c_int(args[1]))
@@ -893,6 +877,20 @@ class _Lowerer:
         if len(args) != len(sig.params):
             raise _err(node, f"{name} takes {len(sig.params)} arguments")
         return ir.Call(sig, tuple(self.expr(a) for a in args))
+
+
+def _cases(node: c_ast.Switch, switch: str, its_cases: str) -> list[list[c_ast.Node]]:
+    body = node.stmt.block_items or [] if isinstance(node.stmt, c_ast.Compound) else []
+    cases: list[list[c_ast.Node]] = []
+    for item in body:
+        if isinstance(item, c_ast.Default) or not isinstance(item, c_ast.Case):
+            raise _err(item, f"{switch} has cases 0..n and no default")
+        if c_int(item.expr) != len(cases):
+            raise _err(item, f"case {c_int(item.expr)}: {its_cases} are 0, 1, ... in order")
+        cases.append(item.stmts or [])
+    if len(cases) < 2:
+        raise _err(node, f"{switch} has at least two cases")
+    return cases
 
 
 def _builtin(name: str, sigs: dict[str, ir.Signature]) -> bool:

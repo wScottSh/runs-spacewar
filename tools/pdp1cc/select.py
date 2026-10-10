@@ -12,10 +12,6 @@ from .rules import check
 
 BIN_MNEMONIC = {"+": "add", "-": "sub", "&": "and", "|": "ior", "^": "xor"}
 SHIFT_MNEMONIC = {"<<": "sal", ">>": "sar"}
-PAIR_SHIFTS = {"rcl", "rcr", "scl", "scr"}
-PAIR_STEPS = {"mus", "dis"}
-AC_ROTATES = {"ral", "rar"}
-IO_ROTATES = {"ril", "rir"}
 LAW_MAX = (1 << 12) - 1
 SWAP_HALF = 9           # rcr 9s twice exchanges AC and IO
 MAX_PASSES = 20
@@ -23,12 +19,11 @@ MAX_PASSES = 20
 # these, and that leaves only through its own exit, preserves IO for its callers.
 IO_WRITERS = {"lio", "cli", "tyi", "rcl", "rcr", "scl", "scr", "ril", "rir", "sil", "sir",
               "mus", "dis", "jsp", "jda", "xct"}
-LEAVES_ELSEWHERE = {"TAIL-CALL", "TAIL-CALL-INDIRECT", "JSP-FORWARD", "RET-INDIRECT"}
+LEAVES_ELSEWHERE = {check(r) for r in ("TAIL-CALL", "TAIL-CALL-INDIRECT", "JSP-FORWARD", "RET-INDIRECT")}
 # Operate-group instructions a comma expression may join into one word, and
 # what each writes. Parts that write different things do not depend on the
 # order the hardware applies them in, so the word means the comma expression.
 OPR_WRITES = {"cla": "AC", "cma": "AC", "cli": "IO", "clf": "a program flag", "stf": "a program flag"}
-DPY_NOWAIT = "dpy-4000"
 
 
 class SelectError(Exception):
@@ -36,18 +31,48 @@ class SelectError(Exception):
 
 
 @dataclass(frozen=True)
+class Local:
+    name: str
+
+
+@dataclass(frozen=True)
+class Cell:
+    sym: str
+
+
+@dataclass(frozen=True)
+class AddressBits:
+    sym: str
+    offset: int
+
+
+@dataclass(frozen=True)
+class PointerBits:
+    sym: str
+
+
+Fact = Local | Cell | AddressBits | PointerBits
+
+
+@dataclass(frozen=True)
 class State:
-    """Names whose current value AC / IO hold. None (as a State) = unreachable."""
-    ac: frozenset[str] = frozenset()
-    io: frozenset[str] = frozenset()
+    ac: frozenset[Fact] = frozenset()
+    io: frozenset[Fact] = frozenset()
 
-    def write_mem(self, key: str) -> State:
-        return State(self.ac - {key, "@" + key}, self.io - {key, "@" + key})
+    def write_mem(self, written: Local | Cell) -> State:
+        stale = {written} | ({PointerBits(written.sym)} if isinstance(written, Cell) else set())
+        return State(self.ac - stale, self.io - stale)
 
-    def registers_only(self) -> State:
-        keep = ("%", "@&")
-        return State(frozenset(k for k in self.ac if k.startswith(keep)),
-                     frozenset(k for k in self.io if k.startswith(keep)))
+    def without_memory(self) -> State:
+        return State(_lasting(self.ac), _lasting(self.io))
+
+
+def _lasting(facts: frozenset[Fact]) -> frozenset[Fact]:
+    return frozenset(f for f in facts if isinstance(f, (Local, AddressBits)))
+
+
+def _without_locals(facts: frozenset[Fact]) -> frozenset[Fact]:
+    return frozenset(f for f in facts if not isinstance(f, Local))
 
 
 def meet(a: State | None, b: State | None) -> State | None:
@@ -58,23 +83,21 @@ def meet(a: State | None, b: State | None) -> State | None:
     return State(a.ac & b.ac, a.io & b.io)
 
 
-def address_key(e: ir.Expr) -> str | None:
+def address_fact(e: ir.Expr) -> AddressBits | PointerBits | None:
     match e:
-        case ir.AddrOf(operand=o):
-            return f"@&{o.name}+{o.offset}"
-        case ir.Insn(operand=ir.Sym() as o):
-            return f"@&{o.name}+{o.offset}"
+        case ir.AddrOf(operand=o) | ir.Insn(operand=ir.Sym() as o):
+            return AddressBits(o.name, o.offset)
         case ir.Var(storage=ir.Homed(sym=sym)):
-            return "@" + sym
+            return PointerBits(sym)
     return None
 
 
-def key(v: ir.Var) -> str:
+def fact(v: ir.Var) -> Local | Cell:
     if isinstance(v.storage, ir.Memory):
-        return ir.mem_sym(v.storage)
+        return Cell(ir.mem_sym(v.storage))
     if isinstance(v.storage, ir.Homed):
-        return v.storage.sym
-    return "%" + v.name
+        return Cell(v.storage.sym)
+    return Local(v.name)
 
 
 def W(op, rule, operand=None, i=False, note="", via=()):
@@ -189,10 +212,10 @@ class FunctionLowerer:
     # ------------------------------------------------------------ function
     def lower(self) -> list[ir.Item]:
         fn = self.fn
-        if fn.sig.conv == "jsp" and (target := _forwarded(fn.body)) is not None:
+        if fn.sig.conv is ir.Conv.JSP and (target := _forwarded(fn.body)) is not None:
             return self.forward(target)
         tails = _tail_calls(fn.body)
-        jumps = _indirect_tails(fn.body)
+        jumps = [r for r in _returns(fn.body) if isinstance(r.value, ir.IndirectCall)]
         plain = [r for r in _returns(fn.body) if r not in tails and r not in jumps]
         if tails:
             targets = {t.value.sig.name for t in tails}
@@ -204,7 +227,7 @@ class FunctionLowerer:
                     f"{fn.sig.name}: takes {fn.sig.inline_count} inline word(s) but tail-calls "
                     f"{self.adopted.name}, which returns past {self.adopted.inline_count}")
         elif fn.sig.inline_count:
-            if not _any_byname_read(fn.body):
+            if not any(map(inline.is_byname_read, inline.iter_nodes(fn.body))):
                 raise SelectError(f"{fn.sig.name}: a BYNAME or INLINE parameter that is never read")
             fn = inline.place_args(fn)
         body = fn.body
@@ -234,7 +257,7 @@ class FunctionLowerer:
             self.strides_prev = dict(self.strides_out)
         else:
             raise SelectError(f"{fn.sig.name}: label states did not converge")
-        if fn.sig.conv == "xct":
+        if fn.sig.conv is ir.Conv.XCT:
             return self.xct_body(items)
         return items
 
@@ -259,22 +282,21 @@ class FunctionLowerer:
 
     def header(self) -> list[ir.Item]:
         items: list[ir.Item] = [ir.LabelDef(self.sig.sym)]
-        if self.sig.conv == "jda":
+        if self.sig.conv is ir.Conv.JDA:
             exit_sym = (self.adopted or self.sig).exit_sym
             items += [W(None, "JDA-ENTRY", ir.Num(0), note="entry word = parameter"),
                       W("dap", "JDA-PROLOGUE", ir.Sym(exit_sym),
                         via=("LAY-ADOPT",) if self.adopted else ())]
-        elif self.sig.conv == "jsp":
+        elif self.sig.conv is ir.Conv.JSP:
             exit_sym = (self.adopted or self.sig).exit_sym
             items.append(W("dap", "JSP-PROLOGUE", ir.Sym(exit_sym),
                            via=("LAY-ADOPT",) if self.adopted else ()))
         return items
 
     def entry_state(self) -> State:
-        ac = frozenset("%" + p.name for p in self.fn.params
-                       if isinstance(p.storage, ir.Acc))
-        io = frozenset("%" + p.name for p in self.fn.params if isinstance(p.storage, ir.Io))
-        return State(ac if self.sig.conv in ("block", "xct") else frozenset(), io)
+        ac = frozenset(Local(p.name) for p in self.fn.params if isinstance(p.storage, ir.Acc))
+        io = frozenset(Local(p.name) for p in self.fn.params if isinstance(p.storage, ir.Io))
+        return State(ac if self.sig.conv in (ir.Conv.BLOCK, ir.Conv.XCT) else frozenset(), io)
 
     # ----------------------------------------------------------- statements
     def stmt(self, s: ir.Stmt, st: State | None) -> tuple[list[ir.Item], State | None]:
@@ -299,36 +321,35 @@ class FunctionLowerer:
                 return self.assign(s.target, s.value, st)
             case ir.AssignPair():
                 items, st = self.to_ac(s.value, st)
-                return items, State(frozenset({key(s.hi)}), frozenset({key(s.lo)}))
+                return items, State(frozenset({fact(s.hi)}), frozenset({fact(s.lo)}))
             case ir.Eval(expr=ir.PreInc(target=t)):
                 return [W("idx", "EX-INC", cell(t), via=_via(t))], self.after_idx(t, st)
             case ir.Eval(expr=ir.Flag(op=op, n=n)):
                 return [W(op, "EX-FLAG", ir.Num(n))], st
             case ir.StoreNext():
                 return self.store_next(s, st)
-            case ir.AssignAddr() if key(s.target) in self.switch_tables:
+            case ir.AssignAddr(target=ir.Var(storage=ir.Homed(sym=sym))) if sym in self.switch_tables:
                 return self.store_case(s, st)
             case ir.AssignAddr():
-                ak = address_key(s.value)
-                if ak is not None and ak in st.ac:
+                if address_fact(s.value) in st.ac:
                     items = []
                 elif isinstance(s.value, ir.Var) and isinstance(s.value.storage, ir.Homed):
                     items, st = self.to_ac(ir.HomeWord(s.value, self.home_op(s.value), False), st)
                 else:
                     items, st = self.to_ac(s.value, st)
                 return items + [W("dap", "EX-STORE-ADDR", cell(s.target), via=_via(s.target))], \
-                    st.write_mem(key(s.target))
+                    st.write_mem(fact(s.target))
             case ir.HomedSwitch():
                 return self.homed_switch(s, st)
             case ir.OprCombine():
                 return self.opr_combine(s, st)
-            case ir.Eval(expr=ir.Dpy() as d):
+            case ir.Eval(expr=ir.Dpy() | ir.DpyNowait() as d):
                 return self.dpy(d, st)
             case ir.Switch():
                 return self.switch(s, st)
             case ir.PlaceHere():
                 return self.place_here(s, st)
-            case ir.Eval(expr=ir.PairOp() as p):
+            case ir.Eval(expr=ir.PairShift() | ir.PairStep() as p):
                 return self.pair_op(p, st)
             case ir.Eval(expr=ir.Call() as c):
                 return self.call(c, st)
@@ -356,8 +377,8 @@ class FunctionLowerer:
 
     @staticmethod
     def after_idx(t: ir.Var, st: State) -> State:
-        ac = {key(t)} | ({"@" + t.storage.sym} if isinstance(t.storage, ir.Homed) else set())
-        return State(frozenset(ac), st.io - {key(t)})
+        ac = {fact(t)} | ({PointerBits(t.storage.sym)} if isinstance(t.storage, ir.Homed) else set())
+        return State(frozenset(ac), st.io - {fact(t)})
 
     def home_op(self, p: ir.Var) -> str:
         if p.storage.sym not in self.home_ops:
@@ -382,17 +403,17 @@ class FunctionLowerer:
         text = " ".join(emit.word_text(w) for w in words) + "-opr" * (len(words) - 1)
         return [W(text, "OPR-COMBINE", via=tuple(dict.fromkeys(vias)))], st
 
-    def dpy(self, d: ir.Dpy, st: State):
+    def dpy(self, d: ir.Dpy | ir.DpyNowait, st: State):
         items, st = self.to_ac(d.x, st)
         self.need_io(d.y, st)
-        if d.intensity is None:
-            text = DPY_NOWAIT
+        if isinstance(d, ir.DpyNowait):
+            text = ir.DPY_NOWAIT
         else:
             text = "dpy-i" + (f"+{d.intensity << 6:o}" if d.intensity else "")
         return items + [W(text, "EX-DPY", note="plot (AC, IO)")], st
 
     def homed_switch(self, s: ir.HomedSwitch, st: State):
-        index = key(s.index)
+        index = s.index.storage.sym
         items: list[ir.Item] = [ir.LabelDef(index),
                                 W("jmp", "SWITCH-HOMED", ir.Here(), note="into the case stored here"),
                                 ir.LabelDef(s.table)]
@@ -411,7 +432,7 @@ class FunctionLowerer:
         return items + last, end
 
     def store_case(self, s: ir.AssignAddr, st: State):
-        index = key(s.target)
+        index = s.target.storage.sym
         items, st = self.to_ac(s.value, st)
         stride = self.strides_prev.get(index, 1)
         shift = stride.bit_length() - 1
@@ -419,23 +440,23 @@ class FunctionLowerer:
             items += [W("sal", "SWITCH-HOMED", ir.ShiftCount(n)) for n in shift_chunks(shift)]
         items += [W("add", "SWITCH-HOMED", ir.Lit(ir.Sym(self.switch_tables[index]))),
                   W("dap", "SWITCH-HOMED", ir.Sym(index), via=("ST-HOMED",))]
-        return items, State(frozenset(), st.io).write_mem(index)
+        return items, State(frozenset(), st.io).write_mem(Cell(index))
 
     def inline_call(self, c: ir.Call, st: State) -> tuple[list[ir.Item], State]:
         fn = self.inlines[c.sig.name]
         items: list[ir.Item] = []
         ac, io = set(), set()
         for p, var, arg in zip(c.sig.params, fn.params, c.args):
-            if p.kind == "ac":
+            if p.kind is ir.ParamKind.AC:
                 more, st = self.to_ac(arg, st)
                 items += more
-                ac.add(key(var))
+                ac.add(fact(var))
             else:
                 if not (isinstance(arg, ir.Var) and isinstance(arg.storage, ir.Io)):
                     raise SelectError(f"{c.sig.name}: pass a register local for {p.name}")
                 self.need_io(arg, st)
-                io.add(key(var))
-        entry = State(_memory_facts(st.ac) | ac, _memory_facts(st.io) | io)
+                io.add(fact(var))
+        entry = State(_without_locals(st.ac) | ac, _without_locals(st.io) | io)
         body = _rename_labels(fn.body, self.namer)
         if not _ends_in_transfer(body):
             if c.sig.returns != "void":
@@ -450,11 +471,12 @@ class FunctionLowerer:
             out = meet(out, e)
         if out is None:
             raise SelectError(f"{c.sig.name}: never returns")
-        words = [replace(w, via=w.via + ("INLINE-CALL",)) if isinstance(w, ir.Word) else w
-                 for w in words]
+        copy = ir.Copy(ir.InlineBody(c.sig.name), inst.after)
+        words = [replace(w, via=w.via + ("INLINE-CALL",), copies=(copy, *w.copies))
+                 if isinstance(w, ir.Word) else w for w in words]
         if inst.exits:
             words.append(ir.LabelDef(inst.after))
-        return items + words, State(_memory_facts(out.ac), _memory_facts(out.io))
+        return items + words, State(_without_locals(out.ac), _without_locals(out.io))
 
     def store_next(self, s: ir.StoreNext, st: State):
         """*p++ = e: e from AC (dac i p) or from a register local (dio i p), then idx p."""
@@ -467,8 +489,8 @@ class FunctionLowerer:
             items, st = self.to_ac(v, st)
             store = W("dac", "EX-POSTINC-STORE", mem(s.pointer), i=True, via=_via(s.pointer))
         step = W("idx", "EX-POSTINC-STORE", mem(s.pointer), via=_via(s.pointer))
-        st = st.registers_only()
-        return items + [store, step], State(frozenset({key(s.pointer)}), st.io)
+        st = st.without_memory()
+        return items + [store, step], State(frozenset({fact(s.pointer)}), st.io)
 
     def switch(self, s: ir.Switch, st: State):
         """add (T; dap J; J, jmp .; T: one word per case. A goto case is its
@@ -505,13 +527,13 @@ class FunctionLowerer:
         match t.storage:
             case ir.Acc():
                 items, st = self.to_ac(value, st)
-                return items, State(st.ac | {key(t)}, st.io)
+                return items, State(st.ac | {fact(t)}, st.io)
             case ir.Io():
                 return self.assign_io(t, value, st)
             case ir.Homed():
                 raise SelectError(f"{t.name} is HOMED: assigning it stores an address (dap)")
-        k = key(t)
-        if isinstance(value, ir.Var) and isinstance(value.storage, ir.Memory) and key(value) == k:
+        k = fact(t)
+        if isinstance(value, ir.Var) and isinstance(value.storage, ir.Memory) and fact(value) == k:
             return [], st                       # the same cell under another name
         if value == ir.Const(0):
             return [W("dzm", "EX-STORE-ZERO", mem(t), via=_via(t))], st.write_mem(k)
@@ -524,16 +546,16 @@ class FunctionLowerer:
         return items + [W("dac", "EX-STORE", mem(t), via=_via(t))], State(st.ac | {k}, st.io)
 
     def assign_io(self, t: ir.Var, value: ir.Expr, st: State):
-        kt = key(t)
+        kt = fact(t)
         match value:
             case ir.Var(storage=ir.Io()):
                 self.need_io(value, st)
                 return [], State(st.ac, st.io | {kt})
             case ir.Var() if isinstance(value.storage, ir.Memory):
-                if key(value) in st.io:
+                if fact(value) in st.io:
                     return [], State(st.ac - {kt}, st.io | {kt})
                 return ([W("lio", "EX-LOAD-IO", mem(value), via=_via(value))],
-                        State(st.ac - {kt}, frozenset({kt, key(value)})))
+                        State(st.ac - {kt}, frozenset({kt, fact(value)})))
             case ir.Const(value=0):
                 return [W("cli", "EX-CONST-IO")], State(st.ac - {kt}, frozenset({kt}))
             case ir.Const(value=c):
@@ -546,7 +568,7 @@ class FunctionLowerer:
                     State(st.ac - {kt}, frozenset({kt}))
             case ir.Hw(name="tyi"):
                 return [W("tyi", "EX-HW")], State(st.ac - {kt}, frozenset({kt}))
-            case ir.Rot(op=op, operand=v) if op in IO_ROTATES:
+            case ir.Rot(op=op, operand=v) if op in ir.IO_ROTATES:
                 if v != t:
                     raise SelectError(f"{op} rotates IO in place: write {t.name} = {op}({t.name}, n)")
                 self.need_io(v, st)
@@ -556,19 +578,19 @@ class FunctionLowerer:
         return items + swap(), State(frozenset(), frozenset({kt}))
 
     def need_io(self, v: ir.Var, st: State) -> None:
-        if key(v) not in st.io:
+        if fact(v) not in st.io:
             raise SelectError(f"register local {v.name} no longer holds its value in IO")
 
-    def pair_op(self, p: ir.PairOp, st: State):
-        if not isinstance(p.hi.storage, ir.Acc) or key(p.hi) not in st.ac:
+    def pair_op(self, p: ir.PairShift | ir.PairStep, st: State):
+        if not isinstance(p.hi.storage, ir.Acc) or fact(p.hi) not in st.ac:
             raise SelectError(f"{p.op}: {p.hi.name} must be an AC local holding its value")
-        if not isinstance(p.lo.storage, ir.Io) or key(p.lo) not in st.io:
+        if not isinstance(p.lo.storage, ir.Io) or fact(p.lo) not in st.io:
             raise SelectError(f"{p.op}: {p.lo.name} must be a register local holding its value")
-        if p.op in PAIR_STEPS:
+        if isinstance(p, ir.PairStep):
             words = [W(p.op, "EX-STEP", self.memory_operand(p.operand))]
         else:
             words = [W(p.op, "EX-ROT", ir.ShiftCount(n)) for n in shift_chunks(p.count)]
-        return words, State(frozenset({key(p.hi)}), frozenset({key(p.lo)}))
+        return words, State(frozenset({fact(p.hi)}), frozenset({fact(p.lo)}))
 
     def if_(self, s: ir.If, st: State):
         c = s.cond
@@ -594,7 +616,7 @@ class FunctionLowerer:
             t = c.operand.target
             pre: list[ir.Item] = []
             table = ()
-            after = State(frozenset({key(t)}), st.io - {key(t)})
+            after = State(frozenset({fact(t)}), st.io - {fact(t)})
             skip_c = skips.isp_skip_when(c.op)
             skip_not_c = skips.isp_skip_when(skips.NEGATE[c.op])
         elif isinstance(c.operand, ir.Var) and isinstance(c.operand.storage, ir.Io):
@@ -658,22 +680,23 @@ class FunctionLowerer:
 
     def unroll(self, s: ir.Unroll, st: State):
         out: list[ir.Item] = []
-        for _ in range(s.count):
+        for n in range(s.count):
             items, st = self.stmt(s.body, st)
             if any(isinstance(i, ir.LabelDef) for i in items):
                 raise SelectError("an unrolled body cannot hold labels")
-            out += [replace(w, via=w.via + ("LOOP-UNROLL",)) for w in items]
+            copy = ir.Copy(ir.UnrolledBody(s.at), str(n))
+            out += [replace(w, via=w.via + ("LOOP-UNROLL",), copies=(copy, *w.copies)) for w in items]
         return out, st
 
     def return_(self, s: ir.Return, st: State):
         if self.instances:
             return self.instance_return(s, st)
-        if isinstance(s.value, ir.Call) and s.value.sig.conv == "block":
+        if isinstance(s.value, ir.Call) and s.value.sig.conv is ir.Conv.BLOCK:
             return self.tail_call(s.value, st, s is self.final)
         if isinstance(s.value, ir.IndirectCall):
             return self.indirect_tail_call(s.value, st)
         items, st = self.return_value(s, st)
-        if self.sig.conv == "xct":
+        if self.sig.conv is ir.Conv.XCT:
             return items, None
         if self.sig.byname:
             return items + [W("jmp", "RET-INDIRECT", self.exit_cell(), i=True)], None
@@ -684,7 +707,7 @@ class FunctionLowerer:
     def instance_return(self, s: ir.Return, st: State):
         inst = self.instances[-1]
         if isinstance(s.value, ir.IndirectCall) or \
-                (isinstance(s.value, ir.Call) and s.value.sig.conv == "block"):
+                (isinstance(s.value, ir.Call) and s.value.sig.conv is ir.Conv.BLOCK):
             raise SelectError(f"{inst.sig.name}: a static inline function cannot tail-call")
         items, st = self.return_value(s, st)
         if s is inst.final:
@@ -709,7 +732,7 @@ class FunctionLowerer:
 
     def indirect_tail_call(self, c: ir.IndirectCall, st: State):
         """return p(...): the arguments, then a jump through p."""
-        if c.sig.conv != "block":
+        if c.sig.conv is not ir.Conv.BLOCK:
             raise SelectError(f"a tail call through {c.pointer.name} needs a BLOCK function type")
         items, _ = self.block_args(c.sig, c.args, st)
         return items + [W("jmp", "TAIL-CALL-INDIRECT", mem(c.pointer), i=True)], None
@@ -717,10 +740,10 @@ class FunctionLowerer:
     def block_args(self, sig: ir.Signature, args, st: State):
         items: list[ir.Item] = []
         for p, arg in zip(sig.params, args):
-            if p.kind == "ac":
+            if p.kind is ir.ParamKind.AC:
                 more, st = self.to_ac(arg, st)
                 items += more
-            elif p.kind == "io":
+            elif p.kind is ir.ParamKind.IO:
                 if not (isinstance(arg, ir.Var) and isinstance(arg.storage, ir.Io)):
                     raise SelectError(f"{sig.name}: pass a register local for {p.name}")
                 self.need_io(arg, st)
@@ -738,30 +761,30 @@ class FunctionLowerer:
     def call(self, c: ir.Call, st: State) -> tuple[list[ir.Item], State]:
         """A JDA, JSP or XCT call: AC argument, the call word, then for JDA one
         inline word per BYNAME argument."""
-        if c.sig.conv == "block":
+        if c.sig.conv is ir.Conv.BLOCK:
             raise SelectError(f"{c.sig.name} is a BLOCK: only `return {c.sig.name}(...)` enters it")
-        if c.sig.conv == "inline":
+        if c.sig.conv is ir.Conv.INLINE:
             return self.inline_call(c, st)
         items: list[ir.Item] = []
         args = dict(zip((p.kind for p in c.sig.params), c.args))
-        if "ac" in args:
-            items, st = self.to_ac(args["ac"], st)
-        if "io" in args:
-            arg = args["io"]
+        if ir.ParamKind.AC in args:
+            items, st = self.to_ac(args[ir.ParamKind.AC], st)
+        if ir.ParamKind.IO in args:
+            arg = args[ir.ParamKind.IO]
             if not (isinstance(arg, ir.Var) and isinstance(arg.storage, ir.Io)):
                 raise SelectError(f"{c.sig.name}: pass a register local as the IO argument")
             self.need_io(arg, st)
-        op, rule = {"jda": ("jda", "JDA-CALL"), "jsp": ("jsp", "JSP-CALL"),
-                    "xct": ("xct", "XCT-CALL")}[c.sig.conv]
+        op, rule = {ir.Conv.JDA: ("jda", "JDA-CALL"), ir.Conv.JSP: ("jsp", "JSP-CALL"),
+                    ir.Conv.XCT: ("xct", "XCT-CALL")}[c.sig.conv]
         items.append(W(op, rule, ir.Sym(c.sig.sym)))
         for p, arg in zip(c.sig.params, c.args):
-            if p.kind == "byname":
+            if p.kind is ir.ParamKind.BYNAME:
                 via = _via(arg) if isinstance(arg, ir.Var) else ()
                 items.append(W("lac", "JDA-BYNAME-ARG", self.memory_operand(arg), via=via))
-            elif p.kind == "inline":
+            elif p.kind is ir.ParamKind.INLINE:
                 items.append(W(None, "JDA-INLINE-ARG", self.inline_word(arg)))
         if self.keeps_io.get(c.sig.sym):
-            return items, State(frozenset(), st.registers_only().io)
+            return items, State(frozenset(), st.without_memory().io)
         return items, State()
 
     @staticmethod
@@ -781,7 +804,7 @@ class FunctionLowerer:
         """Words that leave e's value in AC, and the state after them."""
         match e:
             case ir.Var(storage=ir.Acc()):
-                if key(e) not in st.ac:
+                if fact(e) not in st.ac:
                     raise SelectError(f"AC local {e.name} was clobbered before this use; "
                                       "name a static to hold it")
                 return [], st
@@ -797,26 +820,26 @@ class FunctionLowerer:
                                   "instruction; read through it with *home(...)")
             case ir.Insn():
                 return [W("lac", "EX-CONST-AC", ir.Lit(e), via=_via_operand(e))], \
-                    State(frozenset({address_key(e)} - {None}), st.io)
+                    State(frozenset({address_fact(e)} - {None}), st.io)
             case ir.AddrOf(operand=o):
                 return [W("law", "EX-CODE", o, via=("ST-POOL",) if o.pool else ())], \
-                    State(frozenset({address_key(e)}), st.io)
+                    State(frozenset({address_fact(e)}), st.io)
             case ir.HomeWord(pointer=p, op=op, increment=inc):
                 if op != self.home_op(p):
                     raise SelectError(f"{p.name}'s home is `{self.home_op(p)} .`, not `{op}`")
                 if inc:
                     return [W("idx", "HOMED-WORD", cell(p), via=_via(p))], self.after_idx(p, st)
-                if key(p) in st.ac:
+                if fact(p) in st.ac:
                     return [], st
                 return [W("lac", "HOMED-WORD", cell(p), via=_via(p))], \
-                    State(frozenset({key(p), "@" + key(p)}), st.io)
+                    State(frozenset({fact(p), PointerBits(p.storage.sym)}), st.io)
             case ir.HomeLoad(pointer=p):
                 return [ir.LabelDef(p.storage.sym), W("lac", "HOMED-HOME", home_address(p), via=_via(p))], \
                     State(frozenset(), st.io)
             case ir.Var():
-                if key(e) in st.ac:
+                if fact(e) in st.ac:
                     return [], st
-                return [W("lac", "EX-LOAD", mem(e), via=_via(e))], State(frozenset({key(e)}), st.io)
+                return [W("lac", "EX-LOAD", mem(e), via=_via(e))], State(frozenset({fact(e)}), st.io)
             case ir.Const(value=v):
                 return [self.const_ac(v)], State(frozenset(), st.io)
             case ir.PreInc(target=t):
@@ -835,11 +858,11 @@ class FunctionLowerer:
                 words = [W(SHIFT_MNEMONIC[e.op], "EX-SHIFT", ir.ShiftCount(n))
                          for n in shift_chunks(e.count)]
                 return items + words, State(frozenset(), st.io)
-            case ir.Rot(op=op) if op in AC_ROTATES:
+            case ir.Rot(op=op) if op in ir.AC_ROTATES:
                 items, st = self.to_ac(e.operand, st)
                 words = [W(op, "EX-ROT", ir.ShiftCount(n)) for n in shift_chunks(e.count)]
                 return items + words, State(frozenset(), st.io)
-            case ir.Call() if e.sig.returns in ("word", "word*", "dword") and e.sig.conv == "inline":
+            case ir.Call() if e.sig.returns in ("word", "word*", "dword") and e.sig.conv is ir.Conv.INLINE:
                 return self.inline_call(e, st)
             case ir.Call() if e.sig.returns in ("word", "word*", "dword"):
                 return self.call(e, st)
@@ -906,30 +929,16 @@ def hardware_after(name: str, st: State) -> State:
 def _forwarded(body: ir.Block) -> ir.Call | None:
     """g(...) when the whole body is `return g(...)` for a JSP g."""
     if len(body.stmts) == 1 and isinstance(r := body.stmts[0], ir.Return) \
-            and isinstance(r.value, ir.Call) and r.value.sig.conv == "jsp":
+            and isinstance(r.value, ir.Call) and r.value.sig.conv is ir.Conv.JSP:
         return r.value
     return None
-
-
-def _indirect_tails(node) -> list[ir.Return]:
-    return [r for r in _returns(node) if isinstance(r.value, ir.IndirectCall)]
 
 
 def _ends_in_transfer(b: ir.Block) -> bool:
     stmts = list(b.stmts)
     while stmts and isinstance(stmts[-1], ir.PlaceHere):    # data, laid out after the code
         stmts.pop()
-    if not stmts:
-        return False
-    last = stmts[-1]
-    while isinstance(last, (ir.Labeled, ir.Block)):
-        if isinstance(last, ir.Block):
-            if not last.stmts:
-                return False
-            last = last.stmts[-1]
-        else:
-            last = last.stmt
-    return isinstance(last, (ir.Return, ir.Forever, ir.Goto))
+    return isinstance(_final_stmt(ir.Block(tuple(stmts))), (ir.Return, ir.Forever, ir.Goto))
 
 
 def _children(node) -> list:
@@ -957,11 +966,7 @@ def _returns(node) -> list[ir.Return]:
 
 def _tail_calls(node) -> list[ir.Return]:
     return [r for r in _returns(node)
-            if isinstance(r.value, ir.Call) and r.value.sig.conv == "block"]
-
-
-def _any_byname_read(node) -> bool:
-    return any(map(inline.is_byname_read, inline.iter_nodes(node)))
+            if isinstance(r.value, ir.Call) and r.value.sig.conv is ir.Conv.BLOCK]
 
 
 def hardware_word(name: str) -> ir.Word:
@@ -970,17 +975,13 @@ def hardware_word(name: str) -> ir.Word:
     return W(name, "EX-HW")
 
 
-def _memory_facts(keys: frozenset[str]) -> frozenset[str]:
-    return frozenset(k for k in keys if not k.startswith("%"))
-
-
 def _homed_switches(body) -> dict[str, str]:
     out: dict[str, str] = {}
     for n in inline.iter_nodes(body):
         if isinstance(n, ir.HomedSwitch):
-            if key(n.index) in out:
+            if n.index.storage.sym in out:
                 raise SelectError(f"{n.index.name} indexes two switches: a HOMED word has one home")
-            out[key(n.index)] = n.table
+            out[n.index.storage.sym] = n.table
     return out
 
 

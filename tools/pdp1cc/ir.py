@@ -1,12 +1,16 @@
 """Domain types. No pycparser type crosses this module's users' boundaries."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from typing import Union
 
 WORD_BITS = 18
 WORD_MASK = (1 << WORD_BITS) - 1
 ADDR_MASK = (1 << 12) - 1
+AC_ROTATES = {"ral", "rar"}
+IO_ROTATES = {"ril", "rir"}
+DPY_NOWAIT = "dpy-4000"     # plot, and ask for a completion pulse
 
 
 # ---------------------------------------------------------------- storage
@@ -113,18 +117,44 @@ class Rot:              # ral/rar(ac, n), ril/rir(io, n): one register rotated
 
 
 @dataclass(frozen=True)
-class PairOp:           # rcl(h, l, n) / mus(h, l, m) etc: h in AC, l in IO, both updated
+class PairShift:        # rcl(h, l, n) etc: h in AC, l in IO, shifted as one
     op: str
     hi: Var
     lo: Var
-    count: int | None = None        # shift count, or
-    operand: Expr | None = None     # memory operand of a multiply/divide step
+    count: int
+
+
+@dataclass(frozen=True)
+class PairStep:         # mus(h, l, m) / dis(h, l, m)
+    op: str
+    hi: Var
+    lo: Var
+    operand: Expr
+
+
+class Conv(Enum):
+    JDA = "jda"
+    JSP = "jsp"
+    XCT = "xct"
+    BLOCK = "block"
+    INLINE = "inline"
+
+
+class ParamKind(Enum):
+    AC = "ac"
+    IO = "io"
+    BYNAME = "byname"
+    INLINE = "inline"
+
+    @property
+    def after_call(self) -> bool:
+        return self in (ParamKind.BYNAME, ParamKind.INLINE)
 
 
 @dataclass(frozen=True)
 class Param:
     name: str
-    kind: str           # "ac": entry word / AC, "io": register, "byname" / "inline": a word after the call
+    kind: ParamKind
     pointer: bool = False
 
 
@@ -132,7 +162,7 @@ class Param:
 class Signature:
     name: str           # C name
     sym: str            # Macro symbol of the entry
-    conv: str
+    conv: Conv
     params: tuple[Param, ...]
     returns: str        # "word" | "word*" | "dword" | "void"
     exit_sym: str       # the cell returns go through: exit `jmp .` or the by-name `xct`
@@ -140,12 +170,12 @@ class Signature:
     @property
     def inline_count(self) -> int:
         """Words after the call that the function returns past."""
-        return sum(p.kind in ("byname", "inline") for p in self.params)
+        return sum(p.kind.after_call for p in self.params)
 
     @property
     def byname(self) -> bool:
         """Returns through the by-name `xct` cell (`jmp i R`), not an exit `jmp .`."""
-        return any(p.kind == "byname" for p in self.params)
+        return any(p.kind is ParamKind.BYNAME for p in self.params)
 
 
 @dataclass(frozen=True)
@@ -207,10 +237,16 @@ class Flag:             # stf(n) / clf(n): set or clear program flag n
 
 
 @dataclass(frozen=True)
-class Dpy:
+class Dpy:              # dpy(x, y, n)
     x: "Expr"
     y: Var
-    intensity: int | None
+    intensity: int
+
+
+@dataclass(frozen=True)
+class DpyNowait:        # dpy_nowait(x, y)
+    x: "Expr"
+    y: Var
 
 
 @dataclass(frozen=True)
@@ -220,8 +256,8 @@ class HomeWord:
     increment: bool
 
 
-Expr = Union[Const, Var, PreInc, Neg, Binary, Shift, Rot, PairOp, Call, Half, Pair, CodeRef,
-             IndirectCall, Hw, Insn, AddrOf, HomeLoad, Flag, Dpy, HomeWord]
+Expr = Union[Const, Var, PreInc, Neg, Binary, Shift, Rot, PairShift, PairStep, Call, Half, Pair,
+             CodeRef, IndirectCall, Hw, Insn, AddrOf, HomeLoad, Flag, Dpy, DpyNowait, HomeWord]
 
 
 @dataclass(frozen=True)
@@ -278,6 +314,7 @@ class Labeled:
 class Unroll:           # for (int i = 0; i < n; i++) S with i unused: S n times
     count: int
     body: Stmt
+    at: str = ""
 
 
 @dataclass(frozen=True)
@@ -450,6 +487,25 @@ Operand = Union[Sym, Num, Lit, Here, ShiftCount]
 
 
 @dataclass(frozen=True)
+class InlineBody:
+    function: str
+
+
+@dataclass(frozen=True)
+class UnrolledBody:
+    at: str
+
+
+Construct = Union[InlineBody, UnrolledBody]
+
+
+@dataclass(frozen=True)
+class Copy:
+    construct: Construct
+    instance: str
+
+
+@dataclass(frozen=True)
 class Word:
     """One 18-bit word of output, still symbolic. `op` is a Macro mnemonic
     (or a skip/operate microcode expression); None is a data word."""
@@ -460,6 +516,7 @@ class Word:
     labels: tuple[str, ...] = ()
     note: str = ""      # trace detail, e.g. the skip-table row
     via: tuple[str, ...] = ()   # rules that shaped this word without emitting their own
+    copies: tuple[Copy, ...] = field(default=(), repr=False)
 
 
 @dataclass(frozen=True)
@@ -468,9 +525,14 @@ class LabelDef:
 
 
 @dataclass(frozen=True)
-class Place:
-    """A location directive, not a word: `a/` (origin) or `. n/` (reserve n)."""
-    kind: str           # "origin" | "reserve"
+class Origin:
+    n: int
+    rule: str
+    via: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Reserve:
     n: int
     rule: str
     labels: tuple[str, ...] = ()
@@ -482,4 +544,5 @@ class Break:
     labels: tuple[str, ...] = ()
 
 
-Item = Union[Word, LabelDef, Place, Break]
+Item = Union[Word, LabelDef, Origin, Reserve, Break]
+Emitted = Union[Word, Origin, Reserve, Break]

@@ -37,21 +37,29 @@ def word_text(w: ir.Word) -> str:
     return " ".join(parts)
 
 
-def emit(words: list[ir.Word | ir.Place], trace: bool = True) -> str:
-    lines = []
+def line_text(w: ir.Word | ir.Origin | ir.Reserve, trace: bool = True) -> str:
+    if isinstance(w, ir.Origin):
+        line = f"{w.n:o}/"
+    else:
+        label = "".join(f"{lab}, " for lab in w.labels)[:-1]
+        line = f"{label}\t" + (f". {w.n:o}/" if isinstance(w, ir.Reserve) else word_text(w))
+    if trace:
+        note = getattr(w, "note", "")
+        line += f"\t/ {w.rule}" + "".join(f" +{v}" for v in w.via) + (f" {note}" if note else "")
+    return line
+
+
+def regions(words: list[ir.Emitted], trace: bool = True) -> list[list[str]]:
+    out: list[list[str]] = [[]]
     for w in words:
         if isinstance(w, ir.Break):
-            lines.append(BREAK)
-            continue
-        label = "".join(f"{lab}, " for lab in w.labels)[:-1]
-        if isinstance(w, ir.Place) and w.kind == "origin":
-            line = f"{w.n:o}/"
-        elif isinstance(w, ir.Place):
-            line = f"{label}\t. {w.n:o}/"
+            out.append([])
         else:
-            line = f"{label}\t{word_text(w)}"
-        if trace:
-            note = getattr(w, "note", "")
-            line += f"\t/ {w.rule}" + "".join(f" +{v}" for v in w.via) + (f" {note}" if note else "")
-        lines.append(line)
+            out[-1].append(line_text(w, trace))
+    return out
+
+
+def emit(words: list[ir.Emitted], trace: bool = True) -> str:
+    lines = [line for n, region in enumerate(regions(words, trace))
+             for line in ([BREAK] if n else []) + region]
     return "\n".join(lines) + "\n"

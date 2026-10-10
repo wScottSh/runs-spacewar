@@ -29,14 +29,15 @@ from .simh import Inputs, Outcome
 HEADER = Path(__file__).parent.parent / "include" / "pdp1.h"
 DRIVER = Path(__file__).parent / "driver.cpp"
 COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
-INPUT = {"ac": "ac", "io": "io", "byname": "byname", "inline": "byname"}
+INPUT = {ir.ParamKind.AC: "ac", ir.ParamKind.IO: "io", ir.ParamKind.BYNAME: "byname",
+         ir.ParamKind.INLINE: "byname"}
 
 
 def native_param(p: ir.Param) -> str:
-    if p.kind == "byname":
+    if p.kind is ir.ParamKind.BYNAME:
         return "const word &"
     if p.pointer:
-        return "const word *" if p.kind == "inline" else "word *"
+        return "const word *" if p.kind is ir.ParamKind.INLINE else "word *"
     return "word"
 
 
@@ -101,16 +102,10 @@ REWRITES = (
 )
 
 
-def entry_param(sig: ir.Signature) -> str | None:
-    """The parameter a JDA call stores in the entry word."""
-    p = entry(sig)
-    return p.name if p else None
-
-
 def entry(sig: ir.Signature) -> ir.Param | None:
-    if sig.conv != "jda":
+    if sig.conv is not ir.Conv.JDA:
         return None
-    return next((p for p in sig.params if p.kind == "ac"), None)
+    return next((p for p in sig.params if p.kind is ir.ParamKind.AC), None)
 
 
 class BindError(ValueError):
@@ -162,10 +157,6 @@ def units(c_files: list[Path]) -> dict[Path, ir.Unit]:
     return {f: dialect.lower_unit(front.parse(f)) for f in c_files}
 
 
-def signatures(c_files: list[Path]) -> dict[str, ir.Signature]:
-    return {name: s for u in units(c_files).values() for name, s in u.signatures.items()}
-
-
 def stub(sig: ir.Signature) -> str:
     """A definition for a function the linked files declare but none defines:
     an unlifted routine. The reference run must never reach it."""
@@ -173,19 +164,12 @@ def stub(sig: ir.Signature) -> str:
     return f"{sig.returns} {sig.name}({params}) {{ std::abort(); }}\n"
 
 
-def call_expr(sig: ir.Signature, name: str | None = None) -> str:
-    return f"{name or sig.name}({', '.join(native_arg(p) for p in sig.params)})"
+def call_expr(sig: ir.Signature, native: str | None = None) -> str:
+    return f"{native or sig.name}({', '.join(native_arg(p) for p in sig.params)})"
 
 
-def build(c_files: list[Path], sig: ir.Signature, out: Path, watch: list[str] = (),
-          placed: list[Placement] = (), scratch: str = "", native: str | None = None) -> Path:
-    """c_files are included in order into one translation unit with the
-    driver. watch holds C expressions of a word or pointer type printed after
-    each call. placed says where the machine holds C objects, for instruction
-    words and pointers. scratch is extra C++ (words the caller sets up)
-    included after the files. native names a function to call in place of
-    sig's: the program's own statement of what sig computes, for an entry
-    the native build cannot run (one that jumps into generated code)."""
+def build(c_files: list[Path], out: Path, call: str, inline_words: int = 0, watch: list[str] = (),
+          placed: list[Placement] = (), scratch: str = "", setup: str = "") -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     parsed = units(c_files)
     sigs = {name: s for u in parsed.values() for name, s in u.signatures.items()}
@@ -210,7 +194,7 @@ def build(c_files: list[Path], sig: ir.Signature, out: Path, watch: list[str] = 
         ["g++", "-std=c++14", "-O2", "-Wall", "-Wno-register", "-Wno-unused-label", "-Wno-array-bounds",
          "-Werror",
          "-include", str(HEADER), *includes,
-         f"-DCALL={call_expr(sig, native)}", f"-DINLINE_WORDS={sig.inline_count}",
+         f"-DCALL={call}", f"-DINLINE_WORDS={inline_words}", f"-DSETUP={setup or ';'}",
          f"-DWATCH={watch_expr or ';'}", str(DRIVER), "-o", str(out)],
         check=True)
     return out

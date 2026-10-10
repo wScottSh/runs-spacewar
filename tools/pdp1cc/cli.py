@@ -5,18 +5,21 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import dialect, emit, front, inline, layout, select
+from . import dialect, emit, front, inline, ir, layout, select
 
 COMPILE_ERRORS = (dialect.DialectError, select.SelectError, layout.LayoutError, inline.ArgsError)
 
 
 def compile_file(path: Path, label_prefix: str = "z", trace: bool = True) -> str:
-    return compile_ast(front.parse(path), label_prefix, trace)
+    return emit.emit(lay_out(front.parse(path), label_prefix), trace)
 
 
-def compile_ast(ast, label_prefix: str = "z", trace: bool = True) -> str:
-    unit = dialect.lower_unit(ast, label_prefix)
-    return emit.emit(layout.place(unit, label_prefix), trace)
+def compile_regions(path: Path, label_prefix: str) -> list[list[str]]:
+    return emit.regions(lay_out(front.parse(path), label_prefix))
+
+
+def lay_out(ast, label_prefix: str) -> list[ir.Emitted]:
+    return layout.place(dialect.lower_unit(ast, label_prefix), label_prefix)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -230,11 +230,12 @@ word right_margin = 010000;
 REGION_BREAK();
 
 /* ------------------------------------------------------- the star catalog
- * Stars by Peter Samson for Spacewar 2b. STAR(x, y) is a star at right
- * ascension x, in 1/8192 of a turn, and declination y, in display points:
- * the table holds 8192 - x, so stars of increasing x run right to left,
- * and y in the high bits of its word, where the display reads it. Each
- * star's comment is its catalog number, constellation and name. */
+ * Stars by Peter Samson for Spacewar 2b. STAR(x, y) is a star at x,
+ * 0..8192 along the x-axis of the whole band of sky, and y, -512..+512
+ * along the y-axis in display points: the table holds 8192 - x, so stars
+ * of increasing x run right to left, and y in the high bits of its word,
+ * where the display reads it. Each star's comment is its catalog number,
+ * constellation and name. */
 #define STAR(x, y) 8192 - (x), (y) * 256
 
 AT(06077) word first_magnitude[2 * 9] = {
