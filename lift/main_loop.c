@@ -113,6 +113,8 @@ BLOCK void next_frame(void)
     register word budget = -04000;
     spare_time = budget;
 
+    /* The cursors in table order: each property's array follows the last,
+     * so one pointer stepped by an array's length reaches every first slot. */
     word *slot = ROUTINES;
     routine_slot = slot;
     slot = slot + NOB;
@@ -148,10 +150,14 @@ BLOCK void next_frame(void)
     slot = slot + SHIPS;
     uncertainty_slot = slot;
 
+    /* A ship whose routine word differs from its own calc routine in any
+     * bit, the sign included, has exploded or is in hyperspace. */
     if ((first_spaceship ^ ROUTINES[0]) != 0)
         goto game_ending;
     if ((second_spaceship ^ ROUTINES[1]) != 0)
         goto game_ending;
+    /* The torpedo counts run up toward 0; a ship can launch one more while
+     * 1 + its count is still negative. */
     if (1 + TORPEDOES[0] < 0)
         goto playing;
     if (SKIPNOT(1 + TORPEDOES[1] >= 0))

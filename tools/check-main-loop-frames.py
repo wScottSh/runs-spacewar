@@ -88,6 +88,7 @@ EXAMINED = re.compile(r"^([0-7]+):\s+([0-7]+)$")
 
 OP, INDIRECT, ADDR = 0o760000, 0o010000, 0o7777
 XCT = 0o100000
+JMP = 0o600000
 STORES = {0o240000, 0o260000, 0o300000, 0o320000, 0o340000, 0o440000, 0o460000, 0o170000}
 DATA_STOPS = 3
 
@@ -247,7 +248,7 @@ def build(work: Path) -> tuple[Image, list[tuple[str, int, int]], str]:
     if not (out / "spliced.lst").exists() or not (out / "spliced.rim").exists():
         raise SystemExit("pdp1cc build failed:\n" + log.getvalue())
     cfg, regions = splice.load(work / "lift.toml")
-    dropped = getattr(splice, "dropped", lambda _: ())(cfg)
+    dropped = splice.dropped(cfg)
     chunks = sorted([(span, r.name, len(part)) for r in regions
                      for span, part in zip(r.ranges, compile_regions(r.c, r.prefix))]
                     + [(span, "", 0) for span in dropped])
@@ -454,6 +455,9 @@ def run_scenario(scenario: Scenario, oracle: Image, spliced: Image, watch: Watch
                 result.halts += 1
                 repeats = repeats + 1 if got.pc == last_halt else 0
                 last_halt = got.pc
+                after = spliced.words.get(got.pc + 1)
+                if repeats and after is not None and after.value == JMP | got.pc:
+                    result.executed.add(got.pc + 1)     # `hlt / jmp .-1`: cont ran the jump back
                 if repeats >= REPEATED_HALTS:
                     result.notes.add(f"{scenario.name}: halt at {got.pc:05o} repeats, scenario ended there")
                     break
