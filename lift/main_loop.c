@@ -9,11 +9,8 @@
  * set on the test word switches; a new game clears the object table, puts
  * the two spaceships at their start and compiles their outlines.
  *
- * The object table sits after the code, the literal constants, the pool
- * words and the patch space: parallel arrays, one per property, stacked one
- * upon the other in one block (Inside Spacewar! part 3). The first
- * OBJECT_COUNT slots of each array are the objects; the spaceship-only
- * properties have a slot per ship. */
+ * The object table's layout is in object_table.h, and its place in core in
+ * core_layout.c. */
 
 #include "object_table.h"
 #include "control_word.h"
@@ -161,15 +158,16 @@ game_ending:
 
 /* ------------------------------------------------- starting and scoring */
 
-/* a1, from start at 5: read the test word switches as the control word. */
+/* a1, entered when the operator starts the machine at address 5: read the
+ * test word switches as the control word. */
 BLOCK void start_with_test_word(void)  /* a1 */
 {
     control_word_getter = read_test_word;
     return between_games();
 }
 
-/* a40, from start at 4: read the control boxes, through the control word
- * routine. */
+/* a40, entered when the operator starts the machine at address 4: read the
+ * control boxes, through the control word routine. */
 BLOCK void start_with_control_boxes(void)  /* a40 */
 {
     control_word_getter = control_word_routine;

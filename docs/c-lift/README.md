@@ -46,7 +46,7 @@ Names in the C follow Norbert Landsteiner's "Inside Spacewar!" series. Local cop
 
 ### The hash proves the binary
 
-`pdp1cc build` compares the sha256 of the built `.rim` with the oracle. A match means every word at every address is identical: code, constants, and tables. The comparison runs at every step, so a pull request that breaks the hash cannot land. On a mismatch, the build reports:
+`pdp1cc build` compares the sha256 of the built `.rim` with the oracle. A match means every word at every address is identical: code, constants, and tables. Every pull request in this repository was merged only after the hash matched on its branch. There is no CI; the checks are run by hand. On a mismatch, the build reports:
 
 - whether the variable block moved, which happens when the count of literal constants changes
 - the first address that differs, with the expected word and the actual word
@@ -60,7 +60,7 @@ A matching hash does not prove the C means anything. A compiler could ignore its
 - **Corpus programs.** `tests/corpus/` holds small C programs that are not Spacewar. `pdp1cc gate` compiles each one, runs it in SIMH, and compares the result with its native build. Every compiler rule must be used by at least two corpus programs that do not copy a Spacewar routine, so each rule is a general C rule and not a Spacewar special case. `tests/reject/` holds programs the compiler must refuse.
 - **Hint checks.** The dialect's hints (`JDA`, `HOMED`, `SKIPNOT`, `register`, ...) are deleted one at a time, and the gate fails if the compiled output does not change. A hint that changes nothing is decoration.
 - **Prediction edits.** The gate swaps operands, adds 1 to constants and to shift counts in the C, and requires the output to change in exactly the words the compiler's rules predict.
-- **Lint and isolation.** `tools/check-g3.py` fails if the compiler's source contains any Spacewar symbol or any word from the oracle image. It then copies the compiler, `lift.toml`, `lift/` and the corpus into a tree without `source/` and without `build/`, compiles every file there, and runs the whole build: the hash must match. So the image comes from the C alone.
+- **Lint and isolation.** `tools/check-g3.py` fails if the compiler's source has a string literal equal to a Spacewar symbol, or a six-digit octal number equal to a word of the oracle image. It then copies the compiler, `lift.toml`, `lift/` and the corpus into a tree without `source/` and without `build/`, compiles every file there, and runs the whole build: the hash must match. So the image comes from the C alone.
 - **Frame check.** `tools/check-main-loop-frames.py` plays 17 scripted matches in SIMH on the oracle image and on the built image side by side, stopping at every frame and every halt. It reports which compiled words the game runs.
 
 ### What the checks do not prove
