@@ -36,3 +36,15 @@ name = "tunables"
 lines = "67-116"
 c = "lift/tunables.c"
 prefix = "zt"
+
+[[region]]
+name = "oc"
+lines = "398-507"
+c = "lift/outline_compiler.c"
+prefix = "zo"
+
+[[region]]
+name = "outlines"
+lines = "1336-1356"
+c = "lift/outlines.c"
+prefix = "zl"
