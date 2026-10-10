@@ -16,7 +16,7 @@ from .cli import compile_file
 from .emit import BREAK
 from .rules import RULES
 
-LABEL_DEF = re.compile(r"^([a-z0-9]+),", re.M)
+LABEL_DEF = re.compile(r"^((?:[a-z0-9]+,\s*)+)", re.M)
 LISTING_WORD = re.compile(r"^\s*\d*\s+([0-7]{5}) ([0-7]{6})(?:\s+(.*))?$")
 LISTING_VARS = re.compile(r"^\s*\d+\s+([0-7]{5})\s+variables\b")
 
@@ -65,13 +65,19 @@ def unlifted_text(toml_path: Path) -> str:
                      if not any(r.covers(n) for r in regions))
 
 
+def labels_defined(text: str) -> set[str]:
+    """Symbols defined as labels at line starts; `6,` (all digits) sets the location."""
+    return {lab for run in LABEL_DEF.findall(text) for lab in re.findall(r"[a-z0-9]+", run)
+            if not lab.isdigit()}
+
+
 def interface_errors(src_lines: list[str], region: Region, compiled: str) -> list[str]:
     """Symbols the original region defines and unlifted text uses must still be defined."""
     inside = "\n".join(line for n, line in enumerate(src_lines, 1) if region.covers(n))
     outside = "\n".join(line for n, line in enumerate(src_lines, 1) if not region.covers(n))
-    defined_now = set(LABEL_DEF.findall(compiled))
+    defined_now = labels_defined(compiled)
     errs = []
-    for sym in LABEL_DEF.findall(inside):
+    for sym in labels_defined(inside):
         if re.search(rf"(?<![\w]){re.escape(sym)}(?![\w])", outside) and sym not in defined_now:
             errs.append(f"region {region.name} must define {sym} (used by unlifted text)")
     return errs

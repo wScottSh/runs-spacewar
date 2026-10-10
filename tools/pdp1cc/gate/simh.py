@@ -22,8 +22,9 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-AC_IN, IO_IN, BYNAME_IN = 0o7700, 0o7701, 0o7702
-STUB = 0o7703
+# Scratch words above the star catalog (06077-07750), free in the oracle image.
+AC_IN, IO_IN, BYNAME_IN = 0o7760, 0o7761, 0o7762
+STUB = 0o7763
 CALL = STUB + 2
 HALTS = 4
 HALT = re.compile(r"HALT instruction, PC: ([0-7]+)")
@@ -55,14 +56,16 @@ class Outcome:
 def run_jda(simh: Path, rim: Path, entry: int, calls: list[Inputs], byname: bool = False,
             watch: list[int | str] = (), timeout: int = 1800, op: str = "jda",
             inline: bool = False, deposits: dict[int, int] | None = None,
-            display: dict[int, int] | None = None) -> list[Outcome]:
+            display: dict[int, int] | None = None,
+            each: list[dict[int, int]] | None = None) -> list[Outcome]:
     """op is the call instruction: jda, or xct for a one-word XCT routine.
     byname: the word after the call is `lac BYNAME_IN`. inline: it is the
     call's by-name input itself, a constant word (an INLINE parameter).
     watch holds addresses, or register names such as PF (the program flags).
     deposits are words set in core once, after loading: the routine's input data.
     display maps the address of each display instruction to its word: each
-    one plotted is reported, in order, with AC and IO."""
+    one plotted is reported, in order, with AC and IO. each holds words
+    set in core before each call, one dict per call."""
     words = [f"lio {IO_IN:o}", f"lac {AC_IN:o}", f"{op} {entry:o}"]
     if inline:
         words.append("0")
@@ -74,8 +77,9 @@ def run_jda(simh: Path, rim: Path, entry: int, calls: list[Inputs], byname: bool
     script += [f"break {a:o};ex AC;ex IO;continue" for a in sorted(display or {})]
     script += [f"dep {STUB + i:o} {w}" for i, w in enumerate(words)]
     script += [f"dep {a:o} {v:o}" for a, v in (deposits or {}).items()]
-    for c in calls:
+    for n, c in enumerate(calls):
         script += [f"dep {AC_IN:o} {c.ac:o}", f"dep {IO_IN:o} {c.io:o}", f"dep SS {c.sense:o}"]
+        script += [f"dep {a:o} {v:o}" for a, v in (each[n] if each else {}).items()]
         if inline:
             script.append(f"dep {CALL + 1:o} {c.byname:o}")
         elif byname:

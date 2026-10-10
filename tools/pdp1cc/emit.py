@@ -43,7 +43,7 @@ def emit(words: list[ir.Word | ir.Place], trace: bool = True) -> str:
         if isinstance(w, ir.Break):
             lines.append(BREAK)
             continue
-        label = f"{w.labels[0]}," if w.labels else ""
+        label = "".join(f"{lab}, " for lab in w.labels)[:-1]
         if isinstance(w, ir.Place) and w.kind == "origin":
             line = f"{w.n:o}/"
         elif isinstance(w, ir.Place):

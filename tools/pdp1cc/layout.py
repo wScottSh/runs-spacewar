@@ -66,10 +66,10 @@ def _tag_first_word(items: list[ir.Item], rule: str) -> list[ir.Item]:
 
 
 def attach_labels(items: list[ir.Item]) -> list[ir.Word | ir.Place]:
-    """Labels name the next word, or the next reserved space."""
+    """Labels name the next word, or the next reserved space. Several labels
+    may name one word: each stays a name of it (`a, b, lac .`)."""
     words: list[ir.Word | ir.Place] = []
     pending: list[str] = []
-    alias: dict[str, str] = {}
     defined: set[str] = set()
     for it in items:
         if isinstance(it, ir.LabelDef):
@@ -84,20 +84,9 @@ def attach_labels(items: list[ir.Item]) -> list[ir.Word | ir.Place]:
             words.append(it)
             continue
         if pending:
-            for extra in pending[1:]:
-                alias[extra] = pending[0]
-            it = replace(it, labels=(pending[0],))
+            it = replace(it, labels=tuple(pending))
             pending = []
         words.append(it)
     if pending:
         raise LayoutError(f"labels {pending} name no word")
-    return [_rename(w, alias) for w in words]
-
-
-def _rename(w: ir.Word | ir.Place, alias: dict[str, str]) -> ir.Word | ir.Place:
-    if isinstance(w, ir.Word) and isinstance(w.operand, ir.Sym) and w.operand.name in alias:
-        return replace(w, operand=replace(w.operand, name=alias[w.operand.name]))
-    if isinstance(w, ir.Word) and isinstance(w.operand, ir.Lit) and isinstance(w.operand.value, ir.Sym) \
-            and w.operand.value.name in alias:
-        return replace(w, operand=ir.Lit(replace(w.operand.value, name=alias[w.operand.value.name])))
-    return w
+    return words
