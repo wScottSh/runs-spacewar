@@ -8,33 +8,34 @@ JDA dword multiply(word a, BYNAME word b);
 
 JDA word integer_multiply(word a, BYNAME word b)  /* imp */
 {
-    dword p = multiply(b, a);       /* b is fetched first; a goes by name */
-    p.lo = rir(p.lo, 1);            /* the low half's sign, bit 17, back to bit 0 */
-    return p.lo;
+    dword product = multiply(b, a); /* b is fetched first; a goes by name */
+    product.lo = rir(product.lo, 1);    /* the low half's sign, bit 17, back to bit 0 */
+    return product.lo;
 }
 
 word partial = 0;                   /* mp2: |b|, then the product's high half */
 
 JDA dword multiply(word a, BYNAME word b)  /* mpy */
 {
-    word h = a;
-    if (h < 0)
-        h = -h;
-    register word m = h;            /* |a| is the multiplier, shifted out of IO */
-    h = b;
-    if (h < 0)
-        h = -h;
-    partial = h;
-    h = 0;
+    word magnitude = a;
+    if (magnitude < 0)
+        magnitude = -magnitude;
+    register word low = magnitude;  /* |a|, the multiplier, shifted out of IO as
+                                       the product's low half shifts in */
+    magnitude = b;
+    if (magnitude < 0)
+        magnitude = -magnitude;
+    partial = magnitude;
+    word high = 0;
     for (int i = 0; i < 021; i++)   /* 17 multiply steps */
-        mus(h, m, partial);
-    partial = h;
+        mus(high, low, partial);
+    partial = high;
     if ((b ^ a) < 0) {              /* signs differ: negate the 36-bit product */
-        h = -partial;
-        rcr(h, m, 18);
-        h = -h;
-        rcr(h, m, 18);
-        partial = h;
+        high = -partial;
+        rcr(high, low, 18);
+        high = -high;
+        rcr(high, low, 18);
+        partial = high;
     }
-    return (dword){ partial, m };
+    return (dword){ partial, low };
 }

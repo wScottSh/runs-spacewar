@@ -21,8 +21,8 @@ POOL word control_word;             /* this ship's controls, in the high four bi
 /* Tunables (lift/tunables.c). */
 extern word angular_acceleration;
 extern word star_capture_radius;
-XCT word spaceship_acceleration(word v);
-XCT word torpedo_velocity(word v);
+XCT word spaceship_acceleration(word heading);
+XCT word torpedo_velocity(word heading);
 XCT word torpedo_reload_time(void);
 XCT word torpedo_life(void);
 XCT word time_before_breakout(void);
@@ -33,8 +33,8 @@ JDA word sine(word angle);
 JDA word cosine(word angle);
 JDA word integer_multiply(word a, BYNAME word b);
 JDA dword multiply(word a, BYNAME word b);
-JDA word sqt(word r);
-JDA SKIPS dword integer_divide(word dividend, register word lo, BYNAME word divisor);
+JDA word square_root(word remainder);
+JDA SKIPS dword integer_divide(word dividend, register word low, BYNAME word divisor);
 
 /* Calc routines a ship hands its object over to. */
 JSP void explosion(void);
@@ -42,9 +42,9 @@ JSP void torpedo(void);
 JSP void in_hyperspace(register word io);
 
 /* Cursors whose homes are in this routine (HOMED in object_table.h). */
-word *angular_momentum_slot;  /* mom */
-word *angle_slot;  /* mth */
-word *previous_control_slot;  /* mco */
+word *angular_momentum_slot;        /* mom */
+word *angle_slot;                   /* mth */
+word *previous_control_slot;        /* mco */
 
 POOL word heading_sine;
 POOL word heading_cosine;
@@ -53,20 +53,21 @@ POOL word heading_cosine;
  * frame, in the words the central star's display also uses. */
 #define gravity_x star_vector_x
 #define gravity_y star_vector_y
-POOL word work;                     /* a coordinate, then the squared distance, then the divisor */
+POOL word gravity_operand;          /* the operand of each step: a scaled coordinate,
+                                       then the squared distance, then the divisor */
 POOL word ship_x_squared;
 
 /* Pool words the compiled outline (lift/outline_compiler.c) draws the ship from. */
 extern POOL word ship_x;
 extern POOL word ship_y;
-extern POOL word sine_step;
-extern POOL word cosine_step;
-extern POOL word out_x;
-extern POOL word out_y;
-extern POOL word out_down_x;
-extern POOL word out_down_y;
-extern POOL word in_down_x;
-extern POOL word in_down_y;
+extern POOL word down_step_x;
+extern POOL word down_step_y;
+extern POOL word out_step_x;
+extern POOL word out_step_y;
+extern POOL word out_down_step_x;
+extern POOL word out_down_step_y;
+extern POOL word in_down_step_x;
+extern POOL word in_down_step_y;
 POOL word torpedo_start_x;          /* just in front of the ship's tip */
 POOL word torpedo_start_y;
 POOL word flame_length;             /* exhaust dots still to draw, counting up */
@@ -114,9 +115,9 @@ BLOCK void spaceship(void)
     word turn;
     word push;
     word angle;
-    word d;
-    dword f;
-    dword q;
+    word capture_margin;                /* the squared distance less the capture radius */
+    dword distance_cubed;
+    dword pull;
 
     /* Rotation. With sense switch 1 on, the rotate buttons work through
      * angular momentum, which builds up; otherwise they turn the ship
@@ -157,24 +158,24 @@ thrust:
     gravity_y = 0;
     if (sense(6))
         goto accelerate;
-    work = *x_slot >> 11;
-    ship_x_squared = integer_multiply(work, work);
-    work = *y_slot >> 11;
-    d = integer_multiply(work, work) + ship_x_squared - star_capture_radius;
-    if (d <= 0)
+    gravity_operand = *x_slot >> 11;
+    ship_x_squared = integer_multiply(gravity_operand, gravity_operand);
+    gravity_operand = *y_slot >> 11;
+    capture_margin = integer_multiply(gravity_operand, gravity_operand) + ship_x_squared - star_capture_radius;
+    if (capture_margin <= 0)
         return spaceship_in_star();
-    work = d + star_capture_radius;
-    f = multiply(sqt(work) >> 9, work);
-    scr(f.hi, f.lo, 2);
+    gravity_operand = capture_margin + star_capture_radius;
+    distance_cubed = multiply(square_root(gravity_operand) >> 9, gravity_operand);
+    scr(distance_cubed.hi, distance_cubed.lo, 2);
     if (!sense(2))
-        scr(f.hi, f.lo, 2);
-    if (f.hi != 0)
+        scr(distance_cubed.hi, distance_cubed.lo, 2);
+    if (distance_cubed.hi != 0)
         goto accelerate;                /* too far for gravity to tell */
-    work = f.lo;
-    q = integer_divide(-*x_slot, f.lo, work);
-    gravity_x = q.hi;
-    q = integer_divide(-*y_slot, q.lo, work);
-    gravity_y = q.hi;
+    gravity_operand = distance_cubed.lo;
+    pull = integer_divide(-*x_slot, distance_cubed.lo, gravity_operand);
+    gravity_x = pull.hi;
+    pull = integer_divide(-*y_slot, pull.lo, gravity_operand);
+    gravity_y = pull.hi;
 
 accelerate:
     if (0 == *fuel_slot)
@@ -192,60 +193,62 @@ accelerate:
     /* The outline starts at the tip, a 32nd of the heading ahead, and a
      * torpedo starts as far again. The steps the outline is drawn with
      * are the heading scaled down by 2^9, turned to each direction. */
-    sine_step = heading_sine >> 5;
-    cosine_step = heading_cosine >> 5;
-    ship_x = *x_slot - sine_step;
-    torpedo_start_x = ship_x - sine_step;
-    ship_y = *y_slot + cosine_step;
-    torpedo_start_y = ship_y + cosine_step;
-    sine_step = heading_sine >> 9;
-    cosine_step = heading_cosine >> 9;
-    out_y = sine_step;
-    out_down_x = out_y + cosine_step;
-    in_down_y = out_down_x;
-    in_down_x = sine_step - cosine_step;
-    out_down_y = -in_down_x;
-    out_x = cosine_step;
+    down_step_x = heading_sine >> 5;
+    down_step_y = heading_cosine >> 5;
+    ship_x = *x_slot - down_step_x;
+    torpedo_start_x = ship_x - down_step_x;
+    ship_y = *y_slot + down_step_y;
+    torpedo_start_y = ship_y + down_step_y;
+    down_step_x = heading_sine >> 9;
+    down_step_y = heading_cosine >> 9;
+    out_step_y = down_step_x;
+    out_down_step_x = out_step_y + down_step_y;
+    in_down_step_y = out_down_step_x;
+    in_down_step_x = down_step_x - down_step_y;
+    out_down_step_y = -in_down_step_x;
+    out_step_x = down_step_y;
 
     /* A dot at the center that asks for a completion pulse, so the
      * outline's first wait for the display ends. */
-    dword pen;
-    pen.hi = 0, pen.lo = 0;
-    dpy_nowait(pen.hi, pen.lo);
+    dword dot;
+    dot.hi = 0, dot.lo = 0;
+    dpy_nowait(dot.hi, dot.lo);
     return (*home(draw_outline))();
 }
 
+/* Entered from the last word of the compiled outline: the jump back here
+ * that the outline compiler writes (`*code++ = I_JMP(outline_drawn)`). */
 BLOCK void outline_drawn(void)  /* sq6 */
 {
-    word r;
+    word flame_dots;
     word fire;
     register word controls;
-    register word y;
-    register word start;
+    register word dot_y;
+    register word launch_coordinate;
 
     /* The exhaust flame: a random number of dots behind the tail while
      * the rocket fires, each burning a unit of fuel. */
     ioh();
-    r = next_random() >> 13;
-    if (r >= 0)
-        r = -r;
-    flame_length = r;
+    flame_dots = next_random() >> 13;
+    if (flame_dots >= 0)
+        flame_dots = -flame_dots;
+    flame_length = flame_dots;
     controls = control_word;
     controls = ril(controls, 2);
     if (controls >= 0)
         goto torpedoes;
 flame:
-    sine_step = heading_sine >> 8;
-    cosine_step = heading_cosine >> 8;
+    down_step_x = heading_sine >> 8;
+    down_step_y = heading_cosine >> 8;
     if (++*fuel_slot < 0)
         goto flame_dot;
     *fuel_slot = 0;
     goto torpedoes;
 flame_dot:
-    ship_y = ship_y - cosine_step;
-    ship_x = ship_x + sine_step;
-    y = ship_y;
-    dpy(ship_x, y, 0);
+    ship_y = ship_y - down_step_y;
+    ship_x = ship_x + down_step_x;
+    dot_y = ship_y;
+    dpy(ship_x, dot_y, 0);
     if (++flame_length < 0)
         goto flame;
 
@@ -276,22 +279,22 @@ launch:
 search:
     if (*home(free_slot) == 0)
         goto found;
-    if (I_LAC(++free_slot) != I_LAC(object_table + NOB))
+    if (I_LAC(++free_slot) != I_LAC(object_table + OBJECT_COUNT))
         goto search;
     for (;;)
         hlt();                          /* no space for new objects */
 found:
     *free_slot = torpedo | COLLIDING;
-    torpedo_x_slot = NOB + free_slot;
-    start = torpedo_start_x;
-    *home(torpedo_x_slot) = start;
-    torpedo_y_slot = torpedo_x_slot + NOB;
-    start = torpedo_start_y;
-    *home(torpedo_y_slot) = start;
-    torpedo_counter_slot = torpedo_y_slot + NOB;
-    torpedo_cycles_slot = torpedo_counter_slot + NOB;
-    torpedo_dx_slot = torpedo_cycles_slot + NOB;
-    torpedo_dy_slot = torpedo_dx_slot + NOB;
+    torpedo_x_slot = OBJECT_COUNT + free_slot;
+    launch_coordinate = torpedo_start_x;
+    *home(torpedo_x_slot) = launch_coordinate;
+    torpedo_y_slot = torpedo_x_slot + OBJECT_COUNT;
+    launch_coordinate = torpedo_start_y;
+    *home(torpedo_y_slot) = launch_coordinate;
+    torpedo_counter_slot = torpedo_y_slot + OBJECT_COUNT;
+    torpedo_cycles_slot = torpedo_counter_slot + OBJECT_COUNT;
+    torpedo_dx_slot = torpedo_cycles_slot + OBJECT_COUNT;
+    torpedo_dy_slot = torpedo_dx_slot + OBJECT_COUNT;
     *home(torpedo_dx_slot) = -torpedo_velocity(heading_sine) + *dx_slot;
     *home(torpedo_dy_slot) = torpedo_velocity(heading_cosine) + *dy_slot;
     *counter_slot = torpedo_reload_time();
@@ -327,21 +330,21 @@ BLOCK void spaceship_done(void)
  * ship's time is positive, so the count ends after one step. */
 BLOCK void spaceship_in_star(void)
 {
-    word corner;
+    word screen_corner;
 
     *dx_slot = 0;
     *dy_slot = 0;
     if (sense(5))
-        goto bang;
-    corner = 0377777;
-    *x_slot = corner;
-    *y_slot = corner;
-    sine_step = *cycles_slot;
+        goto explode;
+    screen_corner = 0377777;
+    *x_slot = screen_corner;
+    *y_slot = screen_corner;
+    down_step_x = *cycles_slot;         /* the pool word serves as the count */
 wait:
-    if (++sine_step < 0)
+    if (++down_step_x < 0)
         goto wait;
     return spaceship_done();
-bang:
+explode:
     *routine_slot = explosion | NON_COLLIDING;
     *counter_slot = -010;
     return spaceship_done();
