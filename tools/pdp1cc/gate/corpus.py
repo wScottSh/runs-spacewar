@@ -17,7 +17,7 @@ from ..rules import RULES
 from . import reference, simh
 
 HEADER = re.compile(r"/\* corpus: ((?:\w+=\S+ ?)+)\*/")
-HEADER_KEYS = {"entry", "inputs", "mirrors"}
+HEADER_KEYS = {"entry", "inputs", "mirrors", "native"}
 ORIGIN = 0o100
 MIN_PROGRAMS_PER_RULE = 2
 
@@ -51,10 +51,15 @@ class Program:
     placed: list[ir.Datum]
     functions: list[ir.Function]
     spaces: list[ir.Space]
+    unit: ir.Unit
     mirrors: str | None = None      # the lifted routine this program copies the shape of
+    native: dict[str, str] = None   # entry -> the function the native build calls instead
 
 
-def lower(path: Path, prefix: str = "zz") -> tuple[ir.Unit, list[ir.Word]]:
+PREFIX = "zz"
+
+
+def lower(path: Path, prefix: str = PREFIX) -> tuple[ir.Unit, list[ir.Word]]:
     unit = dialect.lower_unit(front.parse(path), prefix)
     return unit, layout.place(unit, prefix)
 
@@ -67,6 +72,7 @@ def load(path: Path) -> Program:
     fields = dict(kv.split("=", 1) for kv in m.group(1).split())
     if fields.keys() - HEADER_KEYS or "entry" not in fields:
         raise SystemExit(f"{path}: corpus header keys are {sorted(HEADER_KEYS)}, entry required")
+    native = dict(pair.split(":", 1) for pair in fields["native"].split(",")) if "native" in fields else {}
     if "inputs" in fields:
         lo, hi = (int(x, 8) for x in fields["inputs"].split(".."))
         ac = list(range(lo, hi + 1))
@@ -74,11 +80,15 @@ def load(path: Path) -> Program:
         ac = default_ac()
     unit, words = lower(path)
     entries = [unit.signatures[name] for name in fields["entry"].split(",")]
-    placed = [t for t in unit.items if isinstance(t, ir.Datum)]
+    placed = list(unit.data.values())
     functions = [t for t in unit.items if isinstance(t, ir.Function)]
     spaces = [t for t in unit.items if isinstance(t, ir.Space)]
-    return Program(path, entries, calls_for(ac), words, placed, functions, spaces,
-                   fields.get("mirrors"))
+    for entry, stand_in in native.items():
+        if entry not in unit.signatures or stand_in not in unit.signatures or \
+                unit.signatures[entry].params != unit.signatures[stand_in].params:
+            raise SystemExit(f"{path}: native={entry}:{stand_in} names two functions with the same parameters")
+    return Program(path, entries, calls_for(ac), words, placed, functions, spaces, unit,
+                   fields.get("mirrors"), native)
 
 
 def assemble(prog: Program, macro1: Path, work: Path) -> tuple[Path, dict[str, int]]:
@@ -118,7 +128,11 @@ def watched(prog: Program) -> list[tuple[str, str, int, str]]:
     """(label, Macro symbol, offset, native expression) of every word compared
     after each call: placed words, reserved words (not pointers, whose native
     value is a host address), and the entry words of defined JDA functions."""
-    out = [(d.name, d.sym, 0, d.name) for d in prog.placed]
+    out = []
+    for d in prog.placed:
+        out += [(f"{d.name}[{k}]", d.sym, k, f"{d.name}[{k}]") if d.array else (d.name, d.sym, 0, d.name)
+                for k in range(len(d.values))]
+    out += [(name, s.sym, 0, name) for name, s in prog.unit.objects.items() if isinstance(s, ir.Pool)]
     for s in prog.spaces:
         if not s.pointer:
             out += [(f"{s.name}[{k}]", s.sym, k, f"{s.name}[{k}]") if s.array else
@@ -128,15 +142,30 @@ def watched(prog: Program) -> list[tuple[str, str, int, str]]:
     return out
 
 
+def stand_in_watch(watch: list[tuple[str, str, int, str]], entry: str,
+                   stand_in: str | None) -> list[tuple[str, str, int, str]]:
+    """With a native stand-in, the stand-in plays the entry: natively the
+    entry's entry word is the stand-in's, and the stand-in's own entry word,
+    which the machine never fills, is not compared."""
+    if stand_in is None:
+        return watch
+    mine, theirs = reference.cell(entry), reference.cell(stand_in)
+    return [(label, sym, k, theirs if expr == mine else expr)
+            for label, sym, k, expr in watch if expr != theirs]
+
+
 def run_program(prog: Program, simh_bin: Path, macro1: Path, work: Path) -> list[str]:
     rim, symbols = assemble(prog, macro1, work)
-    watch = watched(prog)
+    placed = reference.placements(prog.unit, symbols)
     diffs = []
     for sig in prog.entries:
-        machine = simh.run_jda(simh_bin, rim, symbols[sig.sym], prog.calls, bool(sig.inline_count),
-                               [symbols[sym] + k for _, sym, k, _ in watch])
+        watch = stand_in_watch(watched(prog), sig.name, prog.native.get(sig.name))
+        machine = simh.run_jda(simh_bin, rim, symbols[sig.sym], prog.calls, sig.byname,
+                               [symbols[sym] + k for _, sym, k, _ in watch],
+                               inline=sig.inline_count > sig.byname)
         binary = reference.build([prog.path], sig, work / f"{prog.path.stem}-{sig.name}",
-                                 [expr for *_, expr in watch])
+                                 [expr for *_, expr in watch], placed,
+                                 native=prog.native.get(sig.name))
         native = reference.run(binary, prog.calls)
         diffs += [f"{sig.name} {d}" for d in
                   compare(prog.calls, machine, native, sig, [label for label, *_ in watch])]

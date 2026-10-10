@@ -22,6 +22,15 @@ class ArgsError(Exception):
 def place_args(fn: ir.Function) -> ir.Function:
     stmts = list(fn.body.stmts)
     reads = [i for i, s in enumerate(stmts) if any(map(is_byname_read, iter_nodes(s)))]
+    marked = [i for i, s in enumerate(stmts) if _marks_args(s)]
+    hinted = [n for n in iter_nodes(fn.body) if isinstance(n, ir.ArgsDone)]
+    if hinted:
+        if len(hinted) != 1 or len(marked) != 1:
+            raise ArgsError(f"{fn.sig.name}: ARGS_DONE() stands once, at the top level of the body")
+        if marked[0] < max(reads, default=-1) or not _boundary_ok(stmts, marked[0]):
+            raise ArgsError(f"{fn.sig.name}: ARGS_DONE() must follow every read of a word after "
+                            "the call, with no return before it and no jump across it")
+        return fn
     acc_names = {v.name for s in stmts for v in _nodes(s, ir.Var) if isinstance(v.storage, ir.Acc)}
     for p in range(max(reads, default=-1) + 1, len(stmts)):
         if _boundary_ok(stmts, p) and not _ac_live(stmts[p:], acc_names):
@@ -44,6 +53,12 @@ def _boundary_ok(stmts: list[ir.Stmt], p: int) -> bool:
     return not any(_nodes(s, ir.Return) for s in before)
 
 
+def _marks_args(s: ir.Stmt) -> bool:
+    while isinstance(s, ir.Labeled):
+        s = s.stmt
+    return isinstance(s, ir.ArgsDone)
+
+
 def _ac_live(stmts: list[ir.Stmt], names: set[str]) -> bool:
     undecided = set(names)
     for s in stmts:
@@ -62,6 +77,8 @@ def _kills_first(s: ir.Stmt) -> set[str]:
     match s:
         case ir.Labeled():
             return _kills_first(s.stmt)
+        case ir.Forever():
+            return _kills_first(s.body)
         case ir.Block(stmts=(first, *_)):
             return _kills_first(first)
         case ir.Assign(target=ir.Var(storage=ir.Acc()) as t) \
@@ -79,7 +96,8 @@ def _prepend(s: ir.Stmt, first: ir.Stmt) -> ir.Stmt:
 
 
 def is_byname_read(n) -> bool:
-    return isinstance(n, ir.Var) and isinstance(n.storage, ir.ByName)
+    """A read of a word after the call: a BYNAME or INLINE parameter."""
+    return isinstance(n, ir.Var) and isinstance(n.storage, (ir.ByName, ir.Inline))
 
 
 def _labels(s) -> set[str]:

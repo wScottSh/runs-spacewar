@@ -29,8 +29,51 @@ from .simh import Inputs, Outcome
 HEADER = Path(__file__).parent.parent / "include" / "pdp1.h"
 DRIVER = Path(__file__).parent / "driver.cpp"
 COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
-NATIVE_PARAM = {"ac": "word", "io": "word", "byname": "const word &"}
-ARG = {"ac": "word::bits(ac)", "io": "word::bits(io)", "byname": "word::bits(byname)"}
+INPUT = {"ac": "ac", "io": "io", "byname": "byname", "inline": "byname"}
+
+
+def native_param(p: ir.Param) -> str:
+    if p.kind == "byname":
+        return "const word &"
+    if p.pointer:
+        return "const word *" if p.kind == "inline" else "word *"
+    return "word"
+
+
+def native_arg(p: ir.Param) -> str:
+    """The driver's argument for p: a word, or the C object at the address
+    the caller passes (pointers name addresses on the machine)."""
+    value = INPUT[p.kind]
+    return f"pdp1_pointer({value})" if p.pointer else f"word::bits({value})"
+
+
+@dataclass(frozen=True)
+class Placement:
+    """Where the machine holds a C object: native expression, words, address."""
+    native: str
+    words: int
+    address: int
+    function: bool = False
+
+
+def placements(unit: ir.Unit, symbols: dict[str, int]) -> list[Placement]:
+    """The objects and functions of a unit whose Macro symbols the assembled
+    listing places. unit must be lowered with the assembly's label prefix."""
+    out = []
+    for name, storage in unit.objects.items():
+        if isinstance(storage, (ir.Placed, ir.Pool)) and storage.sym in symbols:
+            out.append(Placement(f"&{name}", unit.words(name), symbols[storage.sym]))
+    out += [Placement(f"&{name}", 1, symbols[s.sym], function=True)
+            for name, s in unit.signatures.items() if s.sym in symbols]
+    return out
+
+
+def symbol_table(placed: list[Placement]) -> str:
+    rows = [f"    {{{'reinterpret_cast<const void *>(' + p.native + ')' if p.function else p.native},"
+            f" {p.words}u, 0{p.address:o}u}},\n" for p in placed]
+    return ("const pdp1_symbol pdp1_symbols[] = {\n" + "".join(rows)
+            + "    {nullptr, 0u, 0u},\n};\n"
+            + f"const unsigned pdp1_symbol_count = {len(placed)}u;\n")
 
 
 def cell(fn: str) -> str:
@@ -53,16 +96,21 @@ REWRITES = (
     Rewrite("BYNAME", "BYNAME word p", re.compile(r"\bBYNAME\s+word\s+(\w+)"),
             r"const word &\1", re.compile(r"\bpdp1_byname\b")),
     Rewrite("ENTRY_CELL", "ENTRY_CELL(f) word x;",
-            re.compile(r"\bENTRY_CELL\((\w+)\)\s*word\s+(\w+)\s*;"),
-            r"word &\2 = " + cell(r"\1") + ";", re.compile(r"\bpdp1_entry_cell\b")),
+            re.compile(r"\bENTRY_CELL\((\w+)\)\s*word\s*(\*?)\s*(\w+)\s*;"),
+            r"word \2&\3 = " + cell(r"\1") + ";", re.compile(r"\bpdp1_entry_cell\b")),
 )
 
 
 def entry_param(sig: ir.Signature) -> str | None:
     """The parameter a JDA call stores in the entry word."""
+    p = entry(sig)
+    return p.name if p else None
+
+
+def entry(sig: ir.Signature) -> ir.Param | None:
     if sig.conv != "jda":
         return None
-    return next((p.name for p in sig.params if p.kind == "ac"), None)
+    return next((p for p in sig.params if p.kind == "ac"), None)
 
 
 class BindError(ValueError):
@@ -93,14 +141,16 @@ def bind(path: Path, defined: list[ir.Signature]) -> str:
             raise BindError(f"{path}: the reference build rewrote {done} of {want} {r.hint} "
                             f"uses; it binds only the shape `{r.shape}`")
     for sig in defined:
-        param = entry_param(sig)
-        if param is None:
+        p = entry(sig)
+        if p is None:
             continue
+        param, star = p.name, "*" if p.pointer else ""
         header = re.compile(rf"\b{sig.name}\s*\(([^)]*)\)((?:\s|/\*.*?\*/)*)\{{", re.S)
 
         def bind_param(m: re.Match) -> str:
-            params = re.sub(rf"\bword\s+{param}\b", f"word pdp1_arg_{param}", m.group(1), count=1)
-            return (f"{sig.name}({params}){m.group(2)}{{ word &{param} = "
+            params = re.sub(rf"\bword\s*{re.escape(star)}\s*{param}\b", f"word {star}pdp1_arg_{param}",
+                            m.group(1), count=1)
+            return (f"{sig.name}({params}){m.group(2)}{{ word {star}&{param} = "
                     f"({cell(sig.name)} = pdp1_arg_{param});")
         text, n = header.subn(bind_param, text)
         if n != 1:
@@ -119,24 +169,31 @@ def signatures(c_files: list[Path]) -> dict[str, ir.Signature]:
 def stub(sig: ir.Signature) -> str:
     """A definition for a function the linked files declare but none defines:
     an unlifted routine. The reference run must never reach it."""
-    params = ", ".join(NATIVE_PARAM[p.kind] for p in sig.params)
+    params = ", ".join(native_param(p) for p in sig.params)
     return f"{sig.returns} {sig.name}({params}) {{ std::abort(); }}\n"
 
 
-def call_expr(sig: ir.Signature) -> str:
-    return f"{sig.name}({', '.join(ARG[p.kind] for p in sig.params)})"
+def call_expr(sig: ir.Signature, name: str | None = None) -> str:
+    return f"{name or sig.name}({', '.join(native_arg(p) for p in sig.params)})"
 
 
-def build(c_files: list[Path], sig: ir.Signature, out: Path, watch: list[str] = ()) -> Path:
+def build(c_files: list[Path], sig: ir.Signature, out: Path, watch: list[str] = (),
+          placed: list[Placement] = (), scratch: str = "", native: str | None = None) -> Path:
     """c_files are included in order into one translation unit with the
-    driver. watch holds C expressions of type word printed after each call."""
+    driver. watch holds C expressions of a word or pointer type printed after
+    each call. placed says where the machine holds C objects, for instruction
+    words and pointers. scratch is extra C++ (words the caller sets up)
+    included after the files. native names a function to call in place of
+    sig's: the program's own statement of what sig computes, for an entry
+    the native build cannot run (one that jumps into generated code)."""
     out.parent.mkdir(parents=True, exist_ok=True)
     parsed = units(c_files)
     sigs = {name: s for u in parsed.values() for name, s in u.signatures.items()}
     src = out.parent / f"{out.name}-src"
     src.mkdir(exist_ok=True)
     cells = src / "cells.h"
-    cells.write_text("".join(f"word {cell(s.name)};\n" for s in sigs.values() if entry_param(s)))
+    cells.write_text("".join(f"word {'*' if entry(s).pointer else ''}{cell(s.name)};\n"
+                             for s in sigs.values() if entry(s)))
     bound, defined = [], set()
     for f, unit in parsed.items():
         mine = [fn.sig for fn in unit.items if isinstance(fn, ir.Function)]
@@ -145,13 +202,14 @@ def build(c_files: list[Path], sig: ir.Signature, out: Path, watch: list[str] = 
         copy.write_text(f'#line 1 "{f.resolve()}"\n' + bind(f, mine))
         bound.append(copy)
     stubs = src / "stubs.h"
-    stubs.write_text("".join(stub(s) for name, s in sigs.items() if name not in defined))
-    watch_expr = "".join(f' printf(" %06o", ({w}).v);' for w in watch)
+    stubs.write_text("".join(stub(s) for name, s in sigs.items() if name not in defined)
+                     + scratch + symbol_table(list(placed)))
+    watch_expr = "".join(f' printf(" %06o", pdp1_value({w}));' for w in watch)
     includes = [a for f in [cells, *bound, stubs] for a in ("-include", str(f))]
     subprocess.run(
         ["g++", "-std=c++14", "-O2", "-Wall", "-Wno-register", "-Wno-unused-label", "-Werror",
          "-include", str(HEADER), *includes,
-         f"-DCALL={call_expr(sig)}", f"-DINLINE={sig.inline_count}",
+         f"-DCALL={call_expr(sig, native)}", f"-DINLINE_WORDS={sig.inline_count}",
          f"-DWATCH={watch_expr or ';'}", str(DRIVER), "-o", str(out)],
         check=True)
     return out

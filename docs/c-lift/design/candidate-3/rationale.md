@@ -123,7 +123,7 @@ Phase F steps 1-4 (synthesis.md) are implemented for the sqt subset. This sectio
 - G5 and G6 run in `pdp1cc gate` (M2 section). `tests/reject/` holds programs the dialect must refuse, each with the error it expects.
 - G7 is a review rule: a new rule lands with its corpus programs. The row checker is not built.
 
-**Not implemented yet.** POOL, HOMED, INLINE parameters, while/do/switch, `sas`/`sad`, indirect calls that return, and the hints `SKIPNOT`, `PLACE`, `ARGS_DONE`, `RELOAD`.
+**Not implemented yet.** while/do, `sas`/`sad`, indirect calls that return, a homed pointer read anywhere but its home, and the hints `SKIPNOT` and `RELOAD`. POOL, HOMED, INLINE parameters, the jump-table switch, `PLACE` and `ARGS_DONE` landed in M3.
 
 ### M1 math (sin/cos, imp/mpy, idv/dvd)
 
@@ -183,9 +183,48 @@ Deviations from the design, and why:
 - **The reference build stubs unlifted functions.** `tunables.c` names `a40`, `a1` and `mg1`, which are still Macro. For each function the linked files declare and none defines, the build generates a definition that calls `abort()`. Any other unresolved symbol, such as an extern data word, fails the link.
 - **The prelude stays.** Every macro in lines 1-61 and 118-187 that anything uses is used by unlifted code. `senseswitch`, `initialize`, `listen`, `move` and `xincr` have no users, emit no words, and go with the prelude in M7.
 
+### M3 outline compiler (oc, ocs, the outline tables)
+
+Source lines 398-507 compile from `lift/outline_compiler.c`, and lines 1336-1356 (the needle and wedge outlines, `ot1` and `ot2`, with their five spare words each) compile from `lift/outlines.c`. The `plinst` and `comtab` macros (402-414) were defined inside the region and used only there. They are gone: each use is a C statement. `dispatch` is still defined in the prelude and has no user left; it goes with the prelude in M7. Lifted coverage is 415/2514 words (16.5%).
+
+Runtime code generation is data writing plus a jump, as synthesis.md decided. The compiler writes instruction words built by `insn` constructors (`*code++ = I_LAC(&ship_x);` is `lac (lac \sx1 / dac i oc / idx oc`) and patches the address of two jump templates (`start_over.addr = code;` is `dap ocm`). Nothing in the C, the header or the reference build executes generated code. `tools/check-outline-reference.py` runs oc in SIMH from the oracle `.rim` on ot1, ot2 and seven synthetic tables. The tables use every direction code in every position of a word, and reach the 7 code as the first, a middle and the last code of a word, after a store (flag 6 left set) and after a restore. After each call it compares the returned end of the code (the extent), all 01000 words of the code area, the two templates, the entry word, the home instruction of the outline pointer, the pool variables and the program flags with the native build. All 9 tables match. With `I_SUB` encoded as `add` in the native header, all 9 differ.
+
+New rules, each used by two or more corpus programs that mirror no lifted routine (`opcompile`, `copytable`, `bucketlog`). The counts are words of the lifted C.
+- `ST-POOL` (34). A `POOL` object is a `\x` variable. Every reference, including one inside a literal (`(lac \sx1`), is written with `\`, so macro1 allocates pool words in first-appearance order. An uninitialized file-scope object without POOL, RESERVE, HOMED or `extern` is an error, so deleting POOL changes the output. `extern POOL` declares one defined in another file.
+- `EX-INSN` (41). `I_LAC(&x)`, `I_JMP(f)`, `I_STF(n)`, `I_RCL(n)`, `I_CMA`, `I_IOH`, `I_DPY_NOWAIT` and the rest build one instruction word. It is a constant: a literal when loaded (`lac (add \ssn`), a data word when it initializes a placed word (`insn start_over = I_JMP(&start_over);` is `jmp start_over`). Natively each constructor encodes the word from the opcode and the object's address (below).
+- `EX-POSTINC-STORE` (72). `*p++ = e` for a pointer held in a memory word: `dac i p` (or `dio i p` when e is a register local), then `idx p`. AC then holds p. The store can change any word, so TRACK keeps only its facts about register locals.
+- `EX-STORE-ADDR` (3). `x.addr = e`, and `p = e` for a HOMED p: e into AC, `dap x`.
+- `INLINE-READ` (1) and `JDA-INLINE-ARG` (0). An `INLINE` parameter is the constant word after the call (`jda oc / ot1`). The callee reads it with `lac i R` through its exit cell and returns through `R, jmp .` once `idx R` has stepped past it. The caller writes the constant, an array's name or a function's name as that word.
+- `SWITCH` (10). `switch ((int)w)` with cases 0..n in order and no default is `add (T / dap J / J, jmp . / T:` and one slot per case. A case before the last is `goto L` (its slot is `jmp L`) or empty (`opr`, which falls into the next slot). The last case's statements sit in its slot. Values outside 0..n are undefined, as on the machine.
+- `HOMED-HOME` (1) and `ST-HOMED` (3). `*home(p)` is p's home instruction, `lac .` or `lio .` under p's label. `p = e` is `dap`, and `++p` is `idx`. Reading p as a value is an error. Exactly one home per pointer: a second definition of the label is a layout error.
+- `LAY-PLACE` (2). `PLACE(x, ...)` lays initialized file-scope words out at the statement instead of at their definition. Control must not reach it.
+- `EX-FLAG` (3) and `SKIP-FLAG` (1). `stf(n)` and `clf(n)`, and `flag(n)` as a condition: `!flag(n)` skips on `szf n`, `flag(n)` on `szf i n`.
+- Extended rules. `EX-CONST-IO` loads a nonzero constant with `lio (c` (the design's table; `cli` stays for 0). `EX-CODE` also covers an array's name and `&object` (`law x`). `ST-PLACED` covers word arrays, whose length must equal their initializer count, and instruction words. `ARGS_DONE()` places `idx R` where the derived placement would not: oc steps its return address after `dap ocm`, and the derived rule would put it before `plinst (stf 5`. Deleting the hint changes the output, so G5 keeps it.
+- TRACK callee summaries. A call to a function laid out earlier keeps IO when the callee's words include no instruction that writes IO, no call, no tail call and no adopted or fallthrough exit. Memory facts are dropped, since the callee may store anywhere. This is why `jsp ocs` twice needs no `lio`. Corpus `copytable` fails to compile without it.
+
+Harness changes:
+- **Native addresses.** Instruction words and pointers name core addresses, so `pdp1.h` keeps a table of where each C object and function sits. The reference build writes it from the listing of the assembly it compares against (`reference.placements`): the corpus program's own listing, or the last `pdp1cc build` for the oracle checks. `pdp1_address(p)` maps a host pointer to its address, and `pdp1_pointer(a)` maps back for pointer arguments. A null pointer is address 0. A pointer just past an object maps to the address after it, but only when no object contains it. `x.addr` is an anonymous-union view of the word's low 12 bits whose assignment takes a pointer.
+- **Pointers.** Parameters, returns, ENTRY_CELL names and POOL objects may be `word *`. The binder rewrites `ENTRY_CELL(f) word *x;` and pointer entry parameters to references to `word *pdp1_cell_f`. Watched words print `pdp1_value(x)`, which is a pointer's address.
+- **Generated code that runs.** Corpus `opcompile` compiles a word of 3-bit operation codes into straight-line code and enters it with `return entry(v)` (`jmp i entry`). The native build cannot run that, so the corpus header names a stand-in: `native=run:run_by_hand`. The native build calls `run_by_hand`, which compiles the same code and computes the same result directly, and its entry word stands for `run`'s. Compiling `sub` for the add-one code makes 131 of 320 calls differ.
+- **SIMH.** `run_jda` can deposit an INLINE word at call+1 per call, deposit input data once after loading, and examine `PF`.
+- **G2** also compares every POOL object and every element of a placed array after each call.
+- **G5** now deletes `POOL`, `HOMED`, `INLINE`, `home`, `PLACE(...);` and `ARGS_DONE();`. `RESERVE` was in the pattern with parentheses it never has, so G5 never tested it. It is now a bare hint and earns its place in every file.
+- **G6** edits program-flag numbers and `I_RCL`-style counts (`flag` edits): the instruction or literal naming flag n names n + 1, refused past flag 7 (6 for `flag(n)`) or a count of 9. It makes no edits to case labels or array lengths, which are not values.
+- **Rejects.** Nine programs: PLACE reachable, a switch with a default or a non-goto case, a homed pointer with two homes or read as a value, `I_RCL(10)`, `ARGS_DONE()` before the inline read, an initialized POOL, and the address of an AC local.
+
+Deviations from the design, and why:
+- **`ioh` is emitted as `iot i`.** macro1 has no `ioh`; Spacewar defines it (`ioh=iot i`, line 6), and a corpus program assembles without that line. The word and the literal's value are the same, and macro1 dedups literals by value.
+- **The jump templates and generated symbols.** `ocm, jmp .` compiles as `zo10, jmp zo10`: same word. The original labels `ock`, `oco`, `ocq`, `ocp` and `ocr` name nothing any instruction uses, so they are gone.
+- **PLACE takes file-scope words, not static locals.** The native address table is written after the lifted files and can only name file-scope objects.
+- **ENTRY_CELL may share its owner's parameter name.** oc's entry word is `code` in both `outline_compiler` (its parameter) and `compile_twice` (the ENTRY_CELL name), since both name one cell.
+- **`switch ((int)w)`.** The native `word` converts to `int` only explicitly; an implicit conversion would make `w + 1` ambiguous against the built-in `+`.
+- **HOMED and the switch arrive before M5 and M7.** oc needs both (`ocg, lio .` and `dispatch`). Only the forms oc and the corpus use are implemented.
+- **The ship variables are declared in `outline_compiler.c`.** oc's text is their first appearance, so it decides their addresses. They keep their Macro names by SYM because the unlifted spaceship code names them. M6 will declare them `extern POOL` where it needs them.
+- **Label merging.** When a home instruction is also a C label or loop top, the first label names the word and the others are renamed to it. A pinned homed pointer could lose its symbol this way; the build's interface check would then fail.
+
 ## Open questions and risks
 
-- Runtime-generated code: is "`insn` values + `jump(sp5)` + exported label `sq6`, with `pdp1_exec` as a header-only specification" an acceptable genuine C form to the operator, or does the specification count as an interpreter? This is the weakest idiom.
+- Runtime-generated code: M3 settles the writing side (data written through a pointer, no execution spec). M6 must still choose the C form for entering the compiled outline (`sp5, jmp .` patched by `dap`) and for its return at `sq6`.
 - `mex` builds `scl n` at run time (`ior (scl`) and executes it in place at `mi1`. That needs a "slot" (a writable one-word XCT routine) beyond the examples. Is `SLOT dword mi1(dword)` acceptable?
 - Uninitialized `register` reads (mpy's `rcr(h, m, 18)` with garbage IO) are indeterminate in ISO C. The reference build maps IO to a global so it is defined there. Is that acceptable?
 - `ENTRY_CELL` aliasing (sin/cos scratch, oc's pointer) is only correct while the owner's parameter is dead. Should the compiler prove that, or is a documented contract enough?

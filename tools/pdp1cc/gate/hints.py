@@ -20,7 +20,9 @@ from pathlib import Path
 from ..cli import COMPILE_ERRORS, compile_file
 
 SYM = re.compile(r'SYM\s*\(\s*"(\w+)"\s*\)')
-HINT = re.compile(r"\b(?:SYM|ENTRY_CELL|AT|RESERVE)\s*\([^()]*\)|\b(?:JDA|BLOCK|BYNAME|XCT|JSP|register)\b")
+HINT = re.compile(r"\b(?:PLACE|ARGS_DONE)\s*\([^()]*\)\s*;"
+                  r"|\b(?:SYM|ENTRY_CELL|AT)\s*\([^()]*\)"
+                  r"|\b(?:JDA|BLOCK|BYNAME|INLINE|XCT|JSP|POOL|HOMED|RESERVE|register|home)\b")
 COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
 DIRECTIVE = re.compile(r"^[ \t]*#[^\n]*", re.M)
 

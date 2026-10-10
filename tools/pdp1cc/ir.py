@@ -43,8 +43,23 @@ class ByName:       # BYNAME parameter: the caller's inline word, fetched with x
     name: str
 
 
-Storage = Union[Acc, Io, Placed, Extern, Entry, ByName]
-Memory = (Placed, Extern, Entry)
+@dataclass(frozen=True)
+class Inline:       # INLINE parameter: the constant word after the call, read with `lac i R`
+    name: str
+
+
+@dataclass(frozen=True)
+class Pool:         # POOL object: a `\x` word macro1 allocates at `variables`
+    sym: str
+
+
+@dataclass(frozen=True)
+class Homed:        # HOMED pointer: the address field of its home instruction
+    sym: str
+
+
+Storage = Union[Acc, Io, Placed, Extern, Entry, ByName, Inline, Pool, Homed]
+Memory = (Placed, Extern, Entry, Pool)
 
 
 def mem_sym(s: Storage) -> str:
@@ -108,7 +123,8 @@ class PairOp:           # rcl(h, l, n) / mus(h, l, m) etc: h in AC, l in IO, bot
 @dataclass(frozen=True)
 class Param:
     name: str
-    kind: str           # "ac": entry word / AC, "io": register, "byname": inline word
+    kind: str           # "ac": entry word / AC, "io": register, "byname" / "inline": a word after the call
+    pointer: bool = False
 
 
 @dataclass(frozen=True)
@@ -117,12 +133,18 @@ class Signature:
     sym: str            # Macro symbol of the entry
     conv: str           # "jda" | "block" | "xct" | "jsp"
     params: tuple[Param, ...]
-    returns: str        # "word" | "dword" | "void"
+    returns: str        # "word" | "word*" | "dword" | "void"
     exit_sym: str       # the cell returns go through: exit `jmp .` or the by-name `xct`
 
     @property
     def inline_count(self) -> int:
-        return sum(p.kind == "byname" for p in self.params)
+        """Words after the call that the function returns past."""
+        return sum(p.kind in ("byname", "inline") for p in self.params)
+
+    @property
+    def byname(self) -> bool:
+        """Returns through the by-name `xct` cell (`jmp i R`), not an exit `jmp .`."""
+        return any(p.kind == "byname" for p in self.params)
 
 
 @dataclass(frozen=True)
@@ -149,6 +171,23 @@ class Hw:               # a hardware builtin with no operand: tyi(), lsm()
 
 
 @dataclass(frozen=True)
+class Insn:             # an instruction word built by an I_* constructor: a constant
+    op: str             # mnemonic or microcode expression, e.g. "lac", "dpy-4000"
+    operand: "Operand | None" = None
+    i: bool = False
+
+
+@dataclass(frozen=True)
+class AddrOf:           # &object, or an array's name, as a value: its address
+    operand: "Sym"
+
+
+@dataclass(frozen=True)
+class HomeLoad:         # *home(p): the home instruction of homed pointer p
+    pointer: Var
+
+
+@dataclass(frozen=True)
 class Half:             # call.hi / call.lo of a dword result
     call: Call
     which: str
@@ -160,14 +199,26 @@ class Pair:             # (dword){ hi, lo }
     lo: Expr
 
 
+@dataclass(frozen=True)
+class Flag:             # stf(n) / clf(n): set or clear program flag n
+    op: str
+    n: int
+
+
 Expr = Union[Const, Var, PreInc, Neg, Binary, Shift, Rot, PairOp, Call, Half, Pair, CodeRef,
-             IndirectCall, Hw]
+             IndirectCall, Hw, Insn, AddrOf, HomeLoad, Flag]
 
 
 @dataclass(frozen=True)
 class Compare:          # e <op> 0, the only comparison the skip group makes
     op: str
     operand: Expr
+
+
+@dataclass(frozen=True)
+class FlagTest:         # flag(n), or !flag(n) when negated
+    n: int
+    negated: bool = False
 
 
 # -------------------------------------------------------------- statements
@@ -218,8 +269,32 @@ class ArgsDone:         # the inline-parameter skip, placed by inline.place_args
 
 
 @dataclass(frozen=True)
+class StoreNext:        # *p++ = e: store through p, then advance p
+    pointer: Var
+    value: Expr
+
+
+@dataclass(frozen=True)
+class AssignAddr:       # x.addr = e, or p = e for a homed p: e's address bits into x (dap)
+    target: Var
+    value: Expr
+
+
+@dataclass(frozen=True)
+class Switch:           # switch ((int)e) over cases 0..n: a jump table
+    value: Expr
+    slots: tuple["Stmt | None", ...]     # cases 0..n-1: a Goto, or None to fall into the next
+    last: "Stmt"                         # case n: laid out in its slot
+
+
+@dataclass(frozen=True)
+class PlaceHere:        # PLACE(x, ...): these words are laid out here
+    data: tuple["Datum", ...]
+
+
+@dataclass(frozen=True)
 class If:
-    cond: Compare
+    cond: "Compare | FlagTest"
     then: Stmt
     orelse: Stmt | None
 
@@ -245,7 +320,7 @@ class Block:
 
 
 Stmt = Union[Assign, AssignPair, Eval, If, Forever, Continue, Return, Block, Goto, Labeled,
-             Unroll, SkipReturn, ArgsDone]
+             Unroll, SkipReturn, ArgsDone, StoreNext, AssignAddr, Switch, PlaceHere]
 
 
 # ----------------------------------------------------------- unit structure
@@ -265,9 +340,10 @@ class Function:
 @dataclass(frozen=True)
 class Datum:
     sym: str
-    value: int
+    values: tuple["int | Insn", ...]    # one per word: a number, or an instruction word
     name: str           # C name
     at: int | None = None
+    array: bool = False
 
 
 @dataclass(frozen=True)
@@ -289,6 +365,13 @@ class Unit:
     signatures: dict[str, Signature]
     next_label: int     # generated symbols already used: layout continues from here
     objects: dict[str, Storage]     # file-scope objects by C name
+    data: dict[str, Datum] = None   # every initialized word or array, by C name, wherever placed
+
+    def words(self, name: str) -> int:
+        """Words a file-scope object spans."""
+        if name in (self.data or {}):
+            return len(self.data[name].values)
+        return next((s.size for s in self.items if isinstance(s, Space) and s.name == name), 1)
 
 
 # ------------------------------------------------------------------ output
@@ -297,6 +380,7 @@ class Unit:
 @dataclass(frozen=True)
 class Sym:
     name: str
+    pool: bool = False  # a POOL object: written `\name`
 
 
 @dataclass(frozen=True)
@@ -306,7 +390,7 @@ class Num:
 
 @dataclass(frozen=True)
 class Lit:              # `(x`: a constants-pool literal
-    value: Num
+    value: "Num | Insn"
 
 
 @dataclass(frozen=True)

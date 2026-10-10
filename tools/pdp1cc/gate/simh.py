@@ -22,7 +22,7 @@ STUB = 0o7703
 CALL = STUB + 2
 HALTS = 4
 HALT = re.compile(r"HALT instruction, PC: ([0-7]+)")
-EXAMINE = re.compile(r"^(?:sim> )*(AC|IO|[0-7]+):\s+([0-7]+)$")
+EXAMINE = re.compile(r"^(?:sim> )*(AC|IO|PF|[0-7]+):\s+([0-7]+)$")
 
 
 class SimhError(Exception):
@@ -45,19 +45,31 @@ class Outcome:
 
 
 def run_jda(simh: Path, rim: Path, entry: int, calls: list[Inputs], byname: bool = False,
-            watch: list[int] = (), timeout: int = 1800, op: str = "jda") -> list[Outcome]:
-    """op is the call instruction: jda, or xct for a one-word XCT routine."""
+            watch: list[int | str] = (), timeout: int = 1800, op: str = "jda",
+            inline: bool = False, deposits: dict[int, int] | None = None) -> list[Outcome]:
+    """op is the call instruction: jda, or xct for a one-word XCT routine.
+    byname: the word after the call is `lac BYNAME_IN`. inline: it is the
+    call's by-name input itself, a constant word (an INLINE parameter).
+    watch holds addresses, or register names such as PF (the program flags).
+    deposits are words set in core once, after loading: the routine's input data."""
     words = [f"lio {IO_IN:o}", f"lac {AC_IN:o}", f"{op} {entry:o}"]
-    if byname:
+    if inline:
+        words.append("0")
+        byname = True
+    elif byname:
         words.append(f"lac {BYNAME_IN:o}")
     words += ["hlt"] * HALTS
     script = ["set cpu nomdv", f"load {rim}"]
     script += [f"dep {STUB + i:o} {w}" for i, w in enumerate(words)]
+    script += [f"dep {a:o} {v:o}" for a, v in (deposits or {}).items()]
     for c in calls:
         script += [f"dep {AC_IN:o} {c.ac:o}", f"dep {IO_IN:o} {c.io:o}"]
-        if byname:
+        if inline:
+            script.append(f"dep {CALL + 1:o} {c.byname:o}")
+        elif byname:
             script.append(f"dep {BYNAME_IN:o} {c.byname:o}")
-        script += [f"go {STUB:o}", "ex AC", "ex IO"] + [f"ex {a:o}" for a in watch]
+        script += [f"go {STUB:o}", "ex AC", "ex IO"] + \
+            [f"ex {a}" if isinstance(a, str) else f"ex {a:o}" for a in watch]
     script.append("quit")
     out = subprocess.run([str(simh)], input="\n".join(script) + "\n",
                          capture_output=True, text=True, timeout=timeout).stdout

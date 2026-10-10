@@ -38,7 +38,26 @@
  * core held there. MINUS_ZERO is the word with every bit set.
  *
  * Hardware builtins: tyi() reads the typewriter into IO; lsm() leaves
- * sequence break mode.
+ * sequence break mode; stf(n) and clf(n) set and clear program flag n, and
+ * flag(n) tests it.
+ *
+ * Memory. A POOL object is a word macro1 allocates at `variables` (`\x`).
+ * A HOMED pointer lives in the address field of one instruction, its home:
+ * `*home(p)` is that instruction, `p = e` stores the address there (dap)
+ * and `++p` advances it (idx). `x.addr = e` stores e's address bits into
+ * word x (dap). `*p++ = e` stores through a pointer and advances it.
+ * PLACE(x, ...) lays file-scope words out where the statement stands
+ * instead of at their definition; control must not reach it. An INLINE
+ * parameter is a constant word after the call, read as `lac i` through
+ * the return address. ARGS_DONE() marks where a function with inline
+ * words steps its return address past them.
+ *
+ * Instruction words. An `insn` is a word that holds an instruction. The
+ * I_* constructors build one: I_LAC(&x) is the word `lac x`, I_JMP(f) is
+ * `jmp f`, I_STF(n) is `stf n`, I_RCL(n) is `rcl ns`. Code generated at run
+ * time is these words written to memory and entered by a jump; nothing in
+ * this header executes it. `switch ((int)w)` over cases 0..n is a jump
+ * table indexed by w; a value outside 0..n is undefined, as on the machine.
  *
  * Under g++ the macros below are empty. The reference build
  * (tools/pdp1cc/gate/reference.py) binds the two storage facts a macro
@@ -52,6 +71,7 @@
 #if defined(__PDP1CC__)
 
 typedef int word;
+typedef word insn;
 typedef struct dword { word hi, lo; } dword;
 #define JDA __attribute__((pdp1_jda))
 #define BLOCK __attribute__((pdp1_block))
@@ -62,7 +82,22 @@ typedef struct dword { word hi, lo; } dword;
 #define JSP __attribute__((pdp1_jsp))
 #define AT(a) __attribute__((pdp1_at(a)))
 #define RESERVE __attribute__((pdp1_reserve))
+#define POOL __attribute__((pdp1_pool))
+#define HOMED __attribute__((pdp1_homed))
+#define INLINE __attribute__((pdp1_inline))
+#define PLACE(...) pdp1_place(__VA_ARGS__)
+#define ARGS_DONE() pdp1_args_done()
 #define MINUS_ZERO (-(word)0)
+word *home(const word *p);
+void pdp1_place();
+void pdp1_args_done(void);
+void stf(int n);
+void clf(int n);
+int flag(int n);
+insn I_LAC(), I_LIO(), I_DAC(), I_DIO(), I_ADD(), I_SUB(), I_AND(), I_XOR(), I_JMP(), I_IDX();
+insn I_STF(int n), I_CLF(int n), I_SZF(int n);
+insn I_RCL(int n), I_RAL(int n);
+extern const insn I_CMA, I_IOH, I_DPY_NOWAIT;
 word tyi(void);
 void lsm(void);
 void rcl(word hi, word lo, int n);
@@ -91,14 +126,53 @@ void skip_return(void);
 #define JSP
 #define AT(a)
 #define RESERVE
+#define POOL
+#define HOMED
+#define INLINE
+#define PLACE(...)
+#define ARGS_DONE()
 #define MINUS_ZERO (-(word)0)
 
 typedef std::uint32_t pdp1_bits;
 static const pdp1_bits PDP1_MASK = (1u << 18) - 1;
 static const pdp1_bits PDP1_SIGN = 1u << 17;
+static const pdp1_bits PDP1_ADDR = (1u << 12) - 1;
+
+/* Where the C objects are in core. Instruction words name addresses, so
+ * the reference build supplies the table from the assembled listing:
+ * each entry is a C object (or function), how many words it spans, and
+ * the address of its first word. */
+struct pdp1_symbol { const void *at; unsigned words; unsigned address; };
+extern const pdp1_symbol pdp1_symbols[];
+extern const unsigned pdp1_symbol_count;
+
+static inline unsigned pdp1_address(const void *p) {
+    if (p == nullptr)                   /* a pointer word that holds 0 */
+        return 0;
+    const char *c = static_cast<const char *>(p);
+    for (unsigned past = 0; past <= 1; ++past)     /* inside an object, else just past one */
+        for (unsigned k = 0; k < pdp1_symbol_count; ++k) {
+            const char *at = static_cast<const char *>(pdp1_symbols[k].at);
+            if (c >= at && c < at + (pdp1_symbols[k].words + past) * sizeof(pdp1_bits))
+                return (pdp1_symbols[k].address + (unsigned)(c - at) / sizeof(pdp1_bits)) & PDP1_ADDR;
+        }
+    std::abort();                       /* an object the listing does not place */
+}
+template <class F> static inline unsigned pdp1_address(F *f) {
+    return pdp1_address(reinterpret_cast<const void *>(f));
+}
+
+/* The address bits of a word: storing a pointer here is `dap`. */
+struct pdp1_address_field {
+    pdp1_bits v;
+    template <class T> pdp1_address_field &operator=(T *p) {
+        v = (v & ~PDP1_ADDR) | pdp1_address(p);
+        return *this;
+    }
+};
 
 struct word {
-    pdp1_bits v;
+    union { pdp1_bits v; pdp1_address_field addr; };
     word() : v(0) {}
     word(int i) : v((i < 0 ? ~(pdp1_bits)(-i) : (pdp1_bits)i) & PDP1_MASK) {
         if (i > (int)PDP1_MASK || -i > (int)PDP1_MASK) std::abort();
@@ -143,7 +217,57 @@ struct word {
         if (v >= PDP1_MASK) v = (v + 1) & PDP1_MASK;
         return *this;
     }
+    explicit operator int() const { return (int)v; }    /* a jump table index */
 };
+typedef word insn;
+
+/* The word the machine holds: a pointer is the address it points to. */
+static inline pdp1_bits pdp1_value(word w) { return w.v; }
+template <class T> static inline pdp1_bits pdp1_value(T *p) { return pdp1_address(p); }
+
+/* The C object at an address, for a pointer the caller passes as a word. */
+static inline word *pdp1_pointer(pdp1_bits a) {
+    for (unsigned k = 0; k < pdp1_symbol_count; ++k) {
+        const pdp1_symbol &s = pdp1_symbols[k];
+        if (a >= s.address && a < s.address + s.words)
+            return (word *)const_cast<void *>(s.at) + (a - s.address);
+    }
+    std::abort();
+}
+
+template <class T> static inline T *home(T *p) { return p; }
+
+/* Instruction words, encoded as the machine encodes them. A memory
+ * reference instruction is a 5-bit operation in the high bits and an
+ * address; the operate, skip and shift groups add microcoded bits. */
+static inline insn pdp1_insn(pdp1_bits op, pdp1_bits low) { return word::bits(op << 12 | low); }
+#define PDP1_MRI(name, op) \
+    template <class T> static inline insn name(T *p) { return pdp1_insn(op, pdp1_address(p)); }
+PDP1_MRI(I_AND, 002) PDP1_MRI(I_XOR, 006) PDP1_MRI(I_LAC, 020) PDP1_MRI(I_LIO, 022)
+PDP1_MRI(I_DAC, 024) PDP1_MRI(I_DIO, 032) PDP1_MRI(I_ADD, 040) PDP1_MRI(I_SUB, 042)
+PDP1_MRI(I_IDX, 044) PDP1_MRI(I_JMP, 060)
+#undef PDP1_MRI
+static const pdp1_bits PDP1_OPR = 076, PDP1_SKP = 064, PDP1_SHIFT = 066, PDP1_IOT = 072;
+static const pdp1_bits PDP1_I = 1u << 12;           /* the indirect (or IOT wait) bit */
+static inline insn I_STF(int n) { return pdp1_insn(PDP1_OPR, 010 | (n & 7)); }
+static inline insn I_CLF(int n) { return pdp1_insn(PDP1_OPR, n & 7); }
+static inline insn I_SZF(int n) { return pdp1_insn(PDP1_SKP, n & 7); }
+static inline insn pdp1_shift(pdp1_bits kind, int n) {
+    if (n < 1 || n > 9) std::abort();               /* one instruction shifts 1..9 */
+    return pdp1_insn(PDP1_SHIFT, kind << 9 | ((1u << n) - 1));
+}
+static inline insn I_RAL(int n) { return pdp1_shift(01, n); }
+static inline insn I_RCL(int n) { return pdp1_shift(03, n); }
+static const insn I_CMA = word::bits(PDP1_OPR << 12 | 01000);
+static const insn I_IOH = word::bits(PDP1_IOT << 12 | PDP1_I);     /* iot i: wait for completion */
+static const insn I_DPY_NOWAIT = word::bits((PDP1_IOT << 12 | PDP1_I | 07) - 04000);  /* dpy-4000 */
+
+/* Program flags 1-6; flag 7 names all six. */
+static unsigned pdp1_program_flags;
+static inline unsigned pdp1_flag_bits(int n) { return n == 7 ? 077u : 1u << (6 - n); }
+static inline void stf(int n) { pdp1_program_flags |= pdp1_flag_bits(n); }
+static inline void clf(int n) { pdp1_program_flags &= ~pdp1_flag_bits(n); }
+static inline bool flag(int n) { return (pdp1_program_flags & pdp1_flag_bits(n)) != 0; }
 
 /* The AC:IO pair: hi is AC, lo is IO. */
 struct dword { word hi, lo; };
