@@ -39,7 +39,8 @@ def default_ac() -> list[int]:
 def calls_for(ac_values: list[int]) -> list[simh.Inputs]:
     io = lcg(2, len(ac_values))
     byname = lcg(3, len(ac_values))
-    return [simh.Inputs(a, i, b) for a, i, b in zip(ac_values, io, byname)]
+    sense = [v & 0o77 for v in lcg(4, len(ac_values))]
+    return [simh.Inputs(a, i, b, w) for a, i, b, w in zip(ac_values, io, byname, sense)]
 
 
 @dataclass
@@ -106,6 +107,14 @@ def assemble(prog: Program, macro1: Path, work: Path) -> tuple[Path, dict[str, i
     return mac.with_suffix(".rim"), symbols
 
 
+DISPLAY_WORD = re.compile(r"^\s*\d*\s+([0-7]{5}) ([0-7]{6})\s+(?:\w+,)?\s*dpy\b", re.M)
+
+
+def display_words(lst: Path) -> dict[int, int]:
+    """Address -> word of every display instruction in an assembled listing."""
+    return {int(a, 8): int(w, 8) for a, w in DISPLAY_WORD.findall(lst.read_text(errors="replace"))}
+
+
 def compare(calls: list[simh.Inputs], machine: list[simh.Outcome], native: list[simh.Outcome],
             sig: ir.Signature, watch_names: list[str]) -> list[str]:
     """Differences between SIMH and the native build, one line per differing call."""
@@ -117,8 +126,15 @@ def compare(calls: list[simh.Inputs], machine: list[simh.Outcome], native: list[
         fields += list(zip(watch_names, m.watched, n.watched))
         bad = [f"{k} simh {a:06o} native {b:06o}" for k, a, b in
                ((f[0], f[1], f[2]) for f in fields) if a != b]
+        if m.plotted != n.plotted:
+            k = next((k for k, (a, b) in enumerate(zip(m.plotted, n.plotted)) if a != b),
+                     min(len(m.plotted), len(n.plotted)))
+            show = lambda ps: " ".join(f"{w:06o}@{x:06o},{y:06o}" for w, x, y in ps[k:k + 2]) or "-"
+            bad.append(f"plotted {len(m.plotted)} points in simh, {len(n.plotted)} native; from point {k} "
+                       f"simh {show(m.plotted)} native {show(n.plotted)}")
         if bad:
-            diffs.append(f"ac {c.ac:06o} io {c.io:06o} byname {c.byname:06o}: " + ", ".join(bad))
+            diffs.append(f"ac {c.ac:06o} io {c.io:06o} byname {c.byname:06o} sense {c.sense:02o}: "
+                         + ", ".join(bad))
     if len(native) != len(calls):
         diffs.append(f"native build produced {len(native)} results for {len(calls)} calls")
     return diffs
@@ -162,7 +178,8 @@ def run_program(prog: Program, simh_bin: Path, macro1: Path, work: Path) -> list
         watch = stand_in_watch(watched(prog), sig.name, prog.native.get(sig.name))
         machine = simh.run_jda(simh_bin, rim, symbols[sig.sym], prog.calls, sig.byname,
                                [symbols[sym] + k for _, sym, k, _ in watch],
-                               inline=sig.inline_count > sig.byname)
+                               inline=sig.inline_count > sig.byname,
+                               display=display_words(rim.with_suffix(".lst")))
         binary = reference.build([prog.path], sig, work / f"{prog.path.stem}-{sig.name}",
                                  [expr for *_, expr in watch], placed,
                                  native=prog.native.get(sig.name))
@@ -173,7 +190,7 @@ def run_program(prog: Program, simh_bin: Path, macro1: Path, work: Path) -> list
 
 
 def rules_used(words: list[ir.Word]) -> Counter:
-    return Counter(r for w in words for r in (w.rule, *w.via))
+    return Counter(r for w in words if not isinstance(w, ir.Break) for r in (w.rule, *w.via))
 
 
 def coverage(programs: list[Program], lift_words: dict[str, Counter]) -> tuple[list[str], bool]:

@@ -22,8 +22,20 @@ flag   a program flag n (stf, clf, flag, I_STF, I_CLF, I_SZF) becomes n + 1:
        the one instruction or literal that names flag n names n + 1. Past
        flag 7 (flag 6 for a test) it is refused. An I_RCL-style count n
        becomes n + 1 in its literal (`rcl 3s` -> `rcl 4s`), refused past 9.
+       A sense switch n (`szs n0`) and a dpy intensity n (`dpy-i+n00`) are
+       fields too, refused past 6 and 7.
 
-Case labels and array lengths are not values: their edits are not made.
+A constant inside a constant expression (`8192 - 1537`, `0400 - 010`)
+changes the expression's value: the prediction is the const rewrite of the
+folded value, worked out here by C's rules. An array offset (`ring + 8`)
+changes the offset its address operand names (`ring+10`). Case labels and
+array lengths are not values: their edits are not made.
+
+An edit in a static inline function, or in an unrolled loop, lands once in
+each copy: the output must be the original with exactly that many of the
+predicted rewrites applied. A count edit that lengthens a case of Duff's
+device (a switch on a HOMED word) is predicted to be refused: those cases
+are one power of two of words each.
 
 The predictions are written here from the rule tables, not computed by the
 compiler's own lowering code."""
@@ -31,6 +43,7 @@ from __future__ import annotations
 
 import copy
 import re
+from concurrent.futures import ProcessPoolExecutor
 from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -52,7 +65,12 @@ MAX_SHIFT = 35
 # whether the field is a shift count, the largest value, and the error past it.
 FIELD_ARG = {"stf": ("stf", False, 7), "clf": ("clf", False, 7), "flag": ("szf", False, 6),
              "I_STF": ("stf", False, 7), "I_CLF": ("clf", False, 7), "I_SZF": ("szf", False, 7),
-             "I_RCL": ("rcl", True, 9), "I_RAL": ("ral", True, 9)}
+             "I_RCL": ("rcl", True, 9), "I_RAL": ("ral", True, 9),
+             "sense": ("szs", False, 6), "dpy": ("dpy", False, 7)}
+FIELD_POSITION = {"dpy": "exprs[2]"}        # the argument that is the field; default any
+FIELD_ERROR = {"szs": "sense switch", "dpy": "intensity"}
+FOLD = {"+": lambda a, b: a + b, "-": lambda a, b: a - b, "*": lambda a, b: a * b,
+        "<<": lambda a, b: a << b, ">>": lambda a, b: a >> b}
 
 Line = tuple[str, str]          # (label, instruction text)
 
@@ -111,31 +129,48 @@ class Site:
     error: str | None = None    # the edit must be refused with this message instead
     n: int = 0                  # a count site's count
 
-    def predict(self, old: list[Line]) -> list[list[Line]]:
-        """Every output the rules allow: `copies` successive rewrites applied."""
-        found = sorted(self.rewrites(old), key=lambda r: r[0])
-        outs = []
-        for k in range(len(found) - self.copies + 1):
-            chosen = found[k:k + self.copies]
-            if any(a[1] > b[0] for a, b in zip(chosen, chosen[1:])):
+    def matches(self, old: list[Line], new: list[Line]) -> bool:
+        """new is old with exactly `copies` of the predicted rewrites applied,
+        at non-overlapping places, and nothing else changed."""
+        at: dict[int, list[tuple[int, list[Line]]]] = {}
+        for start, end, words in self.rewrites(old):
+            if old[start:end] != words:
+                at.setdefault(start, []).append((end, words))
+        todo, seen = [(0, 0, 0)], set()
+        while todo:
+            state = todo.pop()
+            if state in seen:
                 continue
-            new, pos = [], 0
-            for start, end, words in chosen:
-                new += old[pos:start] + words
-                pos = end
-            outs.append(new + old[pos:])
-        return outs
+            seen.add(state)
+            i, j, k = state
+            if i == len(old) and j == len(new) and k == self.copies:
+                return True
+            if i < len(old) and j < len(new) and old[i] == new[j]:
+                todo.append((i + 1, j + 1, k))
+            if k < self.copies:
+                for end, words in at.get(i, []):
+                    if new[j:j + len(words)] == words:
+                        todo.append((end, j + len(words), k + 1))
+        return False
 
 
 Rewrite = tuple[int, int, list[Line]]   # old[start:end] becomes these lines
 
 
 def walk(node: c_ast.Node, ctx: dict) -> Iterator[tuple[c_ast.Node, c_ast.Node | None, str, dict]]:
-    """(node, parent, field, context) in a fixed order."""
+    """(node, parent, field, context) in a fixed order. The context names
+    the function, the copies its code is laid out in, and the ancestors."""
     for name, child in node.children():
         sub = dict(ctx)
+        sub["ancestors"] = ctx.get("ancestors", ()) + ((node, name),)
         if isinstance(node, c_ast.FuncDef):
             sub["function"] = node.decl.name
+            sub["copies"] = ctx.get("inline_copies", {}).get(node.decl.name, 1)
+        if isinstance(node, c_ast.Switch) and _homed_switch(node, ctx) and \
+                isinstance(child, c_ast.Compound):
+            sub["duff_cases"] = child.block_items[:-1] if child.block_items else []
+        if isinstance(node, c_ast.Compound) and child in ctx.get("duff_cases", ()):
+            sub["in_duff_case"] = True
         if isinstance(node, c_ast.For) and name in ("init", "cond", "next"):
             sub["for_header"] = True
         if isinstance(node, c_ast.FuncCall) and name == "args":
@@ -144,6 +179,62 @@ def walk(node: c_ast.Node, ctx: dict) -> Iterator[tuple[c_ast.Node, c_ast.Node |
             sub["copies"] = ctx.get("copies", 1) * dialect.c_int(node.cond.right)
         yield child, node, name, sub
         yield from walk(child, sub)
+
+
+def _homed_switch(node: c_ast.Switch, ctx: dict) -> bool:
+    cond = node.cond
+    return isinstance(cond, c_ast.Cast) and isinstance(cond.expr, c_ast.ID) and \
+        cond.expr.name in ctx.get("homed", set())
+
+
+def fold(node: c_ast.Node, bump: c_ast.Node | None = None) -> int | None:
+    """A C integer constant expression's value, with the constant bump read as one more."""
+    if isinstance(node, c_ast.Constant) and node.type == "int":
+        return dialect.c_int(node) + (node is bump)
+    if isinstance(node, c_ast.UnaryOp) and node.op == "-":
+        v = fold(node.expr, bump)
+        return None if v is None else -v
+    if isinstance(node, c_ast.BinaryOp) and node.op in FOLD:
+        a, b = fold(node.left, bump), fold(node.right, bump)
+        return None if a is None or b is None else FOLD[node.op](a, b)
+    return None
+
+
+def word_of(v: int) -> int:
+    """C's integer to the machine's ones' complement word."""
+    return v if v >= 0 else (-v) ^ MASK
+
+
+def folded_top(ancestors) -> tuple[c_ast.Node | None, c_ast.Node | None, str]:
+    """The largest constant expression the constant sits in: that node, its
+    parent and the parent's field. None when the constant stands alone."""
+    top, i = None, len(ancestors) - 1
+    while i >= 0:
+        node, _ = ancestors[i]
+        if isinstance(node, (c_ast.BinaryOp, c_ast.UnaryOp)) and fold(node) is not None:
+            top, i = node, i - 1
+        else:
+            break
+    if top is None:
+        return None, None, ""
+    return top, ancestors[i][0] if i >= 0 else None, ancestors[i][1] if i >= 0 else ""
+
+
+def inline_copies(ast: c_ast.FileAST, unit: ir.Unit) -> dict[str, int]:
+    """Copies of each static inline function's code: its calls, counting the
+    copies of the code each call stands in."""
+    inlines = set(unit.inlines or {})
+    copies = {name: 0 for name in inlines}
+    for _ in range(len(inlines) + 1):
+        new = {name: 0 for name in inlines}
+        for node, _parent, _field, ctx in walk(ast, {"inline_copies": copies}):
+            if isinstance(node, c_ast.FuncCall) and isinstance(node.name, c_ast.ID) \
+                    and node.name.name in inlines:
+                new[node.name.name] += ctx.get("copies", 1)
+        if new == copies:
+            break
+        copies = new
+    return copies
 
 
 def own(node: c_ast.Node) -> bool:
@@ -161,6 +252,8 @@ class Leaves:
 
     def __init__(self, unit: ir.Unit, ast: c_ast.FileAST):
         self.unit = unit
+        self.arrays = {name for name, d in (unit.data or {}).items() if d.array} | \
+            {t.name for t in unit.items if isinstance(t, ir.Space) and t.array}
         self.locals: dict[str, set[str]] = {}
         for ext in ast.ext:
             if isinstance(ext, c_ast.FuncDef):
@@ -168,7 +261,9 @@ class Leaves:
                 self.locals[ext.decl.name] = names
 
     def memory_symbol(self, node: c_ast.Node, function: str) -> str | None:
-        if not isinstance(node, c_ast.ID) or node.name in self.locals.get(function, ()):
+        """An array's name is its address, not a word in memory."""
+        if not isinstance(node, c_ast.ID) or node.name in self.locals.get(function, ()) \
+                or node.name in self.arrays:
             return None
         sig = self.unit.signatures.get(function)
         if sig is not None and any(p.name == node.name for p in sig.params):
@@ -198,57 +293,94 @@ class Leaves:
 
 def sites(ast: c_ast.FileAST, unit: ir.Unit) -> list[Site]:
     leaves = Leaves(unit, ast)
+    homed = {name for name, s in unit.objects.items() if isinstance(s, ir.Homed)}
+    top_ctx = {"inline_copies": inline_copies(ast, unit), "homed": homed}
+    top_ctx["duff_inlines"] = {n.name.name for n, _p, _f, c in walk(ast, top_ctx)
+                               if c.get("in_duff_case") and isinstance(n, c_ast.FuncCall)
+                               and isinstance(n.name, c_ast.ID) and n.name.name in (unit.inlines or {})}
     out: list[Site] = []
-    for index, (node, parent, field, ctx) in enumerate(walk(ast, {})):
+    for index, (node, parent, field, ctx) in enumerate(walk(ast, top_ctx)):
         if not own(node):
             continue
         fn = ctx.get("function")
-        if isinstance(node, c_ast.BinaryOp) and node.op in COMMUTATIVE and fn:
+        copies = ctx.get("copies", 1)
+        if isinstance(node, c_ast.BinaryOp) and node.op in COMMUTATIVE and fn and fold(node) is None:
             parts = [(leaves.load(x, fn), leaves.operand(x, fn)) for x in (node.left, node.right)]
             if all(load and opnd for load, opnd in parts):
-                out.append(replace(swap_site(index, node, parts), copies=ctx.get('copies', 1)))
+                out.append(replace(swap_site(index, node, parts), copies=copies))
         token = int_token(node)
         if token is None or ctx.get("for_header"):
             continue
+        top, top_parent, top_field = folded_top(ctx.get("ancestors", ()))
+        if top is not None:
+            parent, field = top_parent, top_field
         if isinstance(parent, c_ast.BinaryOp) and field == "right" and parent.op in COMPARE:
             continue
         if isinstance(parent, (c_ast.Case, c_ast.ArrayDecl)):
             continue
-        if (fieldarg := field_arg(parent, ctx)) is not None:
-            out.append(replace(field_site(index, node, *fieldarg, token), copies=ctx.get('copies', 1)))
+        if isinstance(parent, c_ast.BinaryOp) and parent.op == "+" and field == "right" and \
+                isinstance(parent.left, c_ast.ID) and parent.left.name in leaves.arrays:
+            expr = top if top is not None else node
+            sym = unit.objects[parent.left.name].sym
+            out.append(replace(offset_site(index, node, sym, fold(expr), fold(expr, node)),
+                               copies=copies))
+            continue
+        if top is not None:
+            if isinstance(parent, c_ast.BinaryOp) and field == "right" and parent.op in SHIFT:
+                continue
+            if field_arg(parent, ctx, field) is not None or builtin_count(parent, field, ctx):
+                continue
+            old, new = fold(top), fold(top, node)
+            if word_of(old) == 0 or abs(new) > MASK >> 1:
+                continue
+            out.append(replace(const_site(index, node, word_of(old), word_of(new)), copies=copies))
+            continue
+        if (fieldarg := field_arg(parent, ctx, field)) is not None:
+            out.append(replace(field_site(index, node, *fieldarg, token), copies=copies))
             continue
         if isinstance(parent, c_ast.BinaryOp) and field == "right" and parent.op in SHIFT:
             if token + 1 <= MAX_SHIFT:
-                out.append(one_word_limit(replace(count_site(index, node, SHIFT[parent.op], token),
-                                                  copies=ctx.get('copies', 1)), unit, fn))
+                out.append(limits(replace(count_site(index, node, SHIFT[parent.op], token),
+                                          copies=copies), unit, fn, ctx))
             continue
         builtin = builtin_count(parent, field, ctx)
         if builtin:
             if token + 1 <= MAX_SHIFT:
-                out.append(one_word_limit(replace(count_site(index, node, builtin, token),
-                                                  copies=ctx.get('copies', 1)), unit, fn))
+                out.append(limits(replace(count_site(index, node, builtin, token),
+                                          copies=copies), unit, fn, ctx))
             continue
         negated = isinstance(parent, c_ast.UnaryOp) and parent.op == "-"
         old = dialect.to_word(-token if negated else token, node)
         if old == 0 or token + 1 > MASK >> 1:
             continue
         new = dialect.to_word(-(token + 1) if negated else token + 1, node)
-        out.append(replace(const_site(index, node, old, new), copies=ctx.get('copies', 1)))
+        out.append(replace(const_site(index, node, old, new), copies=copies))
     return out
 
 
-def field_arg(parent, ctx: dict) -> tuple[str, bool, int] | None:
+def field_arg(parent, ctx: dict, field: str) -> tuple[str, bool, int] | None:
     call = ctx.get("call_node")
     if not isinstance(parent, c_ast.ExprList) or call is None or call.args is not parent:
         return None
     name = call.name.name if isinstance(call.name, c_ast.ID) else None
+    if name in FIELD_POSITION and field != FIELD_POSITION[name]:
+        return None
     return FIELD_ARG.get(name)
+
+
+def field_text(mnemonic: str, shift: bool, n: int) -> tuple[str, str]:
+    """(pattern for the field's text at n, its text at n + 1)."""
+    if mnemonic == "szs":
+        return rf"\bszs( i)? {n << 3:o}\b", f"szs\\1 {(n + 1) << 3:o}"
+    if mnemonic == "dpy":
+        return (rf"^dpy-i\+{n << 6:o}$" if n else r"^dpy-i$"), f"dpy-i+{(n + 1) << 6:o}"
+    unit = "s" if shift else ""
+    return rf"\b{mnemonic}( i)? {n:o}{unit}\b", f"{mnemonic}\\1 {n + 1:o}{unit}"
 
 
 def field_site(index: int, node: c_ast.Constant, mnemonic: str, shift: bool, largest: int,
                n: int) -> Site:
-    unit = "s" if shift else ""
-    old_t, new_t = rf"\b{mnemonic}( i)? {n:o}{unit}\b", f"{mnemonic}\\1 {n + 1:o}{unit}"
+    old_t, new_t = field_text(mnemonic, shift, n)
 
     def rewrites(old: list[Line]) -> list[Rewrite]:
         return [(i, i + 1, [(lab, re.sub(old_t, new_t, instr, count=1))])
@@ -259,9 +391,27 @@ def field_site(index: int, node: c_ast.Constant, mnemonic: str, shift: bool, lar
 
     error = None
     if n + 1 > largest:
-        error = "shifts 1..9 places" if shift else "flag"
+        error = "shifts 1..9 places" if shift else FIELD_ERROR.get(mnemonic, "flag")
     return Site("flag", index, node.coord.line, f"{mnemonic} field {n} -> {n + 1}", rewrites, edit,
                 error=error)
+
+
+def offset_site(index: int, node: c_ast.Constant, sym: str, old: int, new: int) -> Site:
+    """array + n: the address operand naming the array's word n names word n + 1."""
+    def text(k: int) -> str:
+        return f"{sym}+{k:o}" if k else sym
+
+    pattern = re.compile(rf"(?<![\w+]){re.escape(text(old))}(?![\w+])")
+
+    def rewrites(old_lines: list[Line]) -> list[Rewrite]:
+        return [(i, i + 1, [(lab, pattern.sub(text(new), instr, count=1))])
+                for i, (lab, instr) in enumerate(old_lines) if pattern.search(instr)]
+
+    def edit(n_: c_ast.Constant) -> None:
+        n_.value = oct(dialect.c_int(n_) + 1).replace("0o", "0")
+
+    return Site("const", index, node.coord.line, f"offset {sym}+{old:o} -> {sym}+{new:o}",
+                rewrites, edit)
 
 
 def builtin_count(parent, field: str, ctx: dict) -> str | None:
@@ -316,12 +466,16 @@ def const_site(index: int, node: c_ast.Constant, old_v: int, new_v: int) -> Site
                 f"constant {old_v:06o} -> {new_v:06o}", rewrites, edit)
 
 
-def one_word_limit(site: Site, unit: ir.Unit, function: str | None) -> Site:
-    """An XCT function is one word: an edit that needs more is refused."""
+def limits(site: Site, unit: ir.Unit, function: str | None, ctx: dict) -> Site:
+    """An XCT function is one word, and a case of Duff's device is a power of
+    two of words: a count edit that lengthens either is refused."""
+    if site.kind != "count" or len(chunks(site.n + 1)) <= len(chunks(site.n)):
+        return site
     sig = unit.signatures.get(function or "")
-    if site.kind == "count" and sig is not None and sig.conv == "xct" and \
-            len(chunks(site.n + 1)) > len(chunks(site.n)):
+    if sig is not None and sig.conv == "xct":
         return replace(site, error="must lower to exactly one word")
+    if ctx.get("in_duff_case") or function in ctx.get("duff_inlines", ()):
+        return replace(site, error="power of two of words")
     return site
 
 
@@ -360,36 +514,51 @@ def node_at(ast: c_ast.FileAST, index: int) -> c_ast.Node:
     raise IndexError(index)
 
 
-def check_file(path: Path) -> tuple[Counter, list[str]]:
-    ast = front.parse(path)
-    old = lines_of(compile_ast(copy.deepcopy(ast), trace=False))
-    unit = dialect.lower_unit(copy.deepcopy(ast))
-    tested, failures = Counter(), []
-    for site in sites(ast, unit):
-        edited = copy.deepcopy(ast)
-        site.edit(node_at(edited, site.index))
-        try:
-            new = lines_of(compile_ast(edited, trace=False))
-        except COMPILE_ERRORS as e:
-            tested[site.kind] += 1
-            if site.error is None or site.error not in str(e):
-                failures.append(f"{path.name}:{site.line}: {site.describe}: compile error {e}")
-            continue
-        tested[site.kind] += 1
-        if site.error is not None:
-            failures.append(f"{path.name}:{site.line}: {site.describe}: compiled; predicted "
-                            f"the error {site.error!r}")
-            continue
-        if new not in site.predict(old):
-            failures.append(f"{path.name}:{site.line}: {site.describe}: output differs from the prediction"
-                            + ("" if new != old else " (output unchanged)"))
-    return tested, failures
+_PREPARED: dict[Path, tuple] = {}
+
+
+def prepared(path: Path) -> tuple[c_ast.FileAST, list[Line], list[Site]]:
+    """The file's AST, its compiled lines and its edit sites, once per process."""
+    if path not in _PREPARED:
+        ast = front.parse(path)
+        old = lines_of(compile_ast(copy.deepcopy(ast), trace=False))
+        unit = dialect.lower_unit(copy.deepcopy(ast))
+        _PREPARED[path] = (ast, old, sites(ast, unit))
+    return _PREPARED[path]
+
+
+def check_site(path: Path, k: int) -> tuple[str, str | None]:
+    """(edit kind, failure or None) for the file's k-th edit site."""
+    ast, old, all_sites = prepared(path)
+    site = all_sites[k]
+    edited = copy.deepcopy(ast)
+    site.edit(node_at(edited, site.index))
+    where = f"{path.name}:{site.line}: {site.describe}"
+    try:
+        new = lines_of(compile_ast(edited, trace=False))
+    except COMPILE_ERRORS as e:
+        if site.error is None or site.error not in str(e):
+            return site.kind, f"{where}: compile error {e}"
+        return site.kind, None
+    if site.error is not None:
+        return site.kind, f"{where}: compiled; predicted the error {site.error!r}"
+    if not site.matches(old, new):
+        return site.kind, f"{where}: output differs from the prediction" + \
+            ("" if new != old else " (output unchanged)")
+    return site.kind, None
+
+
+def check_file(path: Path, pool: ProcessPoolExecutor) -> tuple[Counter, list[str]]:
+    n = len(prepared(path)[2])
+    results = list(pool.map(check_site, [path] * n, range(n), chunksize=8))
+    return Counter(kind for kind, _ in results), [f for _, f in results if f]
 
 
 def gate(files: list[Path]) -> int:
     failed = 0
-    for f in files:
-        tested, failures = check_file(f)
+    with ProcessPoolExecutor() as pool:
+        checked = [(f, *check_file(f, pool)) for f in files]
+    for f, tested, failures in checked:
         total = sum(tested.values())
         status = "ok" if not failures else f"{len(failures)} WRONG"
         kinds = " ".join(f"{k} {tested[k]}" for k in ("swap", "const", "count", "flag"))

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .cli import compile_file
+from .emit import BREAK
 from .rules import RULES
 
 LABEL_DEF = re.compile(r"^([a-z0-9]+),", re.M)
@@ -22,11 +23,15 @@ LISTING_VARS = re.compile(r"^\s*\d+\s+([0-7]{5})\s+variables\b")
 
 @dataclass(frozen=True)
 class Region:
+    """A C file and the source line ranges its Macro text replaces, in order:
+    REGION_BREAK() in the C ends the text for one range."""
     name: str
-    first: int
-    last: int
+    ranges: tuple[tuple[int, int], ...]
     c: Path
     prefix: str
+
+    def covers(self, n: int) -> bool:
+        return any(a <= n <= b for a, b in self.ranges)
 
 
 def load(toml_path: Path) -> tuple[dict, list[Region]]:
@@ -34,8 +39,14 @@ def load(toml_path: Path) -> tuple[dict, list[Region]]:
     root = toml_path.parent
     regions = []
     for r in cfg["region"]:
-        a, b = (int(x) for x in r["lines"].split("-"))
-        regions.append(Region(r["name"], a, b, root / r["c"], r["prefix"]))
+        spans = [r["lines"]] if isinstance(r["lines"], str) else r["lines"]
+        ranges = tuple(tuple(int(x) for x in span.split("-")) for span in spans)
+        if list(ranges) != sorted(ranges):
+            raise SystemExit(f"lift.toml: region {r['name']}: line ranges go in source order")
+        regions.append(Region(r["name"], ranges, root / r["c"], r["prefix"]))
+    spans = sorted(span for r in regions for span in r.ranges)
+    if any(a[1] >= b[0] for a, b in zip(spans, spans[1:])):
+        raise SystemExit("lift.toml: line ranges overlap")
     prefixes = [r.prefix for r in regions]
     if len(set(prefixes)) != len(prefixes):
         raise SystemExit("lift.toml: label prefixes must be unique per region")
@@ -51,19 +62,30 @@ def unlifted_text(toml_path: Path) -> str:
     cfg, regions = load(toml_path)
     lines = (toml_path.parent / cfg["source"]).read_text().split("\n")
     return "\n".join(MACRO_COMMENT.sub("", line) for n, line in enumerate(lines, 1)
-                     if not any(r.first <= n <= r.last for r in regions))
+                     if not any(r.covers(n) for r in regions))
 
 
 def interface_errors(src_lines: list[str], region: Region, compiled: str) -> list[str]:
     """Symbols the original region defines and unlifted text uses must still be defined."""
-    inside = "\n".join(src_lines[region.first - 1:region.last])
-    outside = "\n".join(src_lines[:region.first - 1] + src_lines[region.last:])
+    inside = "\n".join(line for n, line in enumerate(src_lines, 1) if region.covers(n))
+    outside = "\n".join(line for n, line in enumerate(src_lines, 1) if not region.covers(n))
     defined_now = set(LABEL_DEF.findall(compiled))
     errs = []
     for sym in LABEL_DEF.findall(inside):
         if re.search(rf"(?<![\w]){re.escape(sym)}(?![\w])", outside) and sym not in defined_now:
             errs.append(f"region {region.name} must define {sym} (used by unlifted text)")
     return errs
+
+
+def chunk_lines(text: str) -> list[list[str]]:
+    """The Macro text for each line range of a region."""
+    parts: list[list[str]] = [[]]
+    for line in text.rstrip("\n").split("\n"):
+        if line == BREAK:
+            parts.append([])
+        else:
+            parts[-1].append(line)
+    return parts
 
 
 def listing(path: Path) -> tuple[dict[int, tuple[str, str]], int | None]:
@@ -120,11 +142,20 @@ def build(toml_path: Path) -> int:
 
     spliced = list(src_lines)
     errors = []
-    for r in sorted(regions, key=lambda r: r.first, reverse=True):
+    chunks: list[tuple[tuple[int, int], list[str]]] = []
+    for r in regions:
         text = compile_file(r.c, r.prefix)
         errors += interface_errors(src_lines, r, text)
-        spliced[r.first - 1:r.last] = text.rstrip("\n").split("\n")
-        print(f"  {r.name:<10} {r.first}-{r.last}  compiled from {r.c.relative_to(root)}")
+        parts = chunk_lines(text)
+        if len(parts) != len(r.ranges):
+            errors.append(f"region {r.name}: {len(r.ranges)} line ranges, but the C makes "
+                          f"{len(parts)} (REGION_BREAK() separates them)")
+            continue
+        chunks += zip(r.ranges, parts)
+        spans = ", ".join(f"{a}-{b}" for a, b in r.ranges)
+        print(f"  {r.name:<10} {spans}  compiled from {r.c.relative_to(root)}")
+    for (a, b), lines in sorted(chunks, reverse=True):
+        spliced[a - 1:b] = lines
     if errors:
         print("\n".join(errors))
         return 1

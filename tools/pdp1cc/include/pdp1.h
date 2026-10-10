@@ -39,7 +39,12 @@
  *
  * Hardware builtins: tyi() reads the typewriter into IO; lsm() leaves
  * sequence break mode; stf(n) and clf(n) set and clear program flag n, and
- * flag(n) tests it.
+ * flag(n) tests it; sense(n) tests sense switch n. dpy(x, y, n) plots the
+ * point (x, y) at intensity n without waiting; x is AC and y is IO, and
+ * both keep their values. dpy_nowait(x, y) plots at intensity 0 and asks
+ * the display for a completion pulse, which ioh() waits for. A comma
+ * statement whose parts are each one operate-group instruction, writing
+ * different registers (`x = 0, y = 0, clf(6);`), is one instruction.
  *
  * Memory. A POOL object is a word macro1 allocates at `variables` (`\x`).
  * A HOMED pointer lives in the address field of one instruction, its home:
@@ -54,10 +59,18 @@
  *
  * Instruction words. An `insn` is a word that holds an instruction. The
  * I_* constructors build one: I_LAC(&x) is the word `lac x`, I_JMP(f) is
- * `jmp f`, I_STF(n) is `stf n`, I_RCL(n) is `rcl ns`. Code generated at run
- * time is these words written to memory and entered by a jump; nothing in
- * this header executes it. `switch ((int)w)` over cases 0..n is a jump
- * table indexed by w; a value outside 0..n is undefined, as on the machine.
+ * `jmp f`, I_STF(n) is `stf n`, I_RCL(n) is `rcl ns`; I_LIO(0) names
+ * address 0. For a HOMED pointer p, I_LIO(p) is its home instruction word
+ * when that is `lio .`. Code generated at run time is these words written
+ * to memory and entered by a jump; nothing in this header executes it.
+ * `switch ((int)w)` over cases 0..n is a jump table indexed by w; a value
+ * outside 0..n is undefined, as on the machine. When w is a HOMED word the
+ * switch is Duff's device: the switch is w's home, the jump into the cases,
+ * and `w = e` stores the address of case e there.
+ *
+ * A static inline function is laid out at each call. REGION_BREAK() ends
+ * the Macro text for one line range of a lifted region; what follows goes
+ * to the region's next range.
  *
  * Under g++ the macros below are empty. The reference build
  * (tools/pdp1cc/gate/reference.py) binds the two storage facts a macro
@@ -88,12 +101,17 @@ typedef struct dword { word hi, lo; } dword;
 #define PLACE(...) pdp1_place(__VA_ARGS__)
 #define ARGS_DONE() pdp1_args_done()
 #define MINUS_ZERO (-(word)0)
+#define REGION_BREAK() extern void pdp1_region_break(void)
 word *home(const word *p);
 void pdp1_place();
 void pdp1_args_done(void);
 void stf(int n);
 void clf(int n);
 int flag(int n);
+int sense(int n);
+void ioh(void);
+void dpy(word x, word y, int intensity);
+void dpy_nowait(word x, word y);
 insn I_LAC(), I_LIO(), I_DAC(), I_DIO(), I_ADD(), I_SUB(), I_AND(), I_XOR(), I_JMP(), I_IDX();
 insn I_STF(int n), I_CLF(int n), I_SZF(int n);
 insn I_RCL(int n), I_RAL(int n);
@@ -116,6 +134,7 @@ void skip_return(void);
 
 #include <cstdint>
 #include <cstdlib>
+#include <vector>
 
 #define JDA
 #define BLOCK
@@ -132,6 +151,7 @@ void skip_return(void);
 #define PLACE(...)
 #define ARGS_DONE()
 #define MINUS_ZERO (-(word)0)
+#define REGION_BREAK() extern void pdp1_region_break(void)
 
 typedef std::uint32_t pdp1_bits;
 static const pdp1_bits PDP1_MASK = (1u << 18) - 1;
@@ -242,7 +262,8 @@ template <class T> static inline T *home(T *p) { return p; }
  * address; the operate, skip and shift groups add microcoded bits. */
 static inline insn pdp1_insn(pdp1_bits op, pdp1_bits low) { return word::bits(op << 12 | low); }
 #define PDP1_MRI(name, op) \
-    template <class T> static inline insn name(T *p) { return pdp1_insn(op, pdp1_address(p)); }
+    template <class T> static inline insn name(T *p) { return pdp1_insn(op, pdp1_address(p)); } \
+    static inline insn name(decltype(nullptr)) { return pdp1_insn(op, 0); }
 PDP1_MRI(I_AND, 002) PDP1_MRI(I_XOR, 006) PDP1_MRI(I_LAC, 020) PDP1_MRI(I_LIO, 022)
 PDP1_MRI(I_DAC, 024) PDP1_MRI(I_DIO, 032) PDP1_MRI(I_ADD, 040) PDP1_MRI(I_SUB, 042)
 PDP1_MRI(I_IDX, 044) PDP1_MRI(I_JMP, 060)
@@ -261,6 +282,21 @@ static inline insn I_RCL(int n) { return pdp1_shift(03, n); }
 static const insn I_CMA = word::bits(PDP1_OPR << 12 | 01000);
 static const insn I_IOH = word::bits(PDP1_IOT << 12 | PDP1_I);     /* iot i: wait for completion */
 static const insn I_DPY_NOWAIT = word::bits((PDP1_IOT << 12 | PDP1_I | 07) - 04000);  /* dpy-4000 */
+
+/* The display. A reference run has no screen: each plotted point is
+ * recorded as the instruction that plots it (dpy-i+n00 or dpy-4000) and
+ * its x (AC) and y (IO). The reference driver prints and clears them. */
+struct pdp1_point { pdp1_bits instruction, x, y; };
+static std::vector<pdp1_point> pdp1_plotted;
+static inline void dpy(word x, word y, int intensity) {
+    pdp1_plotted.push_back({PDP1_IOT << 12 | 07 | (pdp1_bits)(intensity & 7) << 6, x.v, y.v});
+}
+static inline void dpy_nowait(word x, word y) { pdp1_plotted.push_back({I_DPY_NOWAIT.v, x.v, y.v}); }
+static inline void ioh() {}             /* the completion pulse has always come */
+
+/* Sense switches 1-6, as the operator set them. */
+static unsigned pdp1_sense_switches;
+static inline bool sense(int n) { return (pdp1_sense_switches & (1u << (6 - n))) != 0; }
 
 /* Program flags 1-6; flag 7 names all six. */
 static unsigned pdp1_program_flags;

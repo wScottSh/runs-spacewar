@@ -56,6 +56,7 @@ class Pool:         # POOL object: a `\x` word macro1 allocates at `variables`
 @dataclass(frozen=True)
 class Homed:        # HOMED pointer: the address field of its home instruction
     sym: str
+    init: "Sym | Num | None" = None     # the home's address before the first store; None: `.`
 
 
 Storage = Union[Acc, Io, Placed, Extern, Entry, ByName, Inline, Pool, Homed]
@@ -131,7 +132,7 @@ class Param:
 class Signature:
     name: str           # C name
     sym: str            # Macro symbol of the entry
-    conv: str           # "jda" | "block" | "xct" | "jsp"
+    conv: str           # "jda" | "block" | "xct" | "jsp" | "inline" (static inline: laid out at each call)
     params: tuple[Param, ...]
     returns: str        # "word" | "word*" | "dword" | "void"
     exit_sym: str       # the cell returns go through: exit `jmp .` or the by-name `xct`
@@ -205,18 +206,39 @@ class Flag:             # stf(n) / clf(n): set or clear program flag n
     n: int
 
 
-Expr = Union[Const, Var, PreInc, Neg, Binary, Shift, Rot, PairOp, Call, Half, Pair, CodeRef,
-             IndirectCall, Hw, Insn, AddrOf, HomeLoad, Flag]
+@dataclass(frozen=True)
+class Dpy:              # dpy(x, y, n) / dpy_nowait(x, y): plot (AC, IO)
+    x: "Expr"
+    y: Var
+    intensity: int | None   # None: dpy_nowait, which asks for a completion pulse
 
 
 @dataclass(frozen=True)
-class Compare:          # e <op> 0, the only comparison the skip group makes
+class HomeWord:         # I_LIO(p) / I_LIO(++p) for a HOMED p: its home instruction word
+    pointer: Var
+    op: str
+    increment: bool
+
+
+Expr = Union[Const, Var, PreInc, Neg, Binary, Shift, Rot, PairOp, Call, Half, Pair, CodeRef,
+             IndirectCall, Hw, Insn, AddrOf, HomeLoad, Flag, Dpy, HomeWord]
+
+
+@dataclass(frozen=True)
+class Compare:          # e <op> 0, or e == m / e != m (sas, sad)
     op: str
     operand: Expr
+    against: Expr | None = None
 
 
 @dataclass(frozen=True)
 class FlagTest:         # flag(n), or !flag(n) when negated
+    n: int
+    negated: bool = False
+
+
+@dataclass(frozen=True)
+class SenseTest:        # sense(n), or !sense(n) when negated: sense switch n
     n: int
     negated: bool = False
 
@@ -293,8 +315,21 @@ class PlaceHere:        # PLACE(x, ...): these words are laid out here
 
 
 @dataclass(frozen=True)
+class OprCombine:       # a, b, c; as one statement: one operate-group instruction
+    parts: tuple["Stmt", ...]
+
+
+@dataclass(frozen=True)
+class HomedSwitch:      # switch ((int)i) for a HOMED word i: Duff's device, entered by i's home
+    index: Var
+    table: str                       # label of case 0
+    cases: tuple["Stmt", ...]        # cases 0..n-1, each falling into the next
+    last: "Stmt"
+
+
+@dataclass(frozen=True)
 class If:
-    cond: "Compare | FlagTest"
+    cond: "Compare | FlagTest | SenseTest"
     then: Stmt
     orelse: Stmt | None
 
@@ -320,7 +355,8 @@ class Block:
 
 
 Stmt = Union[Assign, AssignPair, Eval, If, Forever, Continue, Return, Block, Goto, Labeled,
-             Unroll, SkipReturn, ArgsDone, StoreNext, AssignAddr, Switch, PlaceHere]
+             Unroll, SkipReturn, ArgsDone, StoreNext, AssignAddr, Switch, PlaceHere, OprCombine,
+             HomedSwitch]
 
 
 # ----------------------------------------------------------- unit structure
@@ -340,7 +376,7 @@ class Function:
 @dataclass(frozen=True)
 class Datum:
     sym: str
-    values: tuple["int | Insn", ...]    # one per word: a number, or an instruction word
+    values: tuple["int | Insn | Sym", ...]  # one per word: a number, an instruction word or an address
     name: str           # C name
     at: int | None = None
     array: bool = False
@@ -356,7 +392,12 @@ class Space:            # RESERVE object: words set aside here, not punched
     pointer: bool = False
 
 
-TopItem = Union[Function, Datum, Space]
+@dataclass(frozen=True)
+class RegionBreak:      # REGION_BREAK(): the following items go to the region's next line range
+    at: None = None
+
+
+TopItem = Union[Function, Datum, Space, RegionBreak]
 
 
 @dataclass(frozen=True)
@@ -366,6 +407,7 @@ class Unit:
     next_label: int     # generated symbols already used: layout continues from here
     objects: dict[str, Storage]     # file-scope objects by C name
     data: dict[str, Datum] = None   # every initialized word or array, by C name, wherever placed
+    inlines: dict[str, Function] = None     # static inline functions, laid out at each call
 
     def words(self, name: str) -> int:
         """Words a file-scope object spans."""
@@ -381,6 +423,7 @@ class Unit:
 class Sym:
     name: str
     pool: bool = False  # a POOL object: written `\name`
+    offset: int = 0     # a later word of an array: `name+n`
 
 
 @dataclass(frozen=True)
@@ -434,4 +477,10 @@ class Place:
     via: tuple[str, ...] = ()
 
 
-Item = Union[Word, LabelDef, Place]
+@dataclass(frozen=True)
+class Break:
+    """REGION_BREAK: the end of one chunk of a region's Macro text."""
+    labels: tuple[str, ...] = ()
+
+
+Item = Union[Word, LabelDef, Place, Break]

@@ -60,6 +60,17 @@ RULES: dict[str, str] = {
     "LAY-PLACE": "PLACE(x, ...): the words of x laid out at the statement, which control cannot reach",
     "EX-FLAG": "stf(n) / clf(n): set or clear program flag n",
     "SKIP-FLAG": "flag(n) as a condition: !flag(n) skips on `szf n`, flag(n) on `szf i n`",
+    "SKIP-SENSE": "sense(n) as a condition: !sense(n) skips on `szs n0`, sense(n) on `szs i n0`",
+    "SKIP-SAME": "a == m / a != m with m a word or a constant: a into AC, then skip on `sas m` / `sad m`",
+    "EX-DPY": "dpy(x, y, n) / dpy_nowait(x, y): x in AC, y a register local in IO, `dpy-i+n00` / `dpy-4000`",
+    "OPR-COMBINE": "a, b, c; with each part one operate-group instruction writing a different register "
+                   "or the flags: one word, `a b c-opr-opr`",
+    "INLINE-CALL": "call of a static inline function: its body laid out at the call, labels fresh per copy",
+    "INLINE-RETURN": "return in a static inline copy that is not its last statement: jmp to the word after the copy",
+    "SWITCH-HOMED": "switch ((int)i) for a HOMED word i (Duff's device): `J, jmp .` is i's home; "
+                    "i = e is e, sal ks, add (case 0, dap J, with 2^k words per case",
+    "HOMED-WORD": "I_OP(p) / I_OP(++p) for a HOMED p whose home is `op .`: the home instruction word, "
+                  "`lac home` / `idx home`",
 }
 
 
