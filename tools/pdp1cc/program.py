@@ -141,6 +141,8 @@ def diagnose(got_lst: Path, want_lst: Path) -> list[str]:
                        f"got {g[0] if g else '-'}  [{g[1].strip() if g else ''}]  "
                        f"rule {rule.group(1) if rule else '-'}")
             break
+    else:
+        out.append("every word is the oracle's: the tape differs in its start address or block order")
     return out
 
 
