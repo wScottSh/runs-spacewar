@@ -63,8 +63,14 @@ class Homed:        # HOMED pointer: the address field of its home instruction
     init: "Sym | Num | None" = None
 
 
-Storage = Union[Acc, Io, Placed, Extern, Entry, ByName, Inline, Pool, Homed]
-Memory = (Placed, Extern, Entry, Pool)
+@dataclass(frozen=True)
+class Slot:         # HOMED insn: the instruction at its home, executed where it stands
+    sym: str
+    init: "Insn"
+
+
+Storage = Union[Acc, Io, Placed, Extern, Entry, ByName, Inline, Pool, Homed, Slot]
+Memory = (Placed, Extern, Entry, Pool, Slot)
 
 
 def mem_sym(s: Storage) -> str:
@@ -87,7 +93,7 @@ class Var:
 
 @dataclass(frozen=True)
 class PreInc:           # ++x: idx (statement or value) / isp (condition)
-    target: Var
+    target: "Var | Deref"
 
 
 @dataclass(frozen=True)
@@ -185,8 +191,9 @@ class Call:             # f(args): a JDA call, or a tail call of a BLOCK
 
 
 @dataclass(frozen=True)
-class CodeRef:          # a function's name as a value: its address
+class CodeRef:          # a function's name as a value: its address, with flags above it
     sig: Signature
+    flags: int = 0
 
 
 @dataclass(frozen=True)
@@ -256,8 +263,21 @@ class HomeWord:
     increment: bool
 
 
+@dataclass(frozen=True)
+class Deref:            # *p: the word p points to, named through p with the indirect bit
+    pointer: Var
+
+
+@dataclass(frozen=True)
+class Xct:              # xct(w, a) / xct(w, hi, lo): execute instruction word w on AC (and IO)
+    insn: "Insn | HomeLoad | Var"
+    hi: "Expr"
+    lo: Var | None = None
+
+
 Expr = Union[Const, Var, PreInc, Neg, Binary, Shift, Rot, PairShift, PairStep, Call, Half, Pair,
-             CodeRef, IndirectCall, Hw, Insn, AddrOf, HomeLoad, Flag, Dpy, DpyNowait, HomeWord]
+             CodeRef, IndirectCall, Hw, Insn, AddrOf, HomeLoad, Flag, Dpy, DpyNowait, HomeWord,
+             Deref, Xct]
 
 
 @dataclass(frozen=True)
@@ -283,7 +303,7 @@ class SenseTest:
 
 @dataclass(frozen=True)
 class Assign:
-    target: Var
+    target: "Var | Deref"
     value: Expr
 
 

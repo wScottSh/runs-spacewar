@@ -11,7 +11,7 @@ RULES: dict[str, str] = {
     "EX-CONST-AC": "constant into AC: 0 -> cla, |c| <= 07777 -> law / law i, else lac (c",
     "EX-BIN": "l op r: l into AC, then add/sub/and/ior/xor r (constant r -> literal)",
     "EX-UNARY": "-x / ~x: x into AC, cma",
-    "EX-SHIFT": "x << n / x >> n: sal / sar in 9s chunks",
+    "EX-SHIFT": "x << n / x >> n: sal / sar in 9s chunks; io = io << n / io >> n on a register local: sil / sir",
     "EX-ROT": "pair op on AC:IO: one instruction per 9s chunk",
     "EX-STORE": "x = e: e into AC, dac x",
     "EX-STORE-ZERO": "x = 0 to memory: dzm x",
@@ -43,19 +43,22 @@ RULES: dict[str, str] = {
     "JSP-FORWARD": "a JSP function whose body is `return g(...)` for a JSP g: `jmp g`, AC still holds the return address",
     "LAY-AT": "AT(a) on a definition: the origin `a/` before it",
     "ST-RESERVE": "RESERVE object: `. n/` sets its n words aside, not punched",
-    "EX-CODE": "a function's name, an array's name or &object as a value: its address, `law x`",
+    "EX-CODE": "a function's name, an array's name or &object as a value: its address, `law x`; "
+               "f | c with c above the address field: `lac (f+c`",
     "TAIL-CALL-INDIRECT": "return p(...) through a pointer-to-function object p: arguments, `jmp i p`",
     "EX-HW": "a hardware builtin with no operand (tyi, lsm): its one instruction",
     "SKIP-IO": "a register (IO) local compared with 0: io < 0 skips on `spi i`, io >= 0 on `spi`",
     "ST-POOL": "POOL object: a `\\x` variable macro1 allocates at `variables`, named with `\\` everywhere",
-    "EX-INSN": "I_* constructor: an instruction word as a constant, a literal `(lac x` or a data word",
+    "EX-INSN": "I_* constructor: an instruction word as a constant, a literal `(lac x` or a data word; "
+               "a shift with count 0 is the bare mnemonic",
     "EX-POSTINC-STORE": "*p++ = e with p a pointer word: dac i p (dio i p from IO); idx p",
     "EX-STORE-ADDR": "x.addr = e, or p = e for a HOMED p: e into AC, dap x",
     "INLINE-READ": "read of an INLINE parameter: lac i R, the constant word after the call",
     "JDA-INLINE-ARG": "INLINE argument: the constant or address itself, as the word after the call",
     "SWITCH": "switch ((int)e) over 0..n: add (T; dap J; J, jmp .; T: a jmp per goto case, opr per "
               "empty case, the last case in its slot",
-    "HOMED-HOME": "*home(p): the instruction that holds HOMED pointer p, `lac .` / `lio .` under p's label",
+    "HOMED-HOME": "*home(p): the instruction that holds HOMED pointer p, `lac .` / `lio .` under p's label; "
+                  "xct(*home(p), ...) is `xct .` there",
     "ST-HOMED": "HOMED pointer: stored by dap and advanced by idx at its home",
     "LAY-PLACE": "PLACE(x, ...): the words of x laid out at the statement, which control cannot reach",
     "EX-FLAG": "stf(n) / clf(n): set or clear program flag n",
@@ -71,6 +74,12 @@ RULES: dict[str, str] = {
                     "i = e is e, sal ks, add (case 0, dap J, with 2^k words per case",
     "HOMED-WORD": "I_OP(p) / I_OP(++p) for a HOMED p whose home is `op .`: the home instruction word, "
                   "`lac home` / `idx home`",
+    "EX-DEREF": "*p for p a pointer in a memory word or a homed address field: the instruction "
+                "names p's cell with the indirect bit (lac i, add i, dac i, dzm i, dio i, lio i, isp i, idx i)",
+    "EX-XCT": "xct(w, a) / xct(w, hi, lo): the argument in AC (and IO), then w run: `xct (w` for a "
+              "constant, `p, xct .` for *home(p), the word itself for a HOMED insn",
+    "ST-SLOT": "HOMED insn x: the instruction at its home, xct(x, ...), laid out there with its initial "
+               "word; x = e stores the whole word (dac x)",
 }
 
 

@@ -51,6 +51,10 @@
  * `*home(p)` is that instruction, `p = e` stores the address there (dap)
  * and `++p` advances it (idx). `x.addr = e` stores e's address bits into
  * word x (dap). `*p++ = e` stores through a pointer and advances it.
+ * `*p` reads or writes the word p points to, for p held in memory or in a
+ * homed address field: the instruction names p with the indirect bit.
+ * A function's name used as a value is its address; `f | c` with c's bits
+ * above the address field is that address with flags set.
  * PLACE(x, ...) lays file-scope words out where the statement stands
  * instead of at their definition; control must not reach it. An INLINE
  * parameter is a constant word after the call, read as `lac i` through
@@ -59,10 +63,18 @@
  *
  * Instruction words. An `insn` is a word that holds an instruction. The
  * I_* constructors build one: I_LAC(&x) is the word `lac x`, I_JMP(f) is
- * `jmp f`, I_STF(n) is `stf n`, I_RCL(n) is `rcl ns`; I_LIO(0) names
- * address 0. For a HOMED pointer p, I_LIO(p) is its home instruction word
- * when that is `lio .`. Code generated at run time is these words written
- * to memory and entered by a jump; nothing in this header executes it.
+ * `jmp f`, I_STF(n) is `stf n`, I_RCL(n) is `rcl ns` (I_RCL(0) shifts
+ * nothing; its low nine bits are free for a count built at run time);
+ * I_LIO(0) names address 0. For a HOMED pointer p, I_LIO(p) is its home
+ * instruction word when that is `lio .`. Code generated at run time is
+ * these words written to memory and entered by a jump; nothing in this
+ * header executes it. One instruction word may be executed: xct(w, a) runs
+ * w on AC, xct(w, hi, lo) on AC:IO, and the reference build defines that
+ * for the shift group alone. w is a constant (`xct (w`), *home(p) for a
+ * HOMED pointer p to an instruction (`p, xct .`), or a HOMED insn. A HOMED
+ * insn is the instruction at its home, which is its xct: it runs where it
+ * stands, `x = e` stores the whole word there, and its initializer is the
+ * word it holds first.
  * `switch ((int)w)` over cases 0..n is a jump table indexed by w; a value
  * outside 0..n is undefined, as on the machine. When w is a HOMED word the
  * switch is Duff's device: the switch is w's home, the jump into the cases,
@@ -114,8 +126,9 @@ void dpy(word x, word y, int intensity);
 void dpy_nowait(word x, word y);
 insn I_LAC(), I_LIO(), I_DAC(), I_DIO(), I_ADD(), I_SUB(), I_AND(), I_XOR(), I_JMP(), I_IDX();
 insn I_STF(int n), I_CLF(int n), I_SZF(int n);
-insn I_RCL(int n), I_RAL(int n);
-extern const insn I_CMA, I_IOH, I_DPY_NOWAIT;
+insn I_RCL(int n), I_RAL(int n), I_SCL(int n), I_SCR(int n), I_SAR(int n);
+extern const insn I_CMA, I_IOH, I_DPY_NOWAIT, I_HLT;
+dword xct();
 word tyi(void);
 void lsm(void);
 void rcl(word hi, word lo, int n);
@@ -198,6 +211,7 @@ struct word {
         if (i > (int)PDP1_MASK || -i > (int)PDP1_MASK) std::abort();
     }
     static word bits(pdp1_bits b) { word w; w.v = b & PDP1_MASK; return w; }
+    template <class R, class... A> word(R (*f)(A...)) : v(pdp1_address(f)) {}  /* a function's address */
 
     friend word operator+(word a, word b) {              /* add */
         pdp1_bits r = a.v + b.v;
@@ -274,14 +288,18 @@ static inline insn I_STF(int n) { return pdp1_insn(PDP1_OPR, 010 | (n & 7)); }
 static inline insn I_CLF(int n) { return pdp1_insn(PDP1_OPR, n & 7); }
 static inline insn I_SZF(int n) { return pdp1_insn(PDP1_SKP, n & 7); }
 static inline insn pdp1_shift(pdp1_bits kind, int n) {
-    if (n < 1 || n > 9) std::abort();               /* one instruction shifts 1..9 */
+    if (n < 0 || n > 9) std::abort();               /* one instruction shifts 0..9 */
     return pdp1_insn(PDP1_SHIFT, kind << 9 | ((1u << n) - 1));
 }
 static inline insn I_RAL(int n) { return pdp1_shift(01, n); }
 static inline insn I_RCL(int n) { return pdp1_shift(03, n); }
+static inline insn I_SCL(int n) { return pdp1_shift(07, n); }
+static inline insn I_SAR(int n) { return pdp1_shift(015, n); }
+static inline insn I_SCR(int n) { return pdp1_shift(017, n); }
 static const insn I_CMA = word::bits(PDP1_OPR << 12 | 01000);
 static const insn I_IOH = word::bits(PDP1_IOT << 12 | PDP1_I);     /* iot i: wait for completion */
 static const insn I_DPY_NOWAIT = word::bits((PDP1_IOT << 12 | PDP1_I | 07) - 04000);  /* dpy-4000 */
+static const insn I_HLT = word::bits(PDP1_OPR << 12 | 0400);
 
 struct pdp1_point { pdp1_bits instruction, x, y; };
 static std::vector<pdp1_point> pdp1_plotted;
@@ -363,6 +381,45 @@ static inline void dis(word &h, word &l, word m) {
     if (ac > PDP1_MASK) ac = (ac + 1) & PDP1_MASK;
     if (ac == PDP1_MASK) ac = 0;
     h.v = ac;
+}
+
+/* Executing an instruction word: xct(w, a) runs w on AC, xct(w, hi, lo)
+ * on the AC:IO pair. The reference build gives meaning to the shift group
+ * alone, the words built by I_RCL, I_SCL and the rest; any other word,
+ * a halt among them, stops the run. A shift's count is the number of bits
+ * set in its low nine. xct(w, a) takes only a shift of AC. */
+static inline void pdp1_shift_pair(insn w, word &h, word &l) {
+    if (w.v >> 13 != PDP1_SHIFT >> 1)
+        std::abort();
+    int n = 0;
+    for (pdp1_bits m = w.v & 0777; m; m >>= 1)
+        n += m & 1;
+    switch (w.v >> 9 & 017) {
+    case 001: h = ral(h, n); return;
+    case 002: l = ril(l, n); return;
+    case 003: rcl(h, l, n); return;
+    case 005: h = h << n; return;
+    case 006: l = l << n; return;
+    case 007: scl(h, l, n); return;
+    case 011: h = rar(h, n); return;
+    case 012: l = rir(l, n); return;
+    case 013: rcr(h, l, n); return;
+    case 015: h = h >> n; return;
+    case 016: l = l >> n; return;
+    case 017: scr(h, l, n); return;
+    }
+    std::abort();
+}
+static inline word xct(insn w, word a) {
+    if (w.v >> 9 & 02)                  /* the shift reaches IO: use the pair form */
+        std::abort();
+    word io;
+    pdp1_shift_pair(w, a, io);
+    return a;
+}
+static inline dword xct(insn w, word hi, word lo) {
+    pdp1_shift_pair(w, hi, lo);
+    return dword{hi, lo};
 }
 
 /* Words the current call returns past beyond its inline parameters. The

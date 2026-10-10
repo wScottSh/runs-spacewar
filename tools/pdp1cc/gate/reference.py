@@ -62,7 +62,7 @@ def placements(unit: ir.Unit, symbols: dict[str, int]) -> list[Placement]:
     listing places. unit must be lowered with the assembly's label prefix."""
     out = []
     for name, storage in unit.objects.items():
-        if isinstance(storage, (ir.Placed, ir.Pool)) and storage.sym in symbols:
+        if isinstance(storage, (ir.Placed, ir.Pool, ir.Slot)) and storage.sym in symbols:
             out.append(Placement(f"&{name}", unit.words(name), symbols[storage.sym]))
     out += [Placement(f"&{name}", 1, symbols[s.sym], function=True)
             for name, s in unit.signatures.items() if s.sym in symbols]

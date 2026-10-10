@@ -140,13 +140,15 @@ def compare(calls: list[simh.Inputs], machine: list[simh.Outcome], native: list[
 
 def watched(prog: Program) -> list[tuple[str, str, int, str]]:
     """(label, Macro symbol, offset, native expression) of every word compared
-    after each call: placed words, reserved words (not pointers, whose native
-    value is a host address), and the entry words of defined JDA functions."""
+    after each call: placed words, pool words, HOMED insns, reserved words
+    (not pointers, whose native value is a host address), and the entry
+    words of defined JDA functions."""
     out = []
     for d in prog.placed:
         out += [(f"{d.name}[{k}]", d.sym, k, f"{d.name}[{k}]") if d.array else (d.name, d.sym, 0, d.name)
                 for k in range(len(d.values))]
-    out += [(name, s.sym, 0, name) for name, s in prog.unit.objects.items() if isinstance(s, ir.Pool)]
+    out += [(name, s.sym, 0, name) for name, s in prog.unit.objects.items()
+            if isinstance(s, (ir.Pool, ir.Slot))]
     for s in prog.spaces:
         if not s.pointer:
             out += [(f"{s.name}[{k}]", s.sym, k, f"{s.name}[{k}]") if s.array else

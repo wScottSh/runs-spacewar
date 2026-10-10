@@ -42,6 +42,10 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Emitted]:
                 items += datum_words(top)
             case ir.Space():
                 items += [ir.LabelDef(top.sym), ir.Reserve(top.size, check("ST-RESERVE"))]
+    homeless = [name for name, s in unit.objects.items() if isinstance(s, ir.Slot)
+                and not any(isinstance(i, ir.LabelDef) and i.name == s.sym for i in items)]
+    if homeless:
+        raise LayoutError(f"HOMED insn {', '.join(homeless)} has no home: run it with xct(x, ...)")
     return attach_labels(items)
 
 
@@ -49,8 +53,10 @@ def home_ops(functions: list[ir.Function]) -> dict[str, str]:
     ops: dict[str, str] = {}
     for fn in functions:
         for n in inline.iter_nodes(fn.body):
-            if isinstance(n, ir.Assign) and isinstance(n.value, ir.HomeLoad):
-                op = "lio" if isinstance(n.target.storage, ir.Io) else "lac"
+            if isinstance(n, ir.Xct) and isinstance(n.insn, ir.HomeLoad):
+                ops[n.insn.pointer.storage.sym] = "xct"
+            elif isinstance(n, ir.Assign) and isinstance(n.value, ir.HomeLoad):
+                op = "lio" if isinstance(n.target, ir.Var) and isinstance(n.target.storage, ir.Io) else "lac"
                 ops[n.value.pointer.storage.sym] = op
             elif isinstance(n, ir.HomeLoad):
                 ops.setdefault(n.pointer.storage.sym, "lac")

@@ -16,12 +16,14 @@ const  a constant c used as a value becomes c + 1 (-c becomes -(c + 1)).
        length, or constant load, whose form may move between cla, law,
        law i and lac).
 count  a shift or rotate count n becomes n + 1. The run of 9s chunks for n
-       becomes the run for n + 1. In an XCT function a run that would grow
-       past one word is predicted to be refused.
+       becomes the run for n + 1 (sal/sar, or sil/sir for a value in IO).
+       In an XCT function a run that would grow past one word is predicted
+       to be refused.
 flag   a program flag n (stf, clf, flag, I_STF, I_CLF, I_SZF) becomes n + 1:
        the one instruction or literal that names flag n names n + 1. Past
        flag 7 (flag 6 for a test) it is refused. An I_RCL-style count n
-       becomes n + 1 in its literal (`rcl 3s` -> `rcl 4s`), refused past 9.
+       becomes n + 1 in its literal (`rcl 3s` -> `rcl 4s`, and the bare
+       `scl` of count 0 -> `scl 1s`), refused past 9.
        A sense switch n (`szs n0`) and a dpy intensity n (`dpy-i+n00`) are
        fields too, refused past 6 and 7.
 
@@ -63,13 +65,15 @@ LAW_MAX = 0o7777
 COMMUTATIVE = {"+": "add", "&": "and", "|": "ior", "^": "xor"}
 COMPARE = {"<", ">=", "==", "!=", "<=", ">"}
 SHIFT = {"<<": "sal", ">>": "sar"}
+IO_SHIFT = {"<<": "sil", ">>": "sir"}
 COUNT_ARG = {"rcl": 2, "rcr": 2, "scl": 2, "scr": 2, "ral": 1, "rar": 1, "ril": 1, "rir": 1}
 MAX_SHIFT = 35
 # A builtin whose argument is a field of one instruction: its mnemonic,
 # whether the field is a shift count, the largest value, and the error past it.
 FIELD_ARG = {"stf": ("stf", False, 7), "clf": ("clf", False, 7), "flag": ("szf", False, 6),
              "I_STF": ("stf", False, 7), "I_CLF": ("clf", False, 7), "I_SZF": ("szf", False, 7),
-             "I_RCL": ("rcl", True, 9), "I_RAL": ("ral", True, 9),
+             "I_RCL": ("rcl", True, 9), "I_RAL": ("ral", True, 9), "I_SCL": ("scl", True, 9),
+             "I_SCR": ("scr", True, 9), "I_SAR": ("sar", True, 9),
              "sense": ("szs", False, 6), "dpy": ("dpy", False, 7)}
 FIELD_POSITION = {"dpy": "exprs[2]"}
 FIELD_ERROR = {"szs": "sense switch", "dpy": "intensity"}
@@ -260,10 +264,20 @@ class Leaves:
         self.arrays = {name for name, d in (unit.data or {}).items() if d.array} | \
             {t.name for t in unit.items if isinstance(t, ir.Space) and t.array}
         self.locals: dict[str, set[str]] = {}
+        self.registers: dict[str, set[str]] = {}
         for ext in ast.ext:
             if isinstance(ext, c_ast.FuncDef):
-                names = {d.name for d, *_ in walk(ext.body, {}) if isinstance(d, c_ast.Decl)}
-                self.locals[ext.decl.name] = names
+                decls = [d for d, *_ in walk(ext.body, {}) if isinstance(d, c_ast.Decl)]
+                params = ext.decl.type.args.params if ext.decl.type.args else []
+                self.locals[ext.decl.name] = {d.name for d in decls}
+                self.registers[ext.decl.name] = {d.name for d in decls + list(params)
+                                                 if "register" in getattr(d, "storage", [])}
+
+    def in_io(self, node: c_ast.Node, function: str) -> bool:
+        """A register local or the low half of a dword: a value in IO."""
+        if isinstance(node, c_ast.StructRef) and node.type == "." and node.field.name == "lo":
+            return True
+        return isinstance(node, c_ast.ID) and node.name in self.registers.get(function, ())
 
     def memory_symbol(self, node: c_ast.Node, function: str) -> str | None:
         if not isinstance(node, c_ast.ID) or node.name in self.locals.get(function, ()) \
@@ -344,8 +358,9 @@ def sites(ast: c_ast.FileAST, unit: ir.Unit) -> list[Site]:
             add(field_site(index, node, *fieldarg, token))
             continue
         if isinstance(parent, c_ast.BinaryOp) and field == "right" and parent.op in SHIFT:
+            mnemonic = (IO_SHIFT if leaves.in_io(parent.left, fn) else SHIFT)[parent.op]
             if token + 1 <= MAX_SHIFT:
-                add(refuse_lengthening(count_site(index, node, SHIFT[parent.op], token), unit, fn, ctx))
+                add(refuse_lengthening(count_site(index, node, mnemonic, token), unit, fn, ctx))
             continue
         builtin = builtin_count(parent, field, ctx)
         if builtin:
@@ -376,6 +391,8 @@ def field_text(mnemonic: str, shift: bool, n: int) -> tuple[str, str]:
         return rf"\bszs( i)? {n << 3:o}\b", f"szs\\1 {(n + 1) << 3:o}"
     if mnemonic == "dpy":
         return (rf"^dpy-i\+{n << 6:o}$" if n else r"^dpy-i$"), f"dpy-i+{(n + 1) << 6:o}"
+    if shift and n == 0:                # the empty shift is the bare mnemonic
+        return rf"\b{mnemonic}( i)?$", f"{mnemonic}\\1 1s"
     unit = "s" if shift else ""
     return rf"\b{mnemonic}( i)? {n:o}{unit}\b", f"{mnemonic}\\1 {n + 1:o}{unit}"
 
@@ -393,7 +410,7 @@ def field_site(index: int, node: c_ast.Constant, mnemonic: str, shift: bool, lar
 
     error = None
     if n + 1 > largest:
-        error = "shifts 1..9 places" if shift else FIELD_ERROR.get(mnemonic, "flag")
+        error = "shifts 0..9 places" if shift else FIELD_ERROR.get(mnemonic, "flag")
     return Site("flag", index, node.coord.line, f"{mnemonic} field {n} -> {n + 1}", rewrites, edit,
                 error=error)
 
