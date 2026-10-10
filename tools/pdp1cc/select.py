@@ -35,19 +35,59 @@ class SelectError(Exception):
     pass
 
 
+# What a register is known to hold (TRACK).
+
+@dataclass(frozen=True)
+class Local:
+    """The value of an AC or register (IO) local, or a parameter."""
+    name: str
+
+
+@dataclass(frozen=True)
+class Cell:
+    """The value of a memory word, or of a homed pointer's home instruction."""
+    sym: str
+
+
+@dataclass(frozen=True)
+class Address:
+    """Address bits equal to a constant address: &sym + offset."""
+    sym: str
+    offset: int
+
+
+@dataclass(frozen=True)
+class PointerValue:
+    """Address bits equal to homed pointer sym's value: its home's address field."""
+    sym: str
+
+
+Fact = Local | Cell | Address | PointerValue
+
+
 @dataclass(frozen=True)
 class State:
-    """Names whose current value AC / IO hold. None (as a State) = unreachable."""
-    ac: frozenset[str] = frozenset()
-    io: frozenset[str] = frozenset()
+    """Facts AC / IO hold. None (as a State) = unreachable."""
+    ac: frozenset[Fact] = frozenset()
+    io: frozenset[Fact] = frozenset()
 
-    def write_mem(self, key: str) -> State:
-        return State(self.ac - {key, "@" + key}, self.io - {key, "@" + key})
+    def write_mem(self, written: Local | Cell) -> State:
+        """written was stored to: what was read from it is stale."""
+        stale = {written} | ({PointerValue(written.sym)} if isinstance(written, Cell) else set())
+        return State(self.ac - stale, self.io - stale)
 
     def registers_only(self) -> State:
-        keep = ("%", "@&")
-        return State(frozenset(k for k in self.ac if k.startswith(keep)),
-                     frozenset(k for k in self.io if k.startswith(keep)))
+        """Only facts no store to memory can change."""
+        return State(_lasting(self.ac), _lasting(self.io))
+
+
+def _lasting(facts: frozenset[Fact]) -> frozenset[Fact]:
+    return frozenset(f for f in facts if isinstance(f, (Local, Address)))
+
+
+def _memory_facts(facts: frozenset[Fact]) -> frozenset[Fact]:
+    """The facts that outlive a function's locals."""
+    return frozenset(f for f in facts if not isinstance(f, Local))
 
 
 def meet(a: State | None, b: State | None) -> State | None:
@@ -58,23 +98,23 @@ def meet(a: State | None, b: State | None) -> State | None:
     return State(a.ac & b.ac, a.io & b.io)
 
 
-def address_key(e: ir.Expr) -> str | None:
+def address_fact(e: ir.Expr) -> Address | PointerValue | None:
+    """What e's address bits are, when known."""
     match e:
-        case ir.AddrOf(operand=o):
-            return f"@&{o.name}+{o.offset}"
-        case ir.Insn(operand=ir.Sym() as o):
-            return f"@&{o.name}+{o.offset}"
+        case ir.AddrOf(operand=o) | ir.Insn(operand=ir.Sym() as o):
+            return Address(o.name, o.offset)
         case ir.Var(storage=ir.Homed(sym=sym)):
-            return "@" + sym
+            return PointerValue(sym)
     return None
 
 
-def key(v: ir.Var) -> str:
+def fact(v: ir.Var) -> Local | Cell:
+    """The fact that a register holds v's value."""
     if isinstance(v.storage, ir.Memory):
-        return ir.mem_sym(v.storage)
+        return Cell(ir.mem_sym(v.storage))
     if isinstance(v.storage, ir.Homed):
-        return v.storage.sym
-    return "%" + v.name
+        return Cell(v.storage.sym)
+    return Local(v.name)
 
 
 def W(op, rule, operand=None, i=False, note="", via=()):
@@ -271,9 +311,8 @@ class FunctionLowerer:
         return items
 
     def entry_state(self) -> State:
-        ac = frozenset("%" + p.name for p in self.fn.params
-                       if isinstance(p.storage, ir.Acc))
-        io = frozenset("%" + p.name for p in self.fn.params if isinstance(p.storage, ir.Io))
+        ac = frozenset(Local(p.name) for p in self.fn.params if isinstance(p.storage, ir.Acc))
+        io = frozenset(Local(p.name) for p in self.fn.params if isinstance(p.storage, ir.Io))
         return State(ac if self.sig.conv in ("block", "xct") else frozenset(), io)
 
     # ----------------------------------------------------------- statements
@@ -299,25 +338,24 @@ class FunctionLowerer:
                 return self.assign(s.target, s.value, st)
             case ir.AssignPair():
                 items, st = self.to_ac(s.value, st)
-                return items, State(frozenset({key(s.hi)}), frozenset({key(s.lo)}))
+                return items, State(frozenset({fact(s.hi)}), frozenset({fact(s.lo)}))
             case ir.Eval(expr=ir.PreInc(target=t)):
                 return [W("idx", "EX-INC", cell(t), via=_via(t))], self.after_idx(t, st)
             case ir.Eval(expr=ir.Flag(op=op, n=n)):
                 return [W(op, "EX-FLAG", ir.Num(n))], st
             case ir.StoreNext():
                 return self.store_next(s, st)
-            case ir.AssignAddr() if key(s.target) in self.switch_tables:
+            case ir.AssignAddr(target=ir.Var(storage=ir.Homed(sym=sym))) if sym in self.switch_tables:
                 return self.store_case(s, st)
             case ir.AssignAddr():
-                ak = address_key(s.value)
-                if ak is not None and ak in st.ac:
+                if address_fact(s.value) in st.ac:
                     items = []
                 elif isinstance(s.value, ir.Var) and isinstance(s.value.storage, ir.Homed):
                     items, st = self.to_ac(ir.HomeWord(s.value, self.home_op(s.value), False), st)
                 else:
                     items, st = self.to_ac(s.value, st)
                 return items + [W("dap", "EX-STORE-ADDR", cell(s.target), via=_via(s.target))], \
-                    st.write_mem(key(s.target))
+                    st.write_mem(fact(s.target))
             case ir.HomedSwitch():
                 return self.homed_switch(s, st)
             case ir.OprCombine():
@@ -356,8 +394,8 @@ class FunctionLowerer:
 
     @staticmethod
     def after_idx(t: ir.Var, st: State) -> State:
-        ac = {key(t)} | ({"@" + t.storage.sym} if isinstance(t.storage, ir.Homed) else set())
-        return State(frozenset(ac), st.io - {key(t)})
+        ac = {fact(t)} | ({PointerValue(t.storage.sym)} if isinstance(t.storage, ir.Homed) else set())
+        return State(frozenset(ac), st.io - {fact(t)})
 
     def home_op(self, p: ir.Var) -> str:
         if p.storage.sym not in self.home_ops:
@@ -392,7 +430,7 @@ class FunctionLowerer:
         return items + [W(text, "EX-DPY", note="plot (AC, IO)")], st
 
     def homed_switch(self, s: ir.HomedSwitch, st: State):
-        index = key(s.index)
+        index = s.index.storage.sym
         items: list[ir.Item] = [ir.LabelDef(index),
                                 W("jmp", "SWITCH-HOMED", ir.Here(), note="into the case stored here"),
                                 ir.LabelDef(s.table)]
@@ -411,7 +449,7 @@ class FunctionLowerer:
         return items + last, end
 
     def store_case(self, s: ir.AssignAddr, st: State):
-        index = key(s.target)
+        index = s.target.storage.sym
         items, st = self.to_ac(s.value, st)
         stride = self.strides_prev.get(index, 1)
         shift = stride.bit_length() - 1
@@ -419,7 +457,7 @@ class FunctionLowerer:
             items += [W("sal", "SWITCH-HOMED", ir.ShiftCount(n)) for n in shift_chunks(shift)]
         items += [W("add", "SWITCH-HOMED", ir.Lit(ir.Sym(self.switch_tables[index]))),
                   W("dap", "SWITCH-HOMED", ir.Sym(index), via=("ST-HOMED",))]
-        return items, State(frozenset(), st.io).write_mem(index)
+        return items, State(frozenset(), st.io).write_mem(Cell(index))
 
     def inline_call(self, c: ir.Call, st: State) -> tuple[list[ir.Item], State]:
         fn = self.inlines[c.sig.name]
@@ -429,12 +467,12 @@ class FunctionLowerer:
             if p.kind == "ac":
                 more, st = self.to_ac(arg, st)
                 items += more
-                ac.add(key(var))
+                ac.add(fact(var))
             else:
                 if not (isinstance(arg, ir.Var) and isinstance(arg.storage, ir.Io)):
                     raise SelectError(f"{c.sig.name}: pass a register local for {p.name}")
                 self.need_io(arg, st)
-                io.add(key(var))
+                io.add(fact(var))
         entry = State(_memory_facts(st.ac) | ac, _memory_facts(st.io) | io)
         body = _rename_labels(fn.body, self.namer)
         if not _ends_in_transfer(body):
@@ -468,7 +506,7 @@ class FunctionLowerer:
             store = W("dac", "EX-POSTINC-STORE", mem(s.pointer), i=True, via=_via(s.pointer))
         step = W("idx", "EX-POSTINC-STORE", mem(s.pointer), via=_via(s.pointer))
         st = st.registers_only()
-        return items + [store, step], State(frozenset({key(s.pointer)}), st.io)
+        return items + [store, step], State(frozenset({fact(s.pointer)}), st.io)
 
     def switch(self, s: ir.Switch, st: State):
         """add (T; dap J; J, jmp .; T: one word per case. A goto case is its
@@ -505,13 +543,13 @@ class FunctionLowerer:
         match t.storage:
             case ir.Acc():
                 items, st = self.to_ac(value, st)
-                return items, State(st.ac | {key(t)}, st.io)
+                return items, State(st.ac | {fact(t)}, st.io)
             case ir.Io():
                 return self.assign_io(t, value, st)
             case ir.Homed():
                 raise SelectError(f"{t.name} is HOMED: assigning it stores an address (dap)")
-        k = key(t)
-        if isinstance(value, ir.Var) and isinstance(value.storage, ir.Memory) and key(value) == k:
+        k = fact(t)
+        if isinstance(value, ir.Var) and isinstance(value.storage, ir.Memory) and fact(value) == k:
             return [], st                       # the same cell under another name
         if value == ir.Const(0):
             return [W("dzm", "EX-STORE-ZERO", mem(t), via=_via(t))], st.write_mem(k)
@@ -524,16 +562,16 @@ class FunctionLowerer:
         return items + [W("dac", "EX-STORE", mem(t), via=_via(t))], State(st.ac | {k}, st.io)
 
     def assign_io(self, t: ir.Var, value: ir.Expr, st: State):
-        kt = key(t)
+        kt = fact(t)
         match value:
             case ir.Var(storage=ir.Io()):
                 self.need_io(value, st)
                 return [], State(st.ac, st.io | {kt})
             case ir.Var() if isinstance(value.storage, ir.Memory):
-                if key(value) in st.io:
+                if fact(value) in st.io:
                     return [], State(st.ac - {kt}, st.io | {kt})
                 return ([W("lio", "EX-LOAD-IO", mem(value), via=_via(value))],
-                        State(st.ac - {kt}, frozenset({kt, key(value)})))
+                        State(st.ac - {kt}, frozenset({kt, fact(value)})))
             case ir.Const(value=0):
                 return [W("cli", "EX-CONST-IO")], State(st.ac - {kt}, frozenset({kt}))
             case ir.Const(value=c):
@@ -556,19 +594,19 @@ class FunctionLowerer:
         return items + swap(), State(frozenset(), frozenset({kt}))
 
     def need_io(self, v: ir.Var, st: State) -> None:
-        if key(v) not in st.io:
+        if fact(v) not in st.io:
             raise SelectError(f"register local {v.name} no longer holds its value in IO")
 
     def pair_op(self, p: ir.PairOp, st: State):
-        if not isinstance(p.hi.storage, ir.Acc) or key(p.hi) not in st.ac:
+        if not isinstance(p.hi.storage, ir.Acc) or fact(p.hi) not in st.ac:
             raise SelectError(f"{p.op}: {p.hi.name} must be an AC local holding its value")
-        if not isinstance(p.lo.storage, ir.Io) or key(p.lo) not in st.io:
+        if not isinstance(p.lo.storage, ir.Io) or fact(p.lo) not in st.io:
             raise SelectError(f"{p.op}: {p.lo.name} must be a register local holding its value")
         if p.op in PAIR_STEPS:
             words = [W(p.op, "EX-STEP", self.memory_operand(p.operand))]
         else:
             words = [W(p.op, "EX-ROT", ir.ShiftCount(n)) for n in shift_chunks(p.count)]
-        return words, State(frozenset({key(p.hi)}), frozenset({key(p.lo)}))
+        return words, State(frozenset({fact(p.hi)}), frozenset({fact(p.lo)}))
 
     def if_(self, s: ir.If, st: State):
         c = s.cond
@@ -594,7 +632,7 @@ class FunctionLowerer:
             t = c.operand.target
             pre: list[ir.Item] = []
             table = ()
-            after = State(frozenset({key(t)}), st.io - {key(t)})
+            after = State(frozenset({fact(t)}), st.io - {fact(t)})
             skip_c = skips.isp_skip_when(c.op)
             skip_not_c = skips.isp_skip_when(skips.NEGATE[c.op])
         elif isinstance(c.operand, ir.Var) and isinstance(c.operand.storage, ir.Io):
@@ -781,7 +819,7 @@ class FunctionLowerer:
         """Words that leave e's value in AC, and the state after them."""
         match e:
             case ir.Var(storage=ir.Acc()):
-                if key(e) not in st.ac:
+                if fact(e) not in st.ac:
                     raise SelectError(f"AC local {e.name} was clobbered before this use; "
                                       "name a static to hold it")
                 return [], st
@@ -797,26 +835,26 @@ class FunctionLowerer:
                                   "instruction; read through it with *home(...)")
             case ir.Insn():
                 return [W("lac", "EX-CONST-AC", ir.Lit(e), via=_via_operand(e))], \
-                    State(frozenset({address_key(e)} - {None}), st.io)
+                    State(frozenset({address_fact(e)} - {None}), st.io)
             case ir.AddrOf(operand=o):
                 return [W("law", "EX-CODE", o, via=("ST-POOL",) if o.pool else ())], \
-                    State(frozenset({address_key(e)}), st.io)
+                    State(frozenset({address_fact(e)}), st.io)
             case ir.HomeWord(pointer=p, op=op, increment=inc):
                 if op != self.home_op(p):
                     raise SelectError(f"{p.name}'s home is `{self.home_op(p)} .`, not `{op}`")
                 if inc:
                     return [W("idx", "HOMED-WORD", cell(p), via=_via(p))], self.after_idx(p, st)
-                if key(p) in st.ac:
+                if fact(p) in st.ac:
                     return [], st
                 return [W("lac", "HOMED-WORD", cell(p), via=_via(p))], \
-                    State(frozenset({key(p), "@" + key(p)}), st.io)
+                    State(frozenset({fact(p), PointerValue(p.storage.sym)}), st.io)
             case ir.HomeLoad(pointer=p):
                 return [ir.LabelDef(p.storage.sym), W("lac", "HOMED-HOME", home_address(p), via=_via(p))], \
                     State(frozenset(), st.io)
             case ir.Var():
-                if key(e) in st.ac:
+                if fact(e) in st.ac:
                     return [], st
-                return [W("lac", "EX-LOAD", mem(e), via=_via(e))], State(frozenset({key(e)}), st.io)
+                return [W("lac", "EX-LOAD", mem(e), via=_via(e))], State(frozenset({fact(e)}), st.io)
             case ir.Const(value=v):
                 return [self.const_ac(v)], State(frozenset(), st.io)
             case ir.PreInc(target=t):
@@ -952,17 +990,14 @@ def hardware_word(name: str) -> ir.Word:
     return W(name, "EX-HW")
 
 
-def _memory_facts(keys: frozenset[str]) -> frozenset[str]:
-    return frozenset(k for k in keys if not k.startswith("%"))
-
-
 def _homed_switches(body) -> dict[str, str]:
+    """The table of each switch on a HOMED word, by the word's symbol."""
     out: dict[str, str] = {}
     for n in inline.iter_nodes(body):
         if isinstance(n, ir.HomedSwitch):
-            if key(n.index) in out:
+            if n.index.storage.sym in out:
                 raise SelectError(f"{n.index.name} indexes two switches: a HOMED word has one home")
-            out[key(n.index)] = n.table
+            out[n.index.storage.sym] = n.table
     return out
 
 
