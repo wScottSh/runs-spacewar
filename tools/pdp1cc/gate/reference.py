@@ -190,6 +190,7 @@ def build(c_files: list[Path], out: Path, call: str, inline_words: int = 0, watc
                      + scratch + symbol_table(list(placed)))
     watch_expr = "".join(f' printf(" %06o", pdp1_value({w}));' for w in watch)
     includes = [a for f in [cells, *bound, stubs] for a in ("-include", str(f))]
+    includes += [a for d in sorted({f.resolve().parent for f in c_files}) for a in ("-iquote", str(d))]
     subprocess.run(
         ["g++", "-std=c++14", "-O2", "-Wall", "-Wno-register", "-Wno-unused-label", "-Wno-array-bounds",
          "-Werror",

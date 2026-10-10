@@ -11,15 +11,7 @@
  * left across the sky. It draws every other frame, and moves the window one
  * step every 16 of those. */
 
-extern word random_number SYM("ran");
-
-/* The random number generator (the `random` macro): the next value of
- * random_number, also left in AC. */
-static inline word next_random(void)
-{
-    random_number = (rar(random_number, 1) ^ 0355670) + 0355670;
-    return random_number;
-}
+#include "random.h"
 
 /* ---------------------------------------------------------- central star */
 
