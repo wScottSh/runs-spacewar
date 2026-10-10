@@ -54,3 +54,9 @@ name = "heavens"
 lines = ["510-621", "629-653", "1373-1866"]
 c = "lift/heavens.c"
 prefix = "zh"
+
+[[region]]
+name = "objects"
+lines = ["946-1077", "1312-1333"]
+c = "lift/objects.c"
+prefix = "zx"

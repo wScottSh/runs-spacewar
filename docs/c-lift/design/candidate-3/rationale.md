@@ -259,10 +259,44 @@ Deviations from the design, and why:
 - **The catalog title line (1371) and the `start` lines stay.** They emit no words.
 
 
+### M5 objects (explosion, torpedo, hyperspace, spaceship in star)
+
+Source lines 946-1077 and 1312-1333 compile from `lift/objects.c`, one region with two line ranges. Lifted coverage is 1908/2514 words (75.9%). `lift/object_table.h` declares the object table's cursors, and `lift/random.h` now holds the `random` macro that heavens and objects share.
+
+The C forms:
+- **The cursors.** A calc routine works on the current object through the main loop's cursors: `*x_slot`, `++*counter_slot`, `*routine_slot = 0`. `*p` is `op i p` whether p is a pool word (`\mdx`) or the address field of an instruction (`mx1, lac .`). The header declares each cursor `extern` with its symbol pinned; M7 defines them, with their homes, without changing this C.
+- **The `diff` macro** is `static inline word move_x(word acceleration)` and `move_y`, laid out at each of four calls. The macro's scaling is an instruction run from a constant, so the C writes `xct(I_SAR(3), dx)`, which is `xct (sar 3s`.
+- **mex's runtime-built shift** is `HOMED insn particle_shift = I_HLT;`. The particle loop stores `(next_random() & 0777) | I_SCL(0)` into it (`and (777 / ior (scl / dac mi1`), and `xct(particle_shift, hi, lo)` is the word itself, `mi1, hlt`, run where it stands.
+- **`msh, xct .`** is `HOMED const insn *spread_scale` into `insn spread_scales[2] = { I_SCR(1), I_SCR(3) }` (`mst`). `spread_scale = spread_scales` is `law mst / dap msh`, `++spread_scale` is `idx msh`, and `xct(*home(spread_scale), hi, lo)` is the home `msh, xct .`. The C comments the masswerk bug: the count is negative, so the wider spread is never picked.
+- **`lac (mex 400000`** is `explosion | NON_COLLIDING`, one literal `(mex+400000`.
+- **`count i ma1, X`** is `if (++*counter_slot < 0) goto X;` (`isp i ma1 / jmp X`). `setup \hpt,3` is `angle_steps = -3`. `dispt i, i my1, n` is `register word y = *y_slot; dpy(x, y, n);`. `cma cli-opr` is `count = -count, spot.lo = 0;`. The `swap` macro is `rcl(h, l, 18)`.
+- **pof** is a BLOCK entered by `jmp pof` whose returns are `return spaceship_done();`, a tail call of `srt`. M6 can define `srt` as a BLOCK whose exit `ss1` and `ss2` adopt.
+- **hp1 reads IO** at entry: `scr 9s` shifts the main loop's IO out. The C takes it as `register word io`.
+
+New rules, each used by two corpus programs that mirror no lifted routine (lift words in parentheses):
+- `EX-DEREF` (61). `*p` names p's cell with the indirect bit: `lac i`, `add i`, `dac i`, `dzm i`, `dio i`, `lio i`, `isp i`, `idx i` (meters, exchange). A store through a pointer can change any word, so TRACK keeps only register facts after it.
+- `EX-XCT` (6). `xct(w, a)` and `xct(w, hi, lo)` run an instruction word: `xct (w` for a constant, `p, xct .` for `*home(p)`, or the HOMED insn itself (sparkle, stepper). `xct(w, a)` refuses a constant that shifts IO.
+- `ST-SLOT` (2). A HOMED insn is the instruction at its home, its one `xct`, laid out there with its initializer; `x = e` is `dac x` (sparkle, stepper). One with no home, two homes or no initializer is an error.
+
+Extended rules: `I_SCL`, `I_SCR`, `I_SAR` and `I_HLT`, with count 0 as the bare mnemonic (`ior (scl`); `sil`/`sir` for `io = io << n` on a register local (`EX-SHIFT`); `f | c` with c above the address field (`EX-CODE`). TRACK carries the caller's register locals through a static inline body that leaves that register alone; sparkle fails to compile without it.
+
+Harness:
+- **`tools/check-objects-reference.py`** runs each routine 10,000 times from seeded random objects, plus edge states (counters at -1, -0, 0, +1 and the extremes; jumps left at -1, -0, 0; uncertainty at 0, 0340000, 0377777, 0400000). Each call picks a slot (a ship's for hp1, hp3 and pof), points every cursor at it in SIMH (the cursors' instruction words and pool words) and natively (C pointers into a table laid out as the machine's), and fills the slot. After each call it compares all 188 table words, `ran`, `\mxc`, `\hpt`, `\ssn`, for mex the `msh` and `mi1` words, and every plotted point: 50,072 calls, 0 differ, 664,234 points. pof runs from `jmp pof` with `srt` patched to return. Counting a shift's bits wrong in the native `xct` makes 9,956 of 10,019 explosion calls differ.
+- **The native `xct`** gives the shift group a meaning: it reads the kind and counts the bits set in the low nine, as the machine does, and calls the same `rcl`, `scl`, `sar` and the rest as the lifted C. Any other word, a halt among them, aborts.
+- **G5** checks headers: a hint deleted in a header must change the output of a file that includes it. A SYM also passes when another lifted file pins the same symbol: `the`, `hd2`, `hd3`, `hr1`, `hr2` and `hur` now link `tunables.c` to `objects.c` and no unlifted text names them. G6 predicts `sir` counts and `I_SCL`-style fields, count 0 included.
+- **macro1 reads an unseen symbol as a pseudo-op** that shares its first three characters (`\state` assembled as `start`). `macro.predefined` refuses those prefixes.
+- The reference build takes `-iquote` for each lifted file's directory, and `bodies` for unlifted functions the lifted code calls (`srt` returns).
+
+Deviations from the design, and why:
+- **The cursors are `extern` without HOMED.** Through an extern pointer and through a homed one, `*p` is the same word, `op i p`. G5 flags HOMED there as decoration. The storage class belongs to the definition, as in C; M7's definitions carry HOMED.
+- **The slot is a HOMED insn, not `SLOT dword mi1(dword)`.** HOMED already means "storage in the instruction at its home"; for an `insn` the storage is the whole word. A C function cannot be assigned, so a slot spelled as a function would need a new kind of object.
+- **The native header executes shift instructions.** The operator ruled out an interpreter. This is one instruction group, built or chosen at run time, given the meaning the same header gives `scl` and the rest; nothing else is decoded, and generated code is still never run natively.
+- **pof's busy wait is a label and a goto.** `while (c);` is not implemented; M7's `count \mtc, .` will want it.
+
 ## Open questions and risks
 
 - Runtime-generated code: M3 settles the writing side (data written through a pointer, no execution spec). M6 must still choose the C form for entering the compiled outline (`sp5, jmp .` patched by `dap`) and for its return at `sq6`.
-- `mex` builds `scl n` at run time (`ior (scl`) and executes it in place at `mi1`. That needs a "slot" (a writable one-word XCT routine) beyond the examples. Is `SLOT dword mi1(dword)` acceptable?
+- `mex`'s runtime-built shift: settled in M5 by a HOMED insn run in place, and a native `xct` defined for the shift group only (M5 section).
 - Uninitialized `register` reads (mpy's `rcr(h, m, 18)` with garbage IO) are indeterminate in ISO C. The reference build maps IO to a global so it is defined there. Is that acceptable?
 - `ENTRY_CELL` aliasing (sin/cos scratch, oc's pointer) is only correct while the owner's parameter is dead. Should the compiler prove that, or is a documented contract enough?
 - pycparserext must parse GNU attributes on parameters and labels before declarations. A front-end spike should confirm this before anything else.

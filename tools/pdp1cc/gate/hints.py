@@ -8,7 +8,9 @@ counts as a change: the hint was needed.
 
 SYM is the exception: deleting it always renames a label, so that test
 cannot catch a stale one. A SYM earns its place while unlifted source text
-still names the symbol it pins; the gate fails when nothing unlifted does.
+still names the symbol it pins, or while another lifted file pins the same
+symbol: the two files name one object, and without the pin each would give
+it a symbol of its own. The gate fails when neither holds.
 
 A header the files include with `#include "x.h"` is checked too: a hint
 deleted there must change the output of some file that includes it."""
@@ -95,9 +97,11 @@ def pinned(h: Hint) -> str | None:
     return m.group(1) if m else None
 
 
-def stale(h: Hint, unlifted: str) -> bool:
-    """unlifted: the source text no region covers, comments removed."""
-    return not re.search(rf"(?<!\w){pinned(h)}(?!\w)", unlifted)
+def stale(h: Hint, unlifted: str, pins: dict[Path, set[str]]) -> bool:
+    """unlifted: the source text no region covers, comments removed. pins:
+    the symbols each file's SYMs pin."""
+    shared = any(pinned(h) in syms for f, syms in pins.items() if f != h.path)
+    return not shared and not re.search(rf"(?<!\w){pinned(h)}(?!\w)", unlifted)
 
 
 def gate(files: list[Path], unlifted: str) -> int:
@@ -105,6 +109,9 @@ def gate(files: list[Path], unlifted: str) -> int:
     files = files + list(headers)
     hints = [h for f in files for h in hints_in(f)]
     syms = [h for h in hints if pinned(h)]
+    pins: dict[Path, set[str]] = {}
+    for h in syms:
+        pins.setdefault(h.path, set()).add(pinned(h))
     others = [h for h in hints if not pinned(h)]
     sources = [f for f in files if f not in headers]
     with ProcessPoolExecutor() as pool:
@@ -114,7 +121,7 @@ def gate(files: list[Path], unlifted: str) -> int:
     bad = {h: "deleting it leaves the output unchanged"
            for h, out in zip(others, changed) if out == base[h.path]}
     bad |= {h: "no unlifted source text names the symbol it pins"
-            for h in syms if stale(h, unlifted)}
+            for h in syms if stale(h, unlifted, pins)}
     for f in files:
         mine = [h for h in hints if h.path == f]
         lines = f.read_text().count("\n") or 1
