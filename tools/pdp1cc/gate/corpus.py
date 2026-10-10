@@ -140,7 +140,7 @@ def compare(calls: list[simh.Inputs], machine: list[simh.Outcome], native: list[
 
 def watched(prog: Program) -> list[tuple[str, str, int, str]]:
     """(label, Macro symbol, offset, native expression) of every word compared
-    after each call: placed words, pool words, HOMED insns, reserved words
+    after each call: placed words, pool words, HOMED shifts, reserved words
     (not pointers, whose native value is a host address), and the entry
     words of defined JDA functions."""
     out = []

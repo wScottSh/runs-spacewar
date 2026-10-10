@@ -10,14 +10,14 @@
 #define SEEN ((word)0200000)
 #define SEEN_NEGATIVE ((word)0600000)
 
-HOMED insn smear = I_HLT;
+HOMED shift smear = SHIFT_UNSET;
 word last = 0;
 
 JDA dword blur(word a, register word lo)
 {
     dword p;
 
-    smear = (a & 0700) | I_SCR(0);
+    smear = I_SCR_BITS(a & 0700);
     last = blur | SEEN;
     if (a < 0)
         last = blur | SEEN_NEGATIVE;

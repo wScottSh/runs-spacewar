@@ -64,7 +64,7 @@ class Homed:        # HOMED pointer: the address field of its home instruction
 
 
 @dataclass(frozen=True)
-class HomedInsn:    # HOMED insn: the instruction at its home, executed where it stands
+class HomedInsn:    # HOMED shift: the instruction at its home, executed where it stands
     sym: str
     init: "Insn"
 
