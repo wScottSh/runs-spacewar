@@ -45,7 +45,7 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Emitted]:
     homeless = [name for name, s in unit.objects.items() if isinstance(s, ir.HomedInsn)
                 and not any(isinstance(i, ir.LabelDef) and i.name == s.sym for i in items)]
     if homeless:
-        raise LayoutError(f"HOMED insn {', '.join(homeless)} has no home: run it with xct(x, ...)")
+        raise LayoutError(f"HOMED shift {', '.join(homeless)} has no home: run it with xct(x, ...)")
     return attach_labels(items)
 
 

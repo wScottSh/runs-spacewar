@@ -7,9 +7,9 @@
  * negative. The call returns the damped position halved by a shift run
  * from a constant. */
 
-HOMED insn turn = I_RAL(1);
-HOMED const insn *pace;
-insn paces[2] = { I_SAR(1), I_SAR(5) };
+HOMED shift turn = I_RAL(1);
+HOMED const shift *pace;
+shift paces[2] = { I_SAR(1), I_SAR(5) };
 word position = 0123457;
 
 JDA word step(word x)
@@ -17,7 +17,7 @@ JDA word step(word x)
     word a = position;
     a = xct(turn, a);
     position = a;
-    turn = (x & 07) | I_RAL(0);
+    turn = I_RAL_BITS(x & 07);
     pace = paces;
     a = position;
     if (a < 0)

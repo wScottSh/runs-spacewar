@@ -425,7 +425,7 @@ class FunctionLowerer:
     def xct(self, x: ir.Xct, st: State):
         """The argument into AC (and IO), then the instruction run: `xct (w`
         for a constant, the home `p, xct .` of a HOMED pointer p, or the
-        HOMED insn itself, run where it stands. Only a constant shift of AC
+        HOMED shift itself, run where it stands. Only a constant shift of AC
         is known to leave IO alone."""
         items, st = self.to_ac(x.hi, st)
         if x.lo is not None:

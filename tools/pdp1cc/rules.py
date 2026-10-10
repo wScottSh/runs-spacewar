@@ -76,9 +76,9 @@ RULES: dict[str, str] = {
                   "`lac home` / `idx home`",
     "EX-DEREF": "*p for p a pointer in a memory word or a homed address field: the instruction "
                 "names p's cell with the indirect bit (lac i, add i, dac i, dzm i, dio i, lio i, isp i, idx i)",
-    "EX-XCT": "xct(w, a) / xct(w, hi, lo): the argument in AC (and IO), then w run: `xct (w` for a "
-              "constant, `p, xct .` for *home(p), the word itself for a HOMED insn",
-    "ST-HOMED-INSN": "HOMED insn x: the instruction at its home, xct(x, ...), laid out there with its initial "
+    "EX-XCT": "xct(s, a) / xct(s, hi, lo): the argument in AC (and IO), then shift s run: `xct (s` for a "
+              "constructor, `p, xct .` for *home(p), the word itself for a HOMED shift",
+    "ST-HOMED-INSN": "HOMED shift x: the instruction at its home, xct(x, ...), laid out there with its initial "
                "word; x = e stores the whole word (dac x)",
 }
 

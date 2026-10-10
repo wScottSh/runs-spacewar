@@ -8,14 +8,14 @@
  * IO are spread apart. IO holds its value across the call that builds the
  * shift. Returns the scattered AC:IO. */
 
-HOMED insn widen = I_HLT;
-HOMED const insn *damp;
-insn damps[2] = { I_SCR(1), I_SCR(4) };
+HOMED shift widen = SHIFT_UNSET;
+HOMED const shift *damp;
+shift damps[2] = { I_SCR(1), I_SCR(4) };
 
 /* A combined left shift by as many places as b has bits set in its low nine. */
-static inline insn left_shift(word b)
+static inline shift left_shift(word b)
 {
-    return (b & 0777) | I_SCL(0);
+    return I_SCL_BITS(b & 0777);
 }
 
 JDA dword sparkle(word bits, register word lo)
