@@ -64,7 +64,7 @@ A matching hash does not prove the C means anything. A compiler could ignore its
 
 ### What the checks do not prove
 
-The reference runs cover the math routines, the outline compiler, the heavens, and the calc routines for explosions, torpedoes, hyperspace and a ship in the star (`tools/check-objects-reference.py`). The rest of the game logic depends on code that the outline compiler generates at run time, and only a PDP-1 can run that code. For those regions, the hash is the whole verdict. Because the hash covers every word, it is enough to show that the game is the same.
+The reference runs cover the math routines, the outline compiler, the heavens, the calc routines for explosions, torpedoes and hyperspace (`tools/check-objects-reference.py`), and the spaceship calc routine (`tools/check-spaceship-reference.py`). The spaceship routine jumps into code that the outline compiler generates at run time, and only a PDP-1 can run that code, so its check runs the routine up to that jump and from the generated code's return point, as two halves. The generated code itself is covered by the hash and by the outline compiler's check of the words it writes.
 
 The checks do not judge whether the C reads well. That part is review.
 

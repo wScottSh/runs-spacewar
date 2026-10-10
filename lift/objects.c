@@ -1,6 +1,6 @@
 /* Calc routines for objects that are not flying spaceships (source lines
- * 946-1077 and 1312-1333): the explosion, the torpedo, a ship in hyperspace
- * and at breakout, and a ship that falls into the central star.
+ * 946-1077): the explosion, the torpedo, and a ship in hyperspace and at
+ * breakout.
  *
  * A calc routine is what the object table's routine word names. The main
  * loop calls the current object's routine each frame, with the cursors of
@@ -10,6 +10,7 @@
 
 #include "object_table.h"
 #include "random.h"
+#include "inertia.h"
 
 extern word hyperspatial_uncertainty SYM("hur");
 XCT SYM("the") word torpedo_space_warpage(word v);
@@ -19,28 +20,6 @@ XCT SYM("hr1") dword hyperspatial_displacement(word hi, register word lo);
 XCT SYM("hr2") dword hyperspatial_velocity(word hi, register word lo);
 
 #define TWO_PI 0311040              /* an angle's full turn */
-
-/* Inertia (the `diff` macro): add the acceleration in AC to the velocity,
- * then an eighth of the velocity to the position, and leave the new
- * position in AC. The macro takes its scaling as an instruction to run,
- * here `sar 3s` from a constant. */
-static inline word move_x(word acceleration)
-{
-    word dx = acceleration + *dx_slot;
-    *dx_slot = dx;
-    word x = xct(I_SAR(3), dx) + *x_slot;
-    *x_slot = x;
-    return x;
-}
-
-static inline word move_y(word acceleration)
-{
-    word dy = acceleration + *dy_slot;
-    *dy_slot = dy;
-    word y = xct(I_SAR(3), dy) + *y_slot;
-    *y_slot = y;
-    return y;
-}
 
 /* ---------------------------------------------------------- explosion */
 
@@ -192,37 +171,4 @@ show:
     a = *x_slot;
     y = *y_slot;
     dpy(a, y, 2);
-}
-
-REGION_BREAK();
-
-/* --------------------------------------------------- spaceship in star */
-
-extern POOL word sine_step SYM("ssn");
-BLOCK SYM("srt") void spaceship_done(void);     /* the spaceship calc routine's return */
-
-/* A ship that falls into the central star stops. With sense switch 5 on
- * it explodes; otherwise it is thrown to the corner of the screen, and
- * instead of being drawn it counts up from its calc routine's time. A
- * ship's time is positive, so the count ends after one step. */
-BLOCK SYM("pof") void spaceship_in_star(void)
-{
-    word corner;
-
-    *dx_slot = 0;
-    *dy_slot = 0;
-    if (sense(5))
-        goto bang;
-    corner = 0377777;
-    *x_slot = corner;
-    *y_slot = corner;
-    sine_step = *cycles_slot;
-wait:
-    if (++sine_step < 0)
-        goto wait;
-    return spaceship_done();
-bang:
-    *routine_slot = explosion | NON_COLLIDING;
-    *counter_slot = -010;
-    return spaceship_done();
 }

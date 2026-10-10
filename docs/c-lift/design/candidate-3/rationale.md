@@ -123,7 +123,7 @@ Phase F steps 1-4 (synthesis.md) are implemented for the sqt subset. This sectio
 - G5 and G6 run in `pdp1cc gate` (M2 section). `tests/reject/` holds programs the dialect must refuse, each with the error it expects.
 - G7 is a review rule: a new rule lands with its corpus programs. The row checker is not built.
 
-**Not implemented yet.** while/do, indirect calls that return, a homed pointer read as a value anywhere but a `dap` or its home word, `int` parameters of static inline functions, and the hints `SKIPNOT` and `RELOAD`. POOL, HOMED, INLINE parameters, the jump-table switch, `PLACE` and `ARGS_DONE` landed in M3; `sas`/`sad`, static inline functions and Duff's device in M4.
+**Not implemented yet.** while/do, indirect calls that return other than through a pointer word to a JSP function (M6), a homed pointer read as a value anywhere but in the value a `dap` stores or its home word, `int` parameters of static inline functions, and the hints `SKIPNOT` and `RELOAD`. POOL, HOMED, INLINE parameters, the jump-table switch, `PLACE` and `ARGS_DONE` landed in M3; `sas`/`sad`, static inline functions and Duff's device in M4.
 
 ### M1 math (sin/cos, imp/mpy, idv/dvd)
 
@@ -293,9 +293,45 @@ Deviations from the design, and why:
 - **The native header executes shift instructions.** The playbook says the reference build never executes generated code, and mex runs a shift it builds at run time. The M5 brief allows exactly this form: a shift word run by `xct` whose C meaning the header defines. It decodes one instruction group into the same `rcl`, `scl`, `sar` and the rest the lifted C calls; any other word aborts, and the compiler refuses `xct` of a constant outside the group. Code the outline compiler generates and enters by a jump is still never run natively. The operator should confirm this reading.
 - **pof's busy wait is a label and a goto.** `while (c);` is not implemented; M7's `count \mtc, .` will want it.
 
+### M6 spaceship (ss1, ss2 through srt, and pof)
+
+Source lines 1079-1333 compile from `lift/spaceship.c`, one region. It takes pof (1312-1333) over from the objects region, which is now 946-1077: see the deviations. Lifted coverage is 2168/2514 words (86.2%). `lift/inertia.h` now holds `move_x` and `move_y` (the `diff` macro), which objects and the spaceship share.
+
+The C forms:
+- **The routine is four BLOCK-chained functions.** `first_spaceship` (ss1) and `second_spaceship` (ss2) are JSP entries that read the control word and tail-call `spaceship` (sr0); ss2 falls into it. `spaceship` ends `return (*home(draw_outline))();`, the jump into the compiled outline, or `return spaceship_in_star();` (pof). `outline_drawn` (sq6) is where the compiled outline jumps back; it ends in `spaceship_done` (srt), an empty BLOCK whose `jmp .` is the routine's exit.
+- **`jsp i \cwg`** is a call through a POOL pointer to a JSP function type: `dword c = get_control_word();` with `typedef dword control_word_getter(void) JSP;`. The control word comes back in IO, as `mg1` leaves it.
+- **Entering the compiled outline.** `draw_outline` is `HOMED compiled_outline *`, a pointer to a BLOCK function type whose home is the jump `sp5, jmp .`. `(*home(draw_outline))()` is that jump, as `*home(p)` is the home instruction for a data pointer. The main loop's `dap sp5` stores the address. Natively the jump is a call through a function pointer; nothing in the native build points it at generated code (see Harness).
+- **The divide's caller (`jda idv / lac \t1 / opr`).** `SKIPS` on a JDA function, or on the BLOCK it tail-calls, says the call may return one word further (`skip_return()`). A call of a SKIPS function is followed by its slot, `opr`, which runs only when the call does not skip. The C is a plain call, `q = integer_divide(-*x_slot, f.lo, work);`, and means the same either way: on overflow idv returns |divisor| with the quotient's sign, and the slot does nothing. A caller that must act on the skip has no form yet; nothing needs one.
+- **Homes that are not loads.** `mom, add .` and `mth, add .` are `turn + *home(angular_momentum_slot)`. The torpedo launch fills the new object's slots through pointers homed in the stores: `*home(torpedo_x_slot) = start;` is `ss3, dio .`, `*home(torpedo_dx_slot) = ...;` is `sr3, dac .`, and `home(torpedo_cycles_slot)->addr = 020;` is `sr7, dap .`.
+- **Pointers built from a homed pointer.** `torpedo_x_slot = NOB + free_slot;` is `law nob / add sr1 / dap ss3`: the add reads sr1's whole home word, `lac` and the pointer, and the dap keeps only the address. Each next slot is the previous plus NOB, `add (nob / dap`, with no reload: after a dap, AC's address field is the stored pointer.
+- **The free-slot search** is the `index` form of M4 (`I_LAC(++free_slot) != I_LAC(object_table + NOB)`), and `hlt / jmp .-1` when the table is full is `for (;;) hlt();`.
+- **`lac (tcr`** is `torpedo | COLLIDING` with `COLLIDING` `(word)0`: a routine word, like `explosion | NON_COLLIDING`, loaded from a literal. A bare function name stays `law f`.
+- **`cla / sad i \mfu / clf 6`** is `if (0 == *fuel_slot) clf(THRUST_FLAG);`; `clc` is `fire = MINUS_ZERO;`.
+- **Cursors.** `angular_momentum_slot` (mom), `angle_slot` (mth) and `previous_control_slot` (mco) are defined here, HOMED, since their homes are in this routine; `object_table.h` declares them extern without HOMED. `fuel_slot` (mfu), `torpedoes_slot` (mtr) and `object_table` (mtb) are new declarations there.
+
+New rules, each used by two corpus programs that mirror no lifted routine (`relay`, `beacon`, `garage`; lift words in parentheses):
+- `CALL-INDIRECT` (2). `p(...)` through a pointer word to a JSP function type is `jsp i p`, and returns (relay, beacon).
+- `SKIP-SLOT` (2). The `opr` after a call of a SKIPS function (relay, beacon).
+- `HOMED-VALUE` (1). A HOMED pointer read in the value a dap stores: `add p` / `lac p`, or nothing when AC's address field holds it (relay, garage). Anywhere else a homed pointer's value is still an error.
+
+Extended rules, each used by two of those programs: `HOMED-HOME` for `add .`, `dac .`, `dio .`, `dap .` and `jmp .` homes; `LAY-ADOPT` through a chain of BLOCKs (`relay -> route -> finish`, `beacon -> choose -> off`); `EX-CONST-AC` gives `clc` for -0 (garage, relay, beacon); `EX-HW` gives `hlt` (garage, beacon); `SKIP-SAME` against `*p`, `sad i p` (relay, garage, beacon); `EX-CODE` loads `f | c` from a literal even when c is 0 (garage, beacon); POOL and HOMED pointers to function types; HOMED on a definition whose extern declaration omits it (relay, garage). TRACK keeps the address-field fact of a homed pointer across a store through a pointer, since a C pointer cannot reach a home.
+
+Harness:
+- **`tools/check-spaceship-reference.py`** runs the routine in two halves, because the native build cannot run the compiled outline. ss1 and ss2 run from `jsp` to the jump into the outline: SIMH has `sp5` jump to the stub's second halt, and natively `draw_outline` points to a stand-in that only records it was entered, so both report the same return point. Their other exit is pof, back through `srt` as their own `dap srt` set it. `outline_drawn` runs from `jmp sq6` with the pool words the first half and the outline leave (control word, heading sine and cosine, pen position, torpedo start) set at random, and `srt` patched to return; pof runs from `jmp pof` the same way. `\cwg` names a three-word routine in free core that loads a deposited control word into IO; natively `get_control_word` points to a function that returns it. Each call fills a ship's slot, every object's routine word (some free, at least one), the random number and the sense switches, points every cursor at the slot and the launch pointers' homes at the table. After each call it compares the 188 table words, `ran`, every pool word of the routine (20, with `bx` and `by`), the program flags, the launch pointers' home words, the return point and every plotted point. 32,500 calls, 0 differ. With a wrong address bit planted in the native `x.addr = n` and a wrong `ral 7s` count, 6,975 of 9,750 calls differ.
+- **What the hash alone covers.** The compiled outline's code (generated by oc, whose writing M3's check covers word by word) and the jump into it run only on the machine. The reference halves meet at `sp5` and `sq6`; the words of both, and of every instruction in the region, are fixed by the hash. The full-table path, `hlt / jmp .-1`, is not run: SIMH would stop there.
+- **Skips belong to a call.** The native `skip_return()` counted into one global, so a skip inside a nested call leaked into its caller's return point. The reference build now opens every definition that is not SKIPS with `pdp1_skip_guard`, which restores the count when it returns. Corpus `relay` differs from SIMH on 319 of 320 calls without the guard.
+- **G6** reads pool operands with their `\` and treats extern arrays as arrays; both were missed before (relay, and `object_table + NOB`).
+
+Deviations from the design, and why:
+- **pof moved into the spaceship region.** ss1's `dap srt` patches the exit of the routine it tail-calls. The compiler finds that exit by following tail calls through BLOCKs it can see: `spaceship` reaches `srt` only through pof. With pof in another file, the chain stops there. pof is the routine's star-capture path in the source too (it ends `jmp srt`).
+- **`srt` and `pof` lost their SYMs**, since nothing outside this file names them now. `sq6` stays pinned: oc's compiled code jumps to it from another file.
+- **`*a` for an array a is now an error.** It compiled to `op i a`, through the word a[0] holds, where C means a[0]. No lifted file used it; corpus `beacon` found it.
+- **The labels `trf`, `sp1`, `sp2`, `sr0`/`sc1`, `st3` and the rest** name nothing outside the region; they are C labels or function entries with generated symbols.
+- **The native `x.addr = e`** takes an integer or a word, as well as a pointer: `home(torpedo_cycles_slot)->addr = 020`.
+
 ## Open questions and risks
 
-- Runtime-generated code: M3 settles the writing side (data written through a pointer, no execution spec). M6 must still choose the C form for entering the compiled outline (`sp5, jmp .` patched by `dap`) and for its return at `sq6`.
+- Runtime-generated code: M3 settles the writing side and M6 the entry: a jump through a HOMED pointer to a BLOCK function type, at its home, and a BLOCK at the return point (M6 section). M7's main loop stores the address (`mot, lac . / dap sp5`): it must declare `draw_outline`, whose definition here is HOMED.
 - `mex`'s runtime-built shift: settled in M5 by a HOMED insn run in place, and a native `xct` defined for the shift group only (M5 section).
 - Uninitialized `register` reads (mpy's `rcr(h, m, 18)` with garbage IO) are indeterminate in ISO C. The reference build maps IO to a global so it is defined there. Is that acceptable?
 - `ENTRY_CELL` aliasing (sin/cos scratch, oc's pointer) is only correct while the owner's parameter is dead. Should the compiler prove that, or is a documented contract enough?
