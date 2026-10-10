@@ -12,8 +12,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from .cli import compile_file
-from .emit import BREAK
+from .cli import compile_regions
 from .rules import RULES
 
 LABEL_DEF = re.compile(r"^((?:[a-z0-9]+,\s*)+)", re.M)
@@ -82,16 +81,6 @@ def interface_errors(src_lines: list[str], region: Region, compiled: str) -> lis
     return errs
 
 
-def chunk_lines(text: str) -> list[list[str]]:
-    parts: list[list[str]] = [[]]
-    for line in text.rstrip("\n").split("\n"):
-        if line == BREAK:
-            parts.append([])
-        else:
-            parts[-1].append(line)
-    return parts
-
-
 def listing(path: Path) -> tuple[dict[int, tuple[str, str]], int | None]:
     words: dict[int, tuple[str, str]] = {}
     variables = None
@@ -153,9 +142,8 @@ def build(toml_path: Path) -> int:
     errors = []
     chunks: list[tuple[tuple[int, int], list[str]]] = []
     for r in regions:
-        text = compile_file(r.c, r.prefix)
-        errors += interface_errors(src_lines, r, text)
-        parts = chunk_lines(text)
+        parts = compile_regions(r.c, r.prefix)
+        errors += interface_errors(src_lines, r, "\n".join(line for part in parts for line in part))
         if len(parts) != len(r.ranges):
             errors.append(f"region {r.name}: {len(r.ranges)} line ranges, but the C makes "
                           f"{len(parts)} (REGION_BREAK() separates them)")
