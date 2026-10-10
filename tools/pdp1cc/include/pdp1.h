@@ -53,8 +53,8 @@
  * word x (dap). `*p++ = e` stores through a pointer and advances it.
  * `*p` reads or writes the word p points to, for p held in memory or in a
  * homed address field: the instruction names p with the indirect bit.
- * A function's name used as a value is its address; `f | c` with c's bits
- * above the address field is that address with flags set.
+ * A function's name used as a value is its address; `f | (word)c` with c's
+ * bits above the address field is that address with flags set.
  * PLACE(x, ...) lays file-scope words out where the statement stands
  * instead of at their definition; control must not reach it. An INLINE
  * parameter is a constant word after the call, read as `lac i` through
@@ -68,9 +68,9 @@
  * I_LIO(0) names address 0. For a HOMED pointer p, I_LIO(p) is its home
  * instruction word when that is `lio .`. Code generated at run time is
  * these words written to memory and entered by a jump; nothing in this
- * header executes it. One instruction word may be executed: xct(w, a) runs
- * w on AC, xct(w, hi, lo) on AC:IO, and the reference build defines that
- * for the shift group alone. w is a constant (`xct (w`), *home(p) for a
+ * header executes such code. One shift instruction word may be executed:
+ * xct(w, a) runs w on AC, xct(w, hi, lo) on AC:IO, and the reference build
+ * defines that for the shift group alone. w is a constant (`xct (w`), *home(p) for a
  * HOMED pointer p to an instruction (`p, xct .`), or a HOMED insn. A HOMED
  * insn is the instruction at its home, which is its xct: it runs where it
  * stands, `x = e` stores the whole word there, and its initializer is the

@@ -4,8 +4,8 @@
  * instruction that loads the reading and two in pool words. Each gauge's
  * reading grows by v. Its countdown ticks, and when it runs out the
  * countdown restarts at -3 and the status word gets the address of `alarm`
- * with the flag bit set; a quiet gauge's status loses its flag. A sweep
- * with v = 0 clears every status. Returns the last reading. */
+ * with the flag bit set; a quiet gauge's status loses its flag, and with
+ * v = 0 is cleared. Returns the last reading. */
 
 #define FLAGGED ((word)0400000)
 

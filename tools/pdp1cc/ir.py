@@ -64,13 +64,13 @@ class Homed:        # HOMED pointer: the address field of its home instruction
 
 
 @dataclass(frozen=True)
-class Slot:         # HOMED insn: the instruction at its home, executed where it stands
+class HomedInsn:    # HOMED insn: the instruction at its home, executed where it stands
     sym: str
     init: "Insn"
 
 
-Storage = Union[Acc, Io, Placed, Extern, Entry, ByName, Inline, Pool, Homed, Slot]
-Memory = (Placed, Extern, Entry, Pool, Slot)
+Storage = Union[Acc, Io, Placed, Extern, Entry, ByName, Inline, Pool, Homed, HomedInsn]
+Memory = (Placed, Extern, Entry, Pool, HomedInsn)
 
 
 def mem_sym(s: Storage) -> str:

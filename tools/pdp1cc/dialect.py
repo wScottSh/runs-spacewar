@@ -294,7 +294,7 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
             if ext.init is None or not is_insn(ext.init, sigs):
                 raise _err(ext, f"{ext.name}: a HOMED insn is the instruction at its home; "
                                 "initialize it with the instruction it holds first")
-            globals_[ext.name] = ir.Slot(_symbol(ext.name, attrs, namer, ext),
+            globals_[ext.name] = ir.HomedInsn(_symbol(ext.name, attrs, namer, ext),
                                          insn(ext.init, _Scope(globals_), sigs, arrays))
         elif "pool" in attrs or "homed" in attrs:
             if ext.init is not None and ("pool" in attrs or _word_type(ext.type) != "word*"):
@@ -348,7 +348,7 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
             items.append(ir.RegionBreak())
         elif isinstance(ext, c_ast.Decl) and not _is_function(ext.type) and not _in_header(ext):
             attrs = _attrs(ext)
-            if isinstance(globals_[ext.name], (ir.Homed, ir.Slot)):
+            if isinstance(globals_[ext.name], (ir.Homed, ir.HomedInsn)):
                 continue
             if ext.init is None and "reserve" not in attrs:
                 if "at" in attrs:
@@ -842,7 +842,7 @@ class _Lowerer:
         """*p for a pointer p held in a memory word or in a homed address field."""
         var = self.scope.lookup(node.expr) if isinstance(node.expr, c_ast.ID) else None
         if var is None or not isinstance(var.storage, ir.Memory + (ir.Homed,)) \
-                or isinstance(var.storage, ir.Slot):
+                or isinstance(var.storage, ir.HomedInsn):
             raise _err(node, "*p reads through a pointer p held in memory or a homed address field")
         return ir.Deref(var)
 
@@ -862,7 +862,7 @@ class _Lowerer:
             raise _err(node, "xct(w, a) or xct(w, hi, lo)")
         w = self.expr(args[0])
         if not (isinstance(w, (ir.Insn, ir.HomeLoad))
-                or (isinstance(w, ir.Var) and isinstance(w.storage, ir.Slot))):
+                or (isinstance(w, ir.Var) and isinstance(w.storage, ir.HomedInsn))):
             raise _err(node, "xct runs an instruction constant, *home(p) or a HOMED insn")
         lo = self.lvalue(args[2]) if len(args) == 3 else None
         if lo is not None and not (isinstance(lo, ir.Var) and isinstance(lo.storage, ir.Io)):

@@ -44,8 +44,6 @@ static inline word move_y(word acceleration)
 
 /* ---------------------------------------------------------- explosion */
 
-JSP SYM("mex") void explosion(void);
-
 POOL word particles;                /* particles still to draw this frame, counting up */
 
 /* A particle's spread from the object, set for each particle: a right
@@ -205,7 +203,8 @@ BLOCK SYM("srt") void spaceship_done(void);     /* the spaceship calc routine's 
 
 /* A ship that falls into the central star stops. With sense switch 5 on
  * it explodes; otherwise it is thrown to the corner of the screen, and
- * instead of being drawn it counts up from its calc routine's time. */
+ * instead of being drawn it counts up from its calc routine's time. A
+ * ship's time is positive, so the count ends after one step. */
 BLOCK SYM("pof") void spaceship_in_star(void)
 {
     word corner;

@@ -148,7 +148,7 @@ def watched(prog: Program) -> list[tuple[str, str, int, str]]:
         out += [(f"{d.name}[{k}]", d.sym, k, f"{d.name}[{k}]") if d.array else (d.name, d.sym, 0, d.name)
                 for k in range(len(d.values))]
     out += [(name, s.sym, 0, name) for name, s in prog.unit.objects.items()
-            if isinstance(s, (ir.Pool, ir.Slot))]
+            if isinstance(s, (ir.Pool, ir.HomedInsn))]
     for s in prog.spaces:
         if not s.pointer:
             out += [(f"{s.name}[{k}]", s.sym, k, f"{s.name}[{k}]") if s.array else

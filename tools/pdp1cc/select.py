@@ -13,7 +13,8 @@ from .rules import check
 BIN_MNEMONIC = {"+": "add", "-": "sub", "&": "and", "|": "ior", "^": "xor"}
 SHIFT_MNEMONIC = {"<<": "sal", ">>": "sar"}
 IO_SHIFT_MNEMONIC = {"<<": "sil", ">>": "sir"}
-# Shift-group instructions that change IO: xct(w, a) cannot run them.
+# The shift group, which xct runs; those that change IO need xct(w, hi, lo).
+AC_SHIFTS = {"ral", "rar", "sal", "sar"}
 PAIR_OR_IO_SHIFTS = {"rcl", "rcr", "scl", "scr", "ril", "rir", "sil", "sir"}
 LAW_MAX = (1 << 12) - 1
 SWAP_HALF = 9           # rcr 9s twice exchanges AC and IO
@@ -126,8 +127,8 @@ def _via(v: ir.Var) -> tuple[str, ...]:
         return ("ST-POOL",)
     if isinstance(v.storage, ir.Homed):
         return ("ST-HOMED",)
-    if isinstance(v.storage, ir.Slot):
-        return ("ST-SLOT",)
+    if isinstance(v.storage, ir.HomedInsn):
+        return ("ST-HOMED-INSN",)
     return ()
 
 
@@ -346,7 +347,7 @@ class FunctionLowerer:
                 items, st = self.to_ac(s.value, st)
                 return items, State(frozenset({fact(s.hi)}), frozenset({fact(s.lo)}))
             case ir.Eval(expr=ir.PreInc(target=ir.Deref() as d)):
-                return [self.through(d, "idx", "EX-INC")], self.after_store_through(st)
+                return [self.through(d, "idx", "EX-INC")], self.after_store_through(st, frozenset())
             case ir.Eval(expr=ir.PreInc(target=t)):
                 return [W("idx", "EX-INC", cell(t), via=_via(t))], self.after_idx(t, st)
             case ir.Eval(expr=ir.Flag(op=op, n=n)):
@@ -424,23 +425,27 @@ class FunctionLowerer:
     def xct(self, x: ir.Xct, st: State):
         """The argument into AC (and IO), then the instruction run: `xct (w`
         for a constant, the home `p, xct .` of a HOMED pointer p, or the
-        HOMED insn itself, run where it stands."""
+        HOMED insn itself, run where it stands. Only a constant shift of AC
+        is known to leave IO alone."""
         items, st = self.to_ac(x.hi, st)
         if x.lo is not None:
             self.need_io(x.lo, st)
         match x.insn:
             case ir.Insn(op=op) as w:
+                if op not in AC_SHIFTS | PAIR_OR_IO_SHIFTS:
+                    raise SelectError(f"xct runs a shift; `{op}` is not one")
                 if x.lo is None and op in PAIR_OR_IO_SHIFTS:
                     raise SelectError(f"xct of `{op}` changes IO: write xct(w, hi, lo)")
                 items.append(W("xct", "EX-XCT", ir.Lit(w), via=_via_operand(w)))
             case ir.HomeLoad(pointer=p):
                 items += [ir.LabelDef(p.storage.sym),
                           W("xct", "HOMED-HOME", home_address(p), via=("EX-XCT",) + _via(p))]
-            case ir.Var(storage=ir.Slot(sym=sym, init=init)):
+            case ir.Var(storage=ir.HomedInsn(sym=sym, init=init)):
                 items += [ir.LabelDef(sym),
-                          W(None, "ST-SLOT", init, via=("EX-XCT",) + _via_operand(init),
+                          W(None, "ST-HOMED-INSN", init, via=("EX-XCT",) + _via_operand(init),
                             note="run in place")]
-        return items, State(frozenset(), st.io if x.lo is None else frozenset())
+        keeps_io = isinstance(x.insn, ir.Insn) and x.insn.op in AC_SHIFTS
+        return items, State(frozenset(), st.io if keeps_io else frozenset())
 
     @staticmethod
     def after_idx(t: ir.Var, st: State) -> State:

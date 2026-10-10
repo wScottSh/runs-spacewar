@@ -78,7 +78,7 @@ RULES: dict[str, str] = {
                 "names p's cell with the indirect bit (lac i, add i, dac i, dzm i, dio i, lio i, isp i, idx i)",
     "EX-XCT": "xct(w, a) / xct(w, hi, lo): the argument in AC (and IO), then w run: `xct (w` for a "
               "constant, `p, xct .` for *home(p), the word itself for a HOMED insn",
-    "ST-SLOT": "HOMED insn x: the instruction at its home, xct(x, ...), laid out there with its initial "
+    "ST-HOMED-INSN": "HOMED insn x: the instruction at its home, xct(x, ...), laid out there with its initial "
                "word; x = e stores the whole word (dac x)",
 }
 

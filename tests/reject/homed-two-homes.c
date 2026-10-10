@@ -1,4 +1,4 @@
-/* reject: defined twice (a HOMED pointer has one home) */
+/* reject: defined twice */
 /* A homed pointer is the address field of one instruction; two homes would
  * be two pointers. */
 

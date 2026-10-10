@@ -42,7 +42,7 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Emitted]:
                 items += datum_words(top)
             case ir.Space():
                 items += [ir.LabelDef(top.sym), ir.Reserve(top.size, check("ST-RESERVE"))]
-    homeless = [name for name, s in unit.objects.items() if isinstance(s, ir.Slot)
+    homeless = [name for name, s in unit.objects.items() if isinstance(s, ir.HomedInsn)
                 and not any(isinstance(i, ir.LabelDef) and i.name == s.sym for i in items)]
     if homeless:
         raise LayoutError(f"HOMED insn {', '.join(homeless)} has no home: run it with xct(x, ...)")
@@ -76,7 +76,7 @@ def attach_labels(items: list[ir.Item]) -> list[ir.Emitted]:
     for it in items:
         if isinstance(it, ir.LabelDef):
             if it.name in defined:
-                raise LayoutError(f"{it.name} is defined twice (a HOMED pointer has one home)")
+                raise LayoutError(f"{it.name} is defined twice (a HOMED object has one home)")
             defined.add(it.name)
             pending.append(it.name)
             continue

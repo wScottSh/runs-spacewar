@@ -27,6 +27,9 @@ flag   a program flag n (stf, clf, flag, I_STF, I_CLF, I_SZF) becomes n + 1:
        A sense switch n (`szs n0`) and a dpy intensity n (`dpy-i+n00`) are
        fields too, refused past 6 and 7.
 
+The flags c of `f | (word)c`, a function's address with flags above it,
+become c + 1, which sets an address bit: the edit is predicted refused.
+
 A constant inside a constant expression (`8192 - 1537`, `0400 - 010`)
 changes the expression's value: the prediction is the const rewrite of the
 folded value, worked out here by C's rules. An array offset (`ring + 8`)
@@ -338,6 +341,10 @@ def sites(ast: c_ast.FileAST, unit: ir.Unit) -> list[Site]:
             continue
         if isinstance(parent, (c_ast.Case, c_ast.ArrayDecl)):
             continue
+        if code_flags(node, ctx, unit):
+            old = dialect.to_word(token, node)
+            add(replace(const_site(index, node, old, old + 1), error="flags must lie above"))
+            continue
         if isinstance(parent, c_ast.BinaryOp) and parent.op == "+" and field == "right" and \
                 isinstance(parent.left, c_ast.ID) and parent.left.name in leaves.arrays:
             expr = top if top is not None else node
@@ -374,6 +381,16 @@ def sites(ast: c_ast.FileAST, unit: ir.Unit) -> list[Site]:
         new = dialect.to_word(-(token + 1) if negated else token + 1, node)
         add(const_site(index, node, old, new))
     return out
+
+
+def code_flags(node: c_ast.Node, ctx: dict, unit: ir.Unit) -> bool:
+    """The constant c of `f | (word)c`, the flags above a function's
+    address: c + 1 sets an address bit, which the rule refuses."""
+    chain = [n for n, _ in ctx.get("ancestors", ())]
+    return len(chain) >= 2 and isinstance(chain[-1], c_ast.Cast) and \
+        isinstance(chain[-2], c_ast.BinaryOp) and chain[-2].op == "|" and \
+        chain[-2].right is chain[-1] and isinstance(chain[-2].left, c_ast.ID) and \
+        chain[-2].left.name in unit.signatures
 
 
 def field_arg(parent, ctx: dict, field: str) -> tuple[str, bool, int] | None:
