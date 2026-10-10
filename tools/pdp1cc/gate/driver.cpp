@@ -9,11 +9,11 @@ static inline unsigned io_of(word) { return 0; }
 static inline unsigned io_of(dword r) { return r.lo.v; }
 
 template <class F>
-static auto result(F f) -> typename std::enable_if<!std::is_void<decltype(f())>::value, decltype(f())>::type {
+static auto pdp1_result(F f) -> typename std::enable_if<!std::is_void<decltype(f())>::value, decltype(f())>::type {
     return f();
 }
 template <class F>
-static auto result(F f) -> typename std::enable_if<std::is_void<decltype(f())>::value, word>::type {
+static auto pdp1_result(F f) -> typename std::enable_if<std::is_void<decltype(f())>::value, word>::type {
     f();
     return word::bits(0);
 }
@@ -25,7 +25,7 @@ int main() {
         pdp1_sense_switches = sense;
         pdp1_plotted.clear();
         SETUP
-        auto r = result([&] { return CALL; });
+        auto r = pdp1_result([&] { return CALL; });
         std::printf("%06o %06o %o", ac_of(r), io_of(r), INLINE_WORDS + pdp1_skips);
         WATCH
         std::printf(" ;");
