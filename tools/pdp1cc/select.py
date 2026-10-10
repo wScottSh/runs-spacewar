@@ -19,7 +19,7 @@ MAX_PASSES = 20
 # these, and that leaves only through its own exit, preserves IO for its callers.
 IO_WRITERS = {"lio", "cli", "tyi", "rcl", "rcr", "scl", "scr", "ril", "rir", "sil", "sir",
               "mus", "dis", "jsp", "jda", "xct"}
-LEAVES_ELSEWHERE = {"TAIL-CALL", "TAIL-CALL-INDIRECT", "JSP-FORWARD", "RET-INDIRECT"}
+LEAVES_ELSEWHERE = {check(r) for r in ("TAIL-CALL", "TAIL-CALL-INDIRECT", "JSP-FORWARD", "RET-INDIRECT")}
 # Operate-group instructions a comma expression may join into one word, and
 # what each writes. Parts that write different things do not depend on the
 # order the hardware applies them in, so the word means the comma expression.
