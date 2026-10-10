@@ -4,7 +4,7 @@
  * tail; the 7 code ends the outline. Five spare words after each outline
  * leave room to make it longer. */
 
-word needle_outline[8] SYM("ot1") = {       /* spaceship 1, the needle */
+word needle_outline[8] = {       /* ot1: spaceship 1, the needle */
     0111131,
     0111111,
     0111111,
@@ -16,7 +16,7 @@ word needle_outline[8] SYM("ot1") = {       /* spaceship 1, the needle */
 };
 RESERVE word needle_spare[5];
 
-word wedge_outline[8] SYM("ot2") = {        /* spaceship 2, the wedge */
+word wedge_outline[8] = {        /* ot2: spaceship 2, the wedge */
     0013113,
     0113111,
     0116313,

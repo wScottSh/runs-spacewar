@@ -19,8 +19,8 @@ RESERVE resume_point *break_pc;
 RESERVE word break_io;
 
 BLOCK void flush_sequence_break(void);
-BLOCK SYM("a40") void start_with_control_boxes(void);
-BLOCK SYM("a1") void start_with_test_word(void);
+BLOCK void start_with_control_boxes(void);
+BLOCK void start_with_test_word(void);
 
 /* ---------------------------------------------------------- start vectors */
 
@@ -29,7 +29,7 @@ BLOCK void sequence_break(void)         /* 3: ignore a sequence break */
     return flush_sequence_break();
 }
 
-BLOCK void start(void)                  /* 4: the usual start address */
+START BLOCK void start(void)            /* 4: the usual start address, where the tape starts */
 {
     return start_with_control_boxes();
 }
@@ -41,83 +41,83 @@ BLOCK void start_test_word(void)        /* 5: read the test word switches, not t
 
 /* ------------------------------------- interesting and often changed constants */
 
-XCT SYM("tno") word torpedo_supply(void)         /* 6: number of torpedoes + 1, negated */
+XCT word torpedo_supply(void)         /* tno: 6: number of torpedoes + 1, negated */
 {
     return -041;
 }
 
-XCT SYM("tvl") word torpedo_velocity(word v)     /* 7 */
+XCT word torpedo_velocity(word v)     /* tvl: 7 */
 {
     return v >> 4;
 }
 
-XCT SYM("rlt") word torpedo_reload_time(void)    /* 10 */
+XCT word torpedo_reload_time(void)    /* rlt: 10 */
 {
     return -020;
 }
 
-XCT SYM("tlf") word torpedo_life(void)           /* 11 */
+XCT word torpedo_life(void)           /* tlf: 11 */
 {
     return -0140;
 }
 
-word fuel_supply SYM("foo") = -020000;           /* 12 */
-word angular_acceleration SYM("maa") = 010;      /* 13: spaceship angular acceleration */
+word fuel_supply = -020000;           /* foo: 12 */
+word angular_acceleration = 010;      /* maa: 13: spaceship angular acceleration */
 
-XCT SYM("sac") word spaceship_acceleration(word v)   /* 14 */
+XCT word spaceship_acceleration(word v)   /* sac: 14 */
 {
     return v >> 4;
 }
 
-word star_capture_radius SYM("str") = 1;         /* 15 */
-word collision_radius SYM("me1") = 06000;        /* 16 */
-word collision_radius_half SYM("me2") = 03000;   /* 17 */
+word star_capture_radius = 1;         /* str: 15 */
+word collision_radius = 06000;        /* me1: 16 */
+word collision_radius_half = 03000;   /* me2: 17 */
 
 /* 20: -0 compiles an outline for each ship; 0 shares one outline and
  * leaves room for ddt. */
-word separate_outlines SYM("ddd") = MINUS_ZERO;
+word separate_outlines = MINUS_ZERO;  /* ddd */
 
-XCT SYM("the") word torpedo_space_warpage(word v)    /* 21 */
+XCT word torpedo_space_warpage(word v)    /* the: 21 */
 {
     return v >> 9;
 }
 
-XCT SYM("mhs") word hyperspace_shots(void)       /* 22: number of hyperspace jumps, negated */
+XCT word hyperspace_shots(void)       /* mhs: 22: number of hyperspace jumps, negated */
 {
     return -010;
 }
 
-XCT SYM("hd1") word time_before_breakout(void)   /* 23: time in hyperspace before breakout */
+XCT word time_before_breakout(void)   /* hd1: 23: time in hyperspace before breakout */
 {
     return -040;
 }
 
-XCT SYM("hd2") word breakout_time(void)          /* 24: time in hyperspace breakout */
+XCT word breakout_time(void)          /* hd2: 24: time in hyperspace breakout */
 {
     return -0100;
 }
 
-XCT SYM("hd3") word hyperfield_recharge_time(void)   /* 25: time to recharge the hyperfield generators */
+XCT word hyperfield_recharge_time(void)   /* hd3: 25: time to recharge the hyperfield generators */
 {
     return -0200;
 }
 
 /* 26: scale on the hyperspatial displacement of a random AC:IO pair */
-XCT SYM("hr1") dword hyperspatial_displacement(word hi, register word lo)
+XCT dword hyperspatial_displacement(word hi, register word lo)  /* hr1 */
 {
     scl(hi, lo, 9);
     return (dword){ hi, lo };
 }
 
 /* 27: scale on the hyperspatially induced velocity */
-XCT SYM("hr2") dword hyperspatial_velocity(word hi, register word lo)
+XCT dword hyperspatial_velocity(word hi, register word lo)  /* hr2 */
 {
     scl(hi, lo, 4);
     return (dword){ hi, lo };
 }
 
-word hyperspatial_uncertainty SYM("hur") = 040000;   /* 30 */
-word random_number SYM("ran") = 0;               /* 31: state of the random number generator */
+word hyperspatial_uncertainty = 040000;   /* hur: 30 */
+word random_number = 0;               /* ran: 31: state of the random number generator */
 
 /* ------------------------------------------------- control word routine
  * A place to build a private control word routine, entered by `jsp cwg`.
@@ -126,11 +126,11 @@ word random_number SYM("ran") = 0;               /* 31: state of the random numb
  * ship, and the same in the low 4 bits for the other. Normally it reads the
  * control boxes. */
 
-JSP SYM("mg1") io_word read_control_boxes(register word io);
+JSP io_word read_control_boxes(void);
 
-AT(040) JSP SYM("cwr") io_word control_word_routine(register word io)
+AT(040) JSP io_word control_word_routine(void)  /* cwr */
 {
-    return read_control_boxes(io);
+    return read_control_boxes();
 }
 
 RESERVE word control_word_space[020];

@@ -20,7 +20,7 @@ the check cuts the routine at that jump and runs the two halves apart:
 
 The control word comes from `jsp i \\cwg`: in SIMH cwg names a three-word
 routine in free core that loads a deposited word into IO; natively
-get_control_word points to a function returning it.
+control_word_getter points to a function returning it.
 
 Each call sets up a ship's slot (0 or 1) the same way on both sides: every
 cursor on that slot, the slot's words, every object's routine word (some
@@ -37,8 +37,8 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from oracle_check import ROOT, built_symbols, lifted_units, oracle_symbols
-from pdp1cc import ir, splice
+from oracle_check import ROOT, built_listing, built_symbols, lifted_units, oracle_symbols
+from pdp1cc import ir, program
 from pdp1cc.gate import corpus, reference, simh
 from pdp1cc.gate.simh import Inputs
 
@@ -154,8 +154,8 @@ def native(routine: Routine, unit: ir.Unit, address: dict[str, int], placed, sta
     launch = "".join(f"    {name} = object_table;\n" for name in LAUNCH_POINTERS)
     scratch = (f"word object_table[0{size:o}];\n" + cursors
                + "static word pdp1_control;\n"
-               + "static dword pdp1_controls() { return dword{word(), pdp1_control}; }\n"
-               + "control_word_getter *get_control_word;\n"
+               + "static word pdp1_controls() { return pdp1_control; }\n"
+               + "control_word_reader *control_word_getter;\n"
                + "static int pdp1_outline_entered;\n"
                + "static void pdp1_outline() { pdp1_outline_entered = 1; }\n"
                + f"static const unsigned pdp1_states[][4] = {{\n{rows}\n}};\n"
@@ -168,7 +168,7 @@ def native(routine: Routine, unit: ir.Unit, address: dict[str, int], placed, sta
                + "        object_table[pdp1_sets[pdp1_next_set][0]] = word::bits(pdp1_sets[pdp1_next_set][1]);\n"
                + points + "\n" + launch
                + "    random_number = word::bits(s[1]);\n    pdp1_control = word::bits(s[2]);\n"
-               + "    get_control_word = pdp1_controls;\n    draw_outline = pdp1_outline;\n"
+               + "    control_word_getter = pdp1_controls;\n    draw_outline = pdp1_outline;\n"
                + "    pdp1_outline_entered = 0;\n"
                + (pool if routine.random_pool else "") + "}\n")
     placed = placed + [reference.Placement("object_table", size, address["mtb"])]
@@ -228,7 +228,7 @@ def paths(routine: Routine, states: list[State], want, address: dict[str, int], 
         words = dict(zip(watch_names, w.watched))
         if routine.op == "jsp":
             seen["into the outline" if w.returned_past == 1 else "into the star"] += 1
-            if words["gravity_x"] or words["gravity_y"]:
+            if words["star_vector_x"] or words["star_vector_y"]:
                 seen["pulled by gravity"] += 1
             if words["program flags"] & 1:
                 seen["thrusting"] += 1
@@ -252,15 +252,15 @@ def main(calls_per_routine: int = CALLS) -> int:
     units = lifted_units(LIFT)
     unit = units[SPACESHIP]
     placed = [p for u in units.values() for p in reference.placements(u, address)]
-    display = corpus.display_words(ROOT / "build/lift/spliced.lst")
-    words, _ = splice.listing(ROOT / "build/lift/spliced.lst")
+    display = corpus.display_words(built_listing())
+    words, _ = program.listing(built_listing())
     image = {a: int(w, 8) for a, (w, _) in words.items()}
     mtb, size = address["mtb"], address["nnn"] - address["mtb"]
     offsets = {first: address[first] - mtb for first, *_ in PROPERTIES}
 
     cursor_names = {name for *_, name, _ in PROPERTIES}
     pool = [(name, s.sym) for name, s in unit.objects.items() if isinstance(s, ir.Pool)
-            and s.sym in address and name not in cursor_names and name != "get_control_word"]
+            and s.sym in address and name not in cursor_names and name != "control_word_getter"]
     watch = [(f"table {k:03o}", mtb + k, f"object_table[0{k:o}]") for k in range(size)]
     watch += [("ran", address["ran"], "random_number")]
     watch += [(name, address[sym], name) for name, sym in pool]

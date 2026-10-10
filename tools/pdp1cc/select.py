@@ -259,6 +259,14 @@ class FunctionLowerer:
         if skipping != fn.sig.skips:
             raise SelectError(f"{fn.sig.name}: declare it SKIPS exactly when it calls skip_return() "
                               "or tail-calls a SKIPS BLOCK, so its callers lay out the word it skips")
+        tail_values = {id(t.value) for t in tails}
+        nested = [n for n in inline.iter_nodes(fn.body)
+                  if isinstance(n, ir.Call) and n.sig.skips and id(n) not in tail_values]
+        if fn.sig.skips and nested:
+            raise SelectError(f"{fn.sig.name}: a SKIPS function cannot call the SKIPS function "
+                              f"{nested[0].sig.name} except as its tail call: the word that call skips "
+                              "is in this function, and the reference build counts every skip "
+                              "toward the function's own return")
         jumps = [r for r in _returns(fn.body) if isinstance(r.value, ir.IndirectCall)]
         plain = [r for r in _returns(fn.body) if r not in tails and r not in jumps]
         if tails:
@@ -731,6 +739,10 @@ class FunctionLowerer:
                 return items, State(st.ac - {kt}, frozenset({kt}))
             case ir.ComputedCall() if value.sig.returns == "io":
                 items, st = self.computed_call(value, st)
+                return items, State(st.ac - {kt}, frozenset({kt}))
+            case ir.IndirectCall(pointer=p, sig=sig, home=False) if sig.returns == "io" and \
+                    sig.conv is ir.Conv.JSP and isinstance(p.storage, ir.Memory):
+                items, st = self.indirect_call(value, st)
                 return items, State(st.ac - {kt}, frozenset({kt}))
             case ir.Rot(op=op, operand=v) if op in ir.IO_ROTATES:
                 if v != t:

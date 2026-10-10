@@ -1,5 +1,5 @@
 """Frame-level reference check of the whole game: SIMH running the ORACLE
-image against SIMH running the SPLICED image (the one `pdp1cc build` makes
+image against SIMH running the BUILT image (the one `pdp1cc build` makes
 from the lifted C), in lockstep, for many frames of scripted matches.
 
 What it proves, and what it does not:
@@ -12,7 +12,7 @@ What it proves, and what it does not:
   native reference checks (tools/check-*-reference.py) cover that for the
   pure routines.
 - When the build does not match, the first differing stop shows where the
-  spliced image goes wrong under play.
+  built image goes wrong under play.
 
 Each scenario pins the start address (5: the test word is the control
 word; 4: the control boxes, which headless SIMH reads as 0), the sense
@@ -25,7 +25,7 @@ object table, scores, game count, restart delay, spare-time counter,
 random number, AC, IO and program flags are compared. Every address comes
 from the oracle's listing.
 
-Coverage is taken on the spliced machine only. SIMH breakpoints see
+Coverage is taken on the built machine only. SIMH breakpoints see
 fetches by PC, not words run by xct, so:
 - each lifted code word gets a breakpoint that removes itself on its first
   hit;
@@ -46,7 +46,7 @@ initialized word, a JDA entry word that holds the argument, an entry
 cell, reserved space, a pool variable) or it is a literal listed under a
 compiled line, and no run executed it. Every other lifted word is code.
 
-The build runs in a private copy of lift.toml, lift/ and the source, so a
+The build runs in a private copy of lift.toml and lift/, so a
 concurrent rebuild of build/lift does not disturb the check.
 
 Usage: uv run python tools/check-main-loop-frames.py [--frames N] [--jobs N]"""
@@ -69,8 +69,7 @@ from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pdp1cc import splice
-from pdp1cc.cli import compile_regions
+from pdp1cc import emit, ir, program
 from pdp1cc.rules import RULES
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -154,7 +153,7 @@ class Scenario:
 
 @dataclass(frozen=True)
 class Watch:
-    """The coverage breakpoints of the spliced machine."""
+    """The coverage breakpoints of the built machine."""
     code: tuple[int, ...]                 # removed on first hit
     data: tuple[int, ...]                 # removed on first hit, or after DATA_STOPS stops
     probes: dict[int, int]                # kept: breakpoint -> the xct cell it examines
@@ -228,38 +227,33 @@ def read_listing(path: Path) -> dict[int, Word]:
 
 
 def image(rim: Path, lst: Path) -> Image:
-    return Image(rim, splice.symbols(lst.read_text(errors="replace")), read_listing(lst))
+    return Image(rim, program.symbols(lst.read_text(errors="replace")), read_listing(lst))
 
 
 def build(work: Path) -> tuple[Image, list[tuple[str, int, int]], str]:
-    """Splices and assembles the current lift/ in a private copy. Returns the
-    spliced image, each region chunk's line span in spliced.mac, and the
-    build's verdict."""
-    cfg, _ = splice.load(ROOT / "lift.toml")
+    """Builds the current lift/ in a private copy. Returns the built image,
+    each lifted file's line span in the assembled program, and the build's
+    verdict."""
+    cfg, _ = program.load(ROOT / "lift.toml")
     shutil.copy(ROOT / "lift.toml", work / "lift.toml")
     shutil.copytree(ROOT / "lift", work / "lift")
-    for rel in (cfg["source"], cfg["macro1"]):
-        (work / rel).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ROOT / rel, work / rel)
+    (work / cfg["macro1"]).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ROOT / cfg["macro1"], work / cfg["macro1"])
     log = io.StringIO()
     with contextlib.redirect_stdout(log):
-        status = splice.build(work / "lift.toml")
-    out = work / "build/lift"
-    if not (out / "spliced.lst").exists() or not (out / "spliced.rim").exists():
+        status = program.build(work / "lift.toml")
+    rim, lst = program.output(work / "lift.toml", ".rim"), program.output(work / "lift.toml", ".lst")
+    if not lst.exists() or not rim.exists():
         raise SystemExit("pdp1cc build failed:\n" + log.getvalue())
-    cfg, regions = splice.load(work / "lift.toml")
-    dropped = splice.dropped(cfg)
-    chunks = sorted([(span, r.name, len(part)) for r in regions
-                     for span, part in zip(r.ranges, compile_regions(r.c, r.prefix))]
-                    + [(span, "", 0) for span in dropped])
-    spans, shift = [], 0
-    for (a, b), name, n in chunks:
-        if name:
-            spans.append((name, a + shift, a + shift + n - 1))
-        shift += n - (b - a + 1)
-    sha = hashlib.sha256((out / "spliced.rim").read_bytes()).hexdigest()
+    _, files = program.load(work / "lift.toml")
+    spans, line = [], 2                     # line 1 is the title
+    for c in program.compile_units(files):
+        n = emit.emit([w for w in c.words if not isinstance(w, ir.StartAddress)]).count("\n")
+        spans.append((c.file.c.stem, line, line + n - 1))
+        line += n
+    sha = hashlib.sha256(rim.read_bytes()).hexdigest()
     verdict = "MATCH" if status == 0 and sha == cfg["oracle_sha256"] else f"MISMATCH (rim {sha[:16]})"
-    return image(out / "spliced.rim", out / "spliced.lst"), spans, verdict
+    return image(rim, lst), spans, verdict
 
 
 def lifted_words(img: Image, spans: list[tuple[str, int, int]]) -> dict[int, Lifted]:
@@ -418,7 +412,7 @@ class Controls:
         return nibbles[0] << SHIP1_SHIFT | nibbles[1] | p.play[self.frames // p.period % len(p.play)]
 
 
-def run_scenario(scenario: Scenario, oracle: Image, spliced: Image, watch: Watch, stops: int) -> Result:
+def run_scenario(scenario: Scenario, oracle: Image, built: Image, watch: Watch, stops: int) -> Result:
     result = Result(scenario.name)
     symbols = oracle.symbols
     seam = symbols["ml0"]
@@ -427,7 +421,7 @@ def run_scenario(scenario: Scenario, oracle: Image, spliced: Image, watch: Watch
               f"break {seam:o}"]
     coverage = [f"break {a:o};ex {cell:o};cont" for a, cell in watch.probes.items()]
     coverage += [f"break {a:o};nobreak {a:o};cont" for a in watch.code + watch.data]
-    machines = [Machine(oracle.rim, common), Machine(spliced.rim, common + coverage)]
+    machines = [Machine(oracle.rim, common), Machine(built.rim, common + coverage)]
     controls = Controls(scenario.policy, scenario.seed)
     snapshot = snapshot_command(symbols)
     try:
@@ -445,8 +439,8 @@ def run_scenario(scenario: Scenario, oracle: Image, spliced: Image, watch: Watch
             values = [snapshot_values(m.read()) for m in machines]
             if want != got or values[0] != values[1]:
                 k = next((k for k, (a, b) in enumerate(zip(*values)) if a != b), None)
-                where = (f"{describe(symbols, k)} oracle {values[0][k]} spliced {values[1][k]}"
-                         if k is not None else f"oracle {want}, spliced {got}")
+                where = (f"{describe(symbols, k)} oracle {values[0][k]} built {values[1][k]}"
+                         if k is not None else f"oracle {want}, built {got}")
                 result.difference = f"stop {result.stops}: {where}"
                 break
             if got.kind == "frame":
@@ -455,7 +449,7 @@ def run_scenario(scenario: Scenario, oracle: Image, spliced: Image, watch: Watch
                 result.halts += 1
                 repeats = repeats + 1 if got.pc == last_halt else 0
                 last_halt = got.pc
-                after = spliced.words.get(got.pc + 1)
+                after = built.words.get(got.pc + 1)
                 if repeats and after is not None and after.value == JMP | got.pc:
                     result.executed.add(got.pc + 1)     # `hlt / jmp .-1`: cont ran the jump back
                 if repeats >= REPEATED_HALTS:
@@ -492,15 +486,15 @@ def main() -> int:
     parser.add_argument("--unexecuted", type=int, default=40, help="unexecuted code words to list")
     args = parser.parse_args()
     began = time.time()
-    cfg, _ = splice.load(ROOT / "lift.toml")
+    cfg, _ = program.load(ROOT / "lift.toml")
     oracle = image(ORACLE_RIM, ROOT / cfg["oracle_listing"])
     with tempfile.TemporaryDirectory(prefix="check-main-loop-") as tmp:
-        spliced, spans, verdict = build(Path(tmp))
-        lifted = lifted_words(spliced, spans)
-        watch = plan(spliced, lifted, oracle.symbols["ml0"])
+        built, spans, verdict = build(Path(tmp))
+        lifted = lifted_words(built, spans)
+        watch = plan(built, lifted, oracle.symbols["ml0"])
         n = len(SCENARIOS)
         with ProcessPoolExecutor(args.jobs) as pool:
-            results = list(pool.map(run_scenario, SCENARIOS, [oracle] * n, [spliced] * n,
+            results = list(pool.map(run_scenario, SCENARIOS, [oracle] * n, [built] * n,
                                     [watch] * n, [args.frames] * n))
 
     executed = set().union(*(r.executed for r in results))
@@ -510,7 +504,7 @@ def main() -> int:
     print(f"build: {verdict}; lifted words: {len(lifted)}, {len(code)} code "
           f"(incl. {len(data_ran)} data words that ran), {len(lifted) - len(code)} data")
     if data_ran:
-        print("  data words that ran: " + ", ".join(f"{a:05o} {nearest_label(spliced, a)}" for a in data_ran))
+        print("  data words that ran: " + ", ".join(f"{a:05o} {nearest_label(built, a)}" for a in data_ran))
     diffs = [r for r in results if r.difference]
     print(f"scenarios: {len(results)}; stops compared: {sum(r.stops for r in results)} "
           f"({sum(r.halts for r in results)} halts); differences: {len(diffs)}")
@@ -530,7 +524,7 @@ def main() -> int:
     print(f"unexecuted lifted code words: {len(missed)}{shown}")
     for a in missed[:args.unexecuted]:
         w = code[a]
-        print(f"  {a:05o} {w.region:<10} {nearest_label(spliced, a):<10} {w.word.text}")
+        print(f"  {a:05o} {w.region:<10} {nearest_label(built, a):<10} {w.word.text}")
     for note in sorted(notes):
         print(f"note: {note}")
     print(f"runtime: {time.time() - began:.1f}s")

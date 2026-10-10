@@ -25,27 +25,27 @@
 /* The ship being drawn, as the spaceship calc routine leaves it for the
  * compiled outline: its position in dpy coordinates (the pen starts there
  * and ends at the tail) and the steps rotated to the ship's heading. */
-POOL word ship_x SYM("sx1");
-POOL word ship_y SYM("sy1");
-POOL word sine_step SYM("ssn");         /* down: x += sin */
-POOL word cosine_step SYM("scn");       /* down: y -= cos */
-POOL word out_x SYM("scm");             /* out: x +=, in: x -= */
-POOL word out_y SYM("ssm");             /* out: y +=, in: y -= */
-POOL word out_down_x SYM("ssc");
-POOL word out_down_y SYM("csm");        /* subtracted */
-POOL word in_down_x SYM("csn");
-POOL word in_down_y SYM("ssd");         /* subtracted */
+POOL word ship_x;  /* sx1 */
+POOL word ship_y;  /* sy1 */
+POOL word sine_step;         /* ssn: down: x += sin */
+POOL word cosine_step;       /* scn: down: y -= cos */
+POOL word out_x;             /* scm: out: x +=, in: x -= */
+POOL word out_y;             /* ssm: out: y +=, in: y -= */
+POOL word out_down_x;  /* ssc */
+POOL word out_down_y;        /* csm: subtracted */
+POOL word in_down_x;  /* csn */
+POOL word in_down_y;         /* ssd: subtracted */
 POOL word saved_x;                      /* the position code 6 stores */
 POOL word saved_y;
 
 /* Where the compiled outline returns to, in the spaceship calc routine. */
-BLOCK SYM("sq6") void outline_drawn(void);
+BLOCK void outline_drawn(void);
 
 POOL word codes_left;                   /* codes still to read in this outline word */
 POOL word codes_rest;                   /* the outline word, rotated past the codes read */
 HOMED const word *outline_word;         /* the outline word being read */
 
-JDA SYM("oc") word *outline_compiler(word *code, INLINE const word *outline);
+JDA word *outline_compiler(word *code, INLINE const word *outline);
 
 ENTRY_CELL(outline_compiler) word *code;    /* oc's entry word: where the next word goes */
 
@@ -62,7 +62,7 @@ JSP void compile_twice(register insn half)
     *code++ = half;
 }
 
-JDA SYM("oc") word *outline_compiler(word *code, INLINE const word *outline)
+JDA word *outline_compiler(word *code, INLINE const word *outline)  /* oc */
 {
     register word bits;
     register insn swap_half;

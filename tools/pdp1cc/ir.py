@@ -485,17 +485,12 @@ class Space:            # RESERVE object: words set aside here, not punched
 
 
 @dataclass(frozen=True)
-class RegionBreak:
-    at: None = None
-
-
-@dataclass(frozen=True)
 class Directive:        # CONSTANTS() / VARIABLES(): where macro1 places the literal or pool words
     name: str
     at: None = None
 
 
-TopItem = Union[Function, Datum, Space, RegionBreak, Directive]
+TopItem = Union[Function, Datum, Space, Directive]
 
 
 @dataclass(frozen=True)
@@ -506,6 +501,8 @@ class Unit:
     objects: dict[str, Storage]     # file-scope objects by C name
     data: dict[str, Datum] = None   # every initialized word or array, by C name, wherever placed
     inlines: dict[str, Function] = None
+    start: str | None = None        # the START function's symbol: where the tape starts the program
+    pointers: dict[str, Signature] = None   # objects that point to a function type: that type
 
     def words(self, name: str) -> int:
         """Words a file-scope object spans."""
@@ -601,16 +598,18 @@ class Reserve:
 
 
 @dataclass(frozen=True)
-class Break:
-    labels: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
 class PoolPlacement:    # `constants` / `variables`: macro1 lays the literal or pool words out here
     name: str
     rule: str
     via: tuple[str, ...] = ()
 
 
-Item = Union[Word, LabelDef, Origin, Reserve, Break, PoolPlacement]
-Emitted = Union[Word, Origin, Reserve, Break, PoolPlacement]
+@dataclass(frozen=True)
+class StartAddress:     # `start f`: the tape ends with a jump to f, where the machine starts the program
+    sym: str
+    rule: str
+    via: tuple[str, ...] = ()
+
+
+Item = Union[Word, LabelDef, Origin, Reserve, PoolPlacement, StartAddress]
+Emitted = Union[Word, Origin, Reserve, PoolPlacement, StartAddress]

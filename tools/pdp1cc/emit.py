@@ -3,9 +3,6 @@ from __future__ import annotations
 
 from . import ir
 
-BREAK = "/ region break"
-
-
 def operand_text(o: ir.Operand) -> str:
     match o:
         case ir.Sym(name=n, pool=pool, offset=off):
@@ -37,11 +34,13 @@ def word_text(w: ir.Word) -> str:
     return " ".join(parts)
 
 
-def line_text(w: ir.Word | ir.Origin | ir.Reserve | ir.PoolPlacement, trace: bool = True) -> str:
+def line_text(w: ir.Emitted, trace: bool = True) -> str:
     if isinstance(w, ir.Origin):
         line = f"{w.n:o}/"
     elif isinstance(w, ir.PoolPlacement):
         line = f"\t{w.name}"
+    elif isinstance(w, ir.StartAddress):
+        line = f"\tstart {w.sym}"
     else:
         label = "".join(f"{lab}, " for lab in w.labels)[:-1]
         line = f"{label}\t" + (f". {w.n:o}/" if isinstance(w, ir.Reserve) else word_text(w))
@@ -51,17 +50,21 @@ def line_text(w: ir.Word | ir.Origin | ir.Reserve | ir.PoolPlacement, trace: boo
     return line
 
 
-def regions(words: list[ir.Emitted], trace: bool = True) -> list[list[str]]:
-    out: list[list[str]] = [[]]
-    for w in words:
-        if isinstance(w, ir.Break):
-            out.append([])
-        else:
-            out[-1].append(line_text(w, trace))
-    return out
-
-
 def emit(words: list[ir.Emitted], trace: bool = True) -> str:
-    lines = [line for n, region in enumerate(regions(words, trace))
-             for line in ([BREAK] if n else []) + region]
-    return "\n".join(lines) + "\n"
+    return "".join(line_text(w, trace) + "\n" for w in words)
+
+
+def program(title: str, units: list[list[ir.Emitted]], trace: bool = True,
+            tail: str = "", default_start: int | None = None) -> str:
+    """One Macro program: macro1 reads the first line as the title, then the
+    units in order, then tail. The program ends with its start address: the
+    `start` of the unit with a START function, else default_start. macro1
+    ends a tape at `start`, so it comes last."""
+    starts = [w for words in units for w in words if isinstance(w, ir.StartAddress)]
+    if len(starts) > 1:
+        raise ValueError(f"a program starts at one START function: {[s.sym for s in starts]}")
+    body = "".join(emit([w for w in words if not isinstance(w, ir.StartAddress)], trace)
+                   for words in units)
+    end = emit(starts, trace) if starts else \
+        f"\tstart {default_start:o}\n" if default_start is not None else ""
+    return f"{title}\n{body}{tail}{end}"

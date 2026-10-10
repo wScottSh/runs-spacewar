@@ -4,9 +4,9 @@
  * multiply returns the product's 34 bits and two signs in AC:IO;
  * integer_multiply returns its low 17 bits and sign in AC. */
 
-JDA SYM("mpy") dword multiply(word a, BYNAME word b);
+JDA dword multiply(word a, BYNAME word b);
 
-JDA SYM("imp") word integer_multiply(word a, BYNAME word b)
+JDA word integer_multiply(word a, BYNAME word b)  /* imp */
 {
     dword p = multiply(b, a);       /* b is fetched first; a goes by name */
     p.lo = rir(p.lo, 1);            /* the low half's sign, bit 17, back to bit 0 */
@@ -15,7 +15,7 @@ JDA SYM("imp") word integer_multiply(word a, BYNAME word b)
 
 word partial = 0;                   /* mp2: |b|, then the product's high half */
 
-JDA SYM("mpy") dword multiply(word a, BYNAME word b)
+JDA dword multiply(word a, BYNAME word b)  /* mpy */
 {
     word h = a;
     if (h < 0)

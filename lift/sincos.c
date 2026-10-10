@@ -17,23 +17,23 @@
 #define C5          0121312
 #define C7          -021674
 
-JDA SYM("mpy") dword multiply(word a, BYNAME word b);
+JDA dword multiply(word a, BYNAME word b);
 
-JDA SYM("cos") word cosine(word angle);
-JDA SYM("sin") word sine(word angle);
+JDA word cosine(word angle);
+JDA word sine(word angle);
 BLOCK word sine_series(word a);
 
 ENTRY_CELL(sine) word x;            /* sin's entry word: the scaled angle */
 ENTRY_CELL(cosine) word x_squared;  /* cos's entry word: x^2 ... */
 ENTRY_CELL(cosine) word result;     /* ... then the answer */
 
-JDA SYM("cos") word cosine(word angle)
+JDA word cosine(word angle)  /* cos */
 {
     x = HALF_PI + angle;            /* cos a = sin(a + pi/2) */
     return sine_series(x);
 }
 
-JDA SYM("sin") word sine(word angle)
+JDA word sine(word angle)  /* sin */
 {
     return sine_series(angle);
 }

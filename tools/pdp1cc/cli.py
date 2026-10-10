@@ -14,10 +14,6 @@ def compile_file(path: Path, label_prefix: str = "z", trace: bool = True) -> str
     return emit.emit(lay_out(front.parse(path), label_prefix), trace)
 
 
-def compile_regions(path: Path, label_prefix: str) -> list[list[str]]:
-    return emit.regions(lay_out(front.parse(path), label_prefix))
-
-
 def lay_out(ast, label_prefix: str) -> list[ir.Emitted]:
     return layout.place(dialect.lower_unit(ast, label_prefix), label_prefix)
 
@@ -29,7 +25,7 @@ def main(argv: list[str] | None = None) -> int:
     lo.add_argument("file", type=Path)
     lo.add_argument("--prefix", default="z", help="generated-label prefix")
     lo.add_argument("--no-trace", action="store_true")
-    bu = sub.add_parser("build", help="splice lifted regions, assemble, compare sha256")
+    bu = sub.add_parser("build", help="compile lift.toml's files into one program, assemble, compare sha256")
     bu.add_argument("toml", type=Path, nargs="?", default=Path("lift.toml"))
     ga = sub.add_parser("gate", help="G2: run the corpus in SIMH against the reference build")
     ga.add_argument("--corpus", type=Path, default=Path("tests/corpus"))
@@ -47,21 +43,20 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{args.file}: error: {e}", file=sys.stderr)
             return 1
         return 0
-    from . import splice
+    from . import program
     if args.cmd == "build":
-        return splice.build(args.toml)
+        return program.build(args.toml)
     from .gate import corpus, hints, predict, reject
-    _, regions = splice.load(args.lift.resolve())
+    _, files = program.load(args.lift.resolve())
+    lifted = [f.c for f in files]
     print("G2 corpus: SIMH against the native reference build")
-    failed = corpus.gate(args.corpus, [r.c for r in regions], args.simh.resolve(),
+    failed = corpus.gate(args.corpus, lifted, args.simh.resolve(),
                          args.macro1.resolve(), args.work.resolve())
     print("rejects: programs the dialect must refuse")
     failed |= reject.gate(args.reject)
-    lifted = [r.c for r in regions]
     corpus_files = sorted(args.corpus.glob("*.c"))
-    print("G5 hints: deleting any hint must change the output; a SYM must pin a symbol "
-          "unlifted text names")
-    failed |= hints.gate(lifted + corpus_files, splice.unlifted_text(args.lift.resolve()))
+    print("G5 hints: deleting any hint must change the output")
+    failed |= hints.gate(lifted + corpus_files)
     print("G6 prediction edits: each edit changes exactly the words the rules predict")
     failed |= predict.gate(lifted + corpus_files)
     print("gate " + ("FAILED" if failed else "ok"))

@@ -12,12 +12,12 @@
 #include "random.h"
 #include "inertia.h"
 
-extern word hyperspatial_uncertainty SYM("hur");
-XCT SYM("the") word torpedo_space_warpage(word v);
-XCT SYM("hd2") word breakout_time(void);
-XCT SYM("hd3") word hyperfield_recharge_time(void);
-XCT SYM("hr1") dword hyperspatial_displacement(word hi, register word lo);
-XCT SYM("hr2") dword hyperspatial_velocity(word hi, register word lo);
+extern word hyperspatial_uncertainty;
+XCT word torpedo_space_warpage(word v);
+XCT word breakout_time(void);
+XCT word hyperfield_recharge_time(void);
+XCT dword hyperspatial_displacement(word hi, register word lo);
+XCT dword hyperspatial_velocity(word hi, register word lo);
 
 #define TWO_PI 0311040              /* an angle's full turn */
 
@@ -35,7 +35,7 @@ extern shift spread_scales[2];
 /* An exploding object keeps drifting and is drawn as a cloud of dots, one
  * per 8 instructions of its calc routine's time, for as many frames as its
  * counter has left; then its slot is freed. */
-JSP SYM("mex") void explosion(void)
+JSP void explosion(void)  /* mex */
 {
     word count;
     dword spot;
@@ -76,7 +76,7 @@ shift spread_scales[2] = { I_SCR(1), I_SCR(3) };
 /* A torpedo flies straight, bent only by the torpedo space warpage (each
  * velocity takes a little of the other axis's position), until its life
  * runs out and it explodes. */
-JSP SYM("tcr") void torpedo(void)
+JSP void torpedo(void)  /* tcr */
 {
     word a;
 
@@ -104,7 +104,7 @@ POOL word angle_steps;              /* passes left to bring the new heading with
  * up it jumps by a random displacement, takes a random velocity and
  * heading, and breakout begins. IO holds whatever the main loop left
  * there; shifting a random number in pushes it out. */
-JSP SYM("hp1") void in_hyperspace(register word io)
+JSP void in_hyperspace(register word io)  /* hp1 */
 {
     word r;
     dword d;

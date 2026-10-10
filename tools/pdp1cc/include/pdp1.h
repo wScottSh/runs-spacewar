@@ -35,7 +35,8 @@
  * A BLOCK may tail-call several BLOCKs; it then has no exit of its own to
  * share. A function's name used as a value is its address.
  * ENTRY_CELL(f) names f's entry word; several names may share it.
- * SYM("x") gives a C name the Macro symbol x. AT(a) lays a definition out
+ * START on a BLOCK function with no parameters makes it where the tape
+ * starts the program: the tape ends with a jump to it. AT(a) lays a definition out
  * from address a. RESERVE sets aside the words of an uninitialized object
  * where it is defined; they are not punched, so the machine leaves whatever
  * core held there. MINUS_ZERO is the word with every bit set.
@@ -98,9 +99,7 @@
  * switch is Duff's device: the switch is w's home, the jump into the cases,
  * and `w = e` stores the address of case e there.
  *
- * A static inline function is laid out at each call. REGION_BREAK() ends
- * the Macro text for one line range of a lifted region; what follows goes
- * to the region's next range.
+ * A static inline function is laid out at each call.
  *
  * Under g++ the macros below are empty. The reference build
  * (tools/pdp1cc/gate/reference.py) binds the two storage facts a macro
@@ -121,7 +120,7 @@ typedef struct dword { word hi, lo; } dword;
 #define BLOCK __attribute__((pdp1_block))
 #define BYNAME __attribute__((pdp1_byname))
 #define SKIPS __attribute__((pdp1_skips))
-#define SYM(s) __attribute__((pdp1_sym(s)))
+#define START __attribute__((pdp1_start))
 #define ENTRY_CELL(f) __attribute__((pdp1_entry_cell(f)))
 #define XCT __attribute__((pdp1_xct))
 #define JSP __attribute__((pdp1_jsp))
@@ -133,7 +132,6 @@ typedef struct dword { word hi, lo; } dword;
 #define PLACE(...) pdp1_place(__VA_ARGS__)
 #define ARGS_DONE() pdp1_args_done()
 #define MINUS_ZERO (-(word)0)
-#define REGION_BREAK() extern void pdp1_region_break(void)
 word *home(const word *p);
 void pdp1_place();
 void pdp1_args_done(void);
@@ -189,7 +187,7 @@ void halt(word ac, word io);
 #define BLOCK
 #define BYNAME
 #define SKIPS
-#define SYM(s)
+#define START
 #define ENTRY_CELL(f)
 #define XCT
 #define JSP
@@ -201,7 +199,6 @@ void halt(word ac, word io);
 #define PLACE(...)
 #define ARGS_DONE()
 #define MINUS_ZERO (-(word)0)
-#define REGION_BREAK() extern void pdp1_region_break(void)
 
 typedef std::uint32_t pdp1_bits;
 static const pdp1_bits PDP1_MASK = (1u << 18) - 1;

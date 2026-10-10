@@ -27,7 +27,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from oracle_check import ROOT, built_symbols, lifted_units, oracle_symbols
+from oracle_check import ROOT, built_listing, built_symbols, lifted_units, oracle_symbols
 from pdp1cc import ir
 from pdp1cc.gate import corpus, reference, simh
 from pdp1cc.gate.simh import Inputs
@@ -160,8 +160,8 @@ def cursor_deposits(state: State, address: dict[str, int], image: dict[int, int]
 
 def image_words(address: dict[str, int]) -> dict[int, int]:
     """The oracle's words at the cursors' homes, from the build's listing."""
-    from pdp1cc import splice
-    words, _ = splice.listing(ROOT / "build/lift/spliced.lst")
+    from pdp1cc import program
+    words, _ = program.listing(built_listing())
     return {a: int(w, 8) for a, (w, _) in words.items()}
 
 
@@ -192,7 +192,7 @@ def main() -> int:
     units = lifted_units(LIFT)
     unit = units[OBJECTS]
     placed = [p for u in units.values() for p in reference.placements(u, address)]
-    display = corpus.display_words(ROOT / "build/lift/spliced.lst")
+    display = corpus.display_words(built_listing())
     image = image_words(address)
     mtb, nnn = address["mtb"], address["nnn"]
     obj = unit.objects

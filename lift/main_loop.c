@@ -16,62 +16,34 @@
  * a slot per ship. */
 
 #include "object_table.h"
+#include "control_word.h"
 
-#define NOB 030                     /* nob: objects in the table, two ships then torpedoes */
-#define SHIPS 2
-#define TABLE_WORDS (7 * NOB + 10 * SHIPS)
-
-/* Each property's array, where it starts in the object table (nx1, ny1,
- * na1, nb1, ndx, ndy, nom, nth, nfu, ntr, not, nco, nh1 .. nh4). */
-#define ROUTINES (object_table)
-#define X_POSITIONS (ROUTINES + NOB)
-#define Y_POSITIONS (X_POSITIONS + NOB)
-#define COUNTERS (Y_POSITIONS + NOB)
-#define CYCLES (COUNTERS + NOB)
-#define DX_VELOCITIES (CYCLES + NOB)
-#define DY_VELOCITIES (DX_VELOCITIES + NOB)
-#define SPINS (DY_VELOCITIES + NOB)
-#define ANGLES (SPINS + SHIPS)
-#define FUEL (ANGLES + SHIPS)
-#define TORPEDOES (FUEL + SHIPS)
-#define OUTLINES (TORPEDOES + SHIPS)
-#define OLD_CONTROLS (OUTLINES + SHIPS)
-#define SAVED_ROUTINES (OLD_CONTROLS + SHIPS)
-#define JUMPS_LEFT (SAVED_ROUTINES + SHIPS)
-#define RECHARGES (JUMPS_LEFT + SHIPS)
-#define UNCERTAINTIES (RECHARGES + SHIPS)
-#define COMPILED_OUTLINES (UNCERTAINTIES + SHIPS)  /* nnn: free core after the table,
-                                                      where the outline compiler writes */
-
-/* The control word routine: it leaves the control word in IO, ship 1's
- * buttons in the high four bits and ship 2's in the low four. */
-typedef io_word control_word_reader(register word io) JSP;
 typedef void calc_routine(void) JSP;
 typedef void compiled_outline(void) BLOCK;
 
 /* Routines the main loop calls, defined elsewhere. */
-JSP SYM("ss1") void first_spaceship(void);
-JSP SYM("ss2") void second_spaceship(void);
-JSP SYM("mex") void explosion(void);
-JSP SYM("bck") void expensive_planetarium(void);
-JSP SYM("blp") void central_star(void);
-JDA SYM("oc") word *outline_compiler(word *code, INLINE const word *outline);
-extern word needle_outline[8] SYM("ot1");
-extern word wedge_outline[8] SYM("ot2");
-JSP SYM("cwr") io_word control_word_routine(register word io);
+JSP void first_spaceship(void);
+JSP void second_spaceship(void);
+JSP void explosion(void);
+JSP void expensive_planetarium(void);
+JSP void central_star(void);
+JDA word *outline_compiler(word *code, INLINE const word *outline);
+extern word needle_outline[8];
+extern word wedge_outline[8];
+JSP io_word control_word_routine(void);
 
-XCT SYM("tno") word torpedo_supply(void);
-XCT SYM("tlf") word torpedo_life(void);
-XCT SYM("mhs") word hyperspace_shots(void);
-extern word fuel_supply SYM("foo");
-extern word collision_radius SYM("me1");
-extern word collision_radius_half SYM("me2");
-extern word separate_outlines SYM("ddd");
+XCT word torpedo_supply(void);
+XCT word torpedo_life(void);
+XCT word hyperspace_shots(void);
+extern word fuel_supply;
+extern word collision_radius;
+extern word collision_radius_half;
+extern word separate_outlines;
 
 HOMED word *outline_slot;           /* mot: a ship's compiled outline, the code that draws it */
-extern HOMED compiled_outline *draw_outline SYM("sp5");  /* the spaceship calc routine's jump into it */
+extern HOMED compiled_outline *draw_outline;  /* the spaceship calc routine's jump into it */
 
-POOL control_word_reader *control_word_getter SYM("cwg");
+POOL control_word_reader *control_word_getter;  /* cwg */
 POOL word spare_time;               /* mtc: the frame's instruction budget, counting up */
 POOL word restart_delay;            /* ntd: frames until the next game, counting up */
 POOL word first_score;              /* 1sc */
@@ -92,13 +64,13 @@ HOMED word *other_cycles_slot;
 HOMED word *clearing = 0;           /* the slot a new game clears next (the `clear` macro) */
 
 BLOCK void objects(void);
-BLOCK SYM("a1") void start_with_test_word(void);
-BLOCK SYM("a40") void start_with_control_boxes(void);
+BLOCK void start_with_test_word(void);
+BLOCK void start_with_control_boxes(void);
 BLOCK void between_games(void);
 BLOCK void new_match(void);
 BLOCK void new_game(void);
-JSP SYM("mg1") io_word read_control_boxes(register word io);
-JSP io_word read_test_word(register word io);
+JSP io_word read_control_boxes(void);
+JSP io_word read_test_word(void);
 
 /* ------------------------------------------------------- the frame seam */
 
@@ -190,7 +162,7 @@ game_ending:
 /* ------------------------------------------------- starting and scoring */
 
 /* a1, from start at 5: read the test word switches as the control word. */
-BLOCK SYM("a1") void start_with_test_word(void)
+BLOCK void start_with_test_word(void)  /* a1 */
 {
     control_word_getter = read_test_word;
     return between_games();
@@ -198,7 +170,7 @@ BLOCK SYM("a1") void start_with_test_word(void)
 
 /* a40, from start at 4: read the control boxes, through the control word
  * routine. */
-BLOCK SYM("a40") void start_with_control_boxes(void)
+BLOCK void start_with_control_boxes(void)  /* a40 */
 {
     control_word_getter = control_word_routine;
     return new_match();
@@ -294,18 +266,17 @@ second:
 /* ------------------------------------------------ control word getters */
 
 /* mg1: the control boxes. IO is cleared, then read from the boxes. */
-JSP SYM("mg1") io_word read_control_boxes(register word io)
+JSP io_word read_control_boxes(void)  /* mg1 */
 {
-    io = 0;
+    register word io = 0;
     io = control_boxes();
     return io;
 }
 
 /* mg2: the test word switches, swapped into IO. */
-JSP io_word read_test_word(register word io)
+JSP io_word read_test_word(void)
 {
-    word switches = lat();
-    rcl(switches, io, 18);
+    register word io = SWAP(lat());
     return io;
 }
 
@@ -406,12 +377,3 @@ spare:
         goto spare;
     return next_frame();
 }
-
-REGION_BREAK();
-
-/* ------------------------------------------- after the code: core layout */
-
-CONSTANTS();                        /* the literal constants */
-VARIABLES();                        /* the pool words */
-RESERVE word patch_space[0200];
-RESERVE word object_table[TABLE_WORDS] SYM("mtb");

@@ -8,68 +8,65 @@
  * every path leaves through spaceship_done, the source's `srt`. */
 
 #include "object_table.h"
+#include "control_word.h"
 #include "random.h"
+#include "star_vector.h"
 #include "inertia.h"
 
 #define TWO_PI 0311040              /* an angle's full turn */
-#define NOB 030                     /* objects in the object table */
 #define THRUST_FLAG 6               /* set while the ship fires its rocket and has fuel */
 
-/* The control word: four bits per ship, from the left rotate ccw, rotate
- * cw (both: hyperspace), fire rocket and fire torpedo. */
-typedef dword control_word_getter(void) JSP;
-extern POOL control_word_getter *get_control_word SYM("cwg");
-POOL word control_word;
+POOL word control_word;             /* this ship's controls, in the high four bits */
 
 /* Tunables (lift/tunables.c). */
-extern word angular_acceleration SYM("maa");
-extern word star_capture_radius SYM("str");
-XCT SYM("sac") word spaceship_acceleration(word v);
-XCT SYM("tvl") word torpedo_velocity(word v);
-XCT SYM("rlt") word torpedo_reload_time(void);
-XCT SYM("tlf") word torpedo_life(void);
-XCT SYM("hd1") word time_before_breakout(void);
+extern word angular_acceleration;
+extern word star_capture_radius;
+XCT word spaceship_acceleration(word v);
+XCT word torpedo_velocity(word v);
+XCT word torpedo_reload_time(void);
+XCT word torpedo_life(void);
+XCT word time_before_breakout(void);
 
 /* Arithmetic. integer_divide returns past one more word unless the
  * quotient overflows (lift/divide.c). */
-JDA SYM("sin") word sine(word angle);
-JDA SYM("cos") word cosine(word angle);
-JDA SYM("imp") word integer_multiply(word a, BYNAME word b);
-JDA SYM("mpy") dword multiply(word a, BYNAME word b);
+JDA word sine(word angle);
+JDA word cosine(word angle);
+JDA word integer_multiply(word a, BYNAME word b);
+JDA dword multiply(word a, BYNAME word b);
 JDA word sqt(word r);
-JDA SKIPS SYM("idv") dword integer_divide(word dividend, register word lo, BYNAME word divisor);
+JDA SKIPS dword integer_divide(word dividend, register word lo, BYNAME word divisor);
 
 /* Calc routines a ship hands its object over to. */
-JSP SYM("mex") void explosion(void);
-JSP SYM("tcr") void torpedo(void);
-JSP SYM("hp1") void in_hyperspace(register word io);
+JSP void explosion(void);
+JSP void torpedo(void);
+JSP void in_hyperspace(register word io);
 
 /* Cursors whose homes are in this routine (HOMED in object_table.h). */
-word *angular_momentum_slot SYM("mom");
-word *angle_slot SYM("mth");
-word *previous_control_slot SYM("mco");
+word *angular_momentum_slot;  /* mom */
+word *angle_slot;  /* mth */
+word *previous_control_slot;  /* mco */
 
 POOL word heading_sine;
 POOL word heading_cosine;
 
 /* Gravity: the pull toward the central star added to the velocity this
- * frame. The words are shared with the central star's display. */
-POOL word gravity_x SYM("bx");
-POOL word gravity_y SYM("by");
+ * frame, in the words the central star's display also uses. */
+#define gravity_x star_vector_x
+#define gravity_y star_vector_y
 POOL word work;                     /* a coordinate, then the squared distance, then the divisor */
 POOL word ship_x_squared;
 
 /* Pool words the compiled outline (lift/outline_compiler.c) draws the ship from. */
-extern POOL word ship_x SYM("sx1");
-extern POOL word ship_y SYM("sy1");
-extern POOL word sine_step SYM("ssn");
-extern POOL word cosine_step SYM("scn");
-extern POOL word out_x SYM("scm");
-extern POOL word out_y SYM("ssm");
-extern POOL word out_down_x SYM("ssc");
-extern POOL word out_down_y SYM("csm");
-extern POOL word in_down_x SYM("csn");
-extern POOL word in_down_y SYM("ssd");
+extern POOL word ship_x;
+extern POOL word ship_y;
+extern POOL word sine_step;
+extern POOL word cosine_step;
+extern POOL word out_x;
+extern POOL word out_y;
+extern POOL word out_down_x;
+extern POOL word out_down_y;
+extern POOL word in_down_x;
+extern POOL word in_down_y;
 POOL word torpedo_start_x;          /* just in front of the ship's tip */
 POOL word torpedo_start_y;
 POOL word flame_length;             /* exhaust dots still to draw, counting up */
@@ -78,7 +75,7 @@ POOL word flame_length;             /* exhaust dots still to draw, counting up *
  * frame, in the jump that enters it; the code ends by jumping back to
  * outline_drawn. */
 typedef void compiled_outline(void) BLOCK;
-HOMED compiled_outline *draw_outline SYM("sp5");
+HOMED compiled_outline *draw_outline;  /* sp5 */
 
 /* The free slot a new torpedo takes, and the new torpedo's slots. */
 HOMED word *free_slot;
@@ -90,24 +87,24 @@ HOMED word *torpedo_dx_slot;
 HOMED word *torpedo_dy_slot;
 
 BLOCK void spaceship(void);
-BLOCK SYM("sq6") void outline_drawn(void);
+BLOCK void outline_drawn(void);
 BLOCK void spaceship_done(void);
 BLOCK void spaceship_in_star(void);
 
 /* The second ship's bits are the low four; rotating them up makes them
  * read as the first ship's. */
-JSP SYM("ss1") void first_spaceship(void)
+JSP void first_spaceship(void)  /* ss1 */
 {
-    dword c = get_control_word();
-    control_word = c.lo;
+    register word controls = control_word_getter();
+    control_word = controls;
     return spaceship();
 }
 
-JSP SYM("ss2") void second_spaceship(void)
+JSP void second_spaceship(void)  /* ss2 */
 {
-    dword c = get_control_word();
-    c.lo = rir(c.lo, 4);
-    control_word = c.lo;
+    register word controls = control_word_getter();
+    controls = rir(controls, 4);
+    control_word = controls;
     return spaceship();
 }
 
@@ -218,7 +215,7 @@ accelerate:
     return (*home(draw_outline))();
 }
 
-BLOCK SYM("sq6") void outline_drawn(void)
+BLOCK void outline_drawn(void)  /* sq6 */
 {
     word r;
     word fire;

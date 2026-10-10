@@ -4,7 +4,7 @@
 #ifndef RANDOM_H
 #define RANDOM_H
 
-extern word random_number SYM("ran");
+extern word random_number;  /* ran */
 
 /* The next value of random_number, also left in AC. */
 static inline word next_random(void)

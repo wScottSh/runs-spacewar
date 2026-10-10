@@ -16,7 +16,7 @@ set and clear).
 Usage: uv run python tools/check-outline-reference.py"""
 import sys
 
-from oracle_check import ROOT, Inputs, built_symbols, lifted_units
+from oracle_check import ROOT, Inputs, built_symbols, lifted_units, oracle_symbols
 from pdp1cc import ir
 from pdp1cc.gate import corpus, reference, simh
 
@@ -40,7 +40,7 @@ def main() -> int:
     files = [ROOT / f for f in LIFT]
     units = lifted_units(files)
     sig = units[files[0]].signatures["outline_compiler"]
-    address = built_symbols()
+    address = oracle_symbols() | built_symbols()
     placed = [p for u in units.values() for p in reference.placements(u, address)]
 
     tables, words = [], []
