@@ -27,18 +27,23 @@
  * current call return one word further, skipping the caller's next word.
  * JSP: entered by `jsp f`, which leaves the return address in AC, so the
  * only parameter is a `register` one; the result comes back in AC (or
- * AC:IO). XCT: a function that is one instruction, executed in place by
- * `xct f`; its plain parameter is AC and its register parameter IO. A
- * pointer to a function type is a word holding its address; `return p(...)`
- * jumps through it. A function's name used as a value is its address.
+ * AC:IO, or IO alone for an `io_word`). XCT: a function that is one
+ * instruction, executed in place by `xct f`; its plain parameter is AC and
+ * its register parameter IO. A pointer to a function type is a word holding
+ * its address; `return p(...)` jumps through it, and `((f *)w)()` calls the
+ * JSP function whose address is in w's address field (`dap L / L, jsp .`).
+ * A BLOCK may tail-call several BLOCKs; it then has no exit of its own to
+ * share. A function's name used as a value is its address.
  * ENTRY_CELL(f) names f's entry word; several names may share it.
  * SYM("x") gives a C name the Macro symbol x. AT(a) lays a definition out
  * from address a. RESERVE sets aside the words of an uninitialized object
  * where it is defined; they are not punched, so the machine leaves whatever
  * core held there. MINUS_ZERO is the word with every bit set.
  *
- * Hardware builtins: tyi() reads the typewriter into IO; lsm() leaves
- * sequence break mode; stf(n) and clf(n) set and clear program flag n, and
+ * Hardware builtins: tyi() reads the typewriter into IO; lat() reads the
+ * test word switches into AC; control_boxes() reads the control boxes into
+ * IO (iot 11); halt(ac, io) halts with ac and io on the console lights;
+ * lsm() leaves sequence break mode; stf(n) and clf(n) set and clear program flag n, and
  * flag(n) tests it; sense(n) tests sense switch n. dpy(x, y, n) plots the
  * point (x, y) at intensity n without waiting; x is AC and y is IO, and
  * both keep their values. dpy_nowait(x, y) plots at intensity 0 and asks
@@ -47,9 +52,15 @@
  * different registers (`x = 0, y = 0, clf(6);`), is one instruction.
  *
  * Memory. A POOL object is a word macro1 allocates at `variables` (`\x`).
+ * CONSTANTS() and VARIABLES() at file scope place the literal constants and
+ * the pool words there. a[k] for a file-scope array (or an address a + n in
+ * one) and a constant k is the word k past it.
  * A HOMED pointer lives in the address field of one instruction, its home:
- * `*home(p)` is that instruction, `p = e` stores the address there (dap)
- * and `++p` advances it (idx). `x.addr = e` stores e's address bits into
+ * `*home(p)` is that instruction (`lac .`, `add .` or `sub .` as an operand,
+ * `dac .`, `dzm .` or `dio .` as a store), `p = e` stores the address there
+ * (dap) and `++p` advances it (idx). `p + n` for a HOMED p is arithmetic on
+ * its home word, whose address field is p, so only a dap may store it. A
+ * HOMED pointer declared extern has its home in other text. `x.addr = e` stores e's address bits into
  * word x (dap). `*p++ = e` stores through a pointer and advances it.
  * `*p` reads or writes the word p points to, for p held in memory or in a
  * homed address field: the instruction names p with the indirect bit.
@@ -59,7 +70,10 @@
  * instead of at their definition; control must not reach it. An INLINE
  * parameter is a constant word after the call, read as `lac i` through
  * the return address. ARGS_DONE() marks where a function with inline
- * words steps its return address past them.
+ * words steps its return address past them. SKIPNOT(c), for a sign test c
+ * of AC, skips when c fails on c's own skip with the i bit flipped (`spa i`
+ * for `sma`). SWAP(x) moves x between AC and IO with the `swap` turn,
+ * rcl 9s twice, where the default turns rcr.
  *
  * Instruction words. An `insn` is a word that holds an instruction. The
  * I_* constructors build one: I_LAC(&x) is the word `lac x`, I_JMP(f) is
@@ -152,11 +166,23 @@ word rar(word a, int n);
 word ril(word io, int n);
 word rir(word io, int n);
 void skip_return(void);
+typedef word io_word;
+#define SKIPNOT(c) pdp1_skipnot(c)
+#define SWAP(x) pdp1_swap(x)
+#define CONSTANTS() extern void pdp1_constants(void)
+#define VARIABLES() extern void pdp1_variables(void)
+int pdp1_skipnot(int c);
+word pdp1_swap(word x);
+insn I_DZM();
+word lat(void);
+word control_boxes(void);
+void halt(word ac, word io);
 
 #elif defined(__cplusplus)
 
 #include <cstdint>
 #include <cstdlib>
+#include <type_traits>
 #include <vector>
 
 #define JDA
@@ -186,7 +212,7 @@ static const pdp1_bits PDP1_ADDR = (1u << 12) - 1;
  * the reference build supplies the table from the assembled listing:
  * each entry is a C object (or function), how many words it spans, and
  * the address of its first word. */
-struct pdp1_symbol { const void *at; unsigned words; unsigned address; };
+struct pdp1_symbol { const void *at; unsigned words; unsigned address; bool code; };
 extern const pdp1_symbol pdp1_symbols[];
 extern const unsigned pdp1_symbol_count;
 
@@ -204,6 +230,15 @@ static inline unsigned pdp1_address(const void *p) {
 }
 template <class F> static inline unsigned pdp1_address(F *f) {
     return pdp1_address(reinterpret_cast<const void *>(f));
+}
+
+/* The function whose entry is at an address: a call through a word that
+ * holds it, as `dap L / L, jsp .` calls through the word's address field. */
+static inline const void *pdp1_code(unsigned a) {
+    for (unsigned k = 0; k < pdp1_symbol_count; ++k)
+        if (pdp1_symbols[k].code && pdp1_symbols[k].address == a)
+            return pdp1_symbols[k].at;
+    std::abort();                       /* no function starts there */
 }
 
 /* The address bits of a word: storing a pointer here is `dap`. */
@@ -271,6 +306,9 @@ struct word {
         return *this;
     }
     explicit operator int() const { return (int)v; }    /* a jump table index */
+    /* (f *)w: the function at the address in w's address field. */
+    template <class F, class = typename std::enable_if<std::is_function<F>::value>::type>
+    explicit operator F *() const { return reinterpret_cast<F *>(const_cast<void *>(pdp1_code(v & PDP1_ADDR))); }
 };
 typedef word insn;
 
@@ -288,6 +326,11 @@ static inline word *pdp1_pointer(pdp1_bits a) {
     std::abort();
 }
 
+/* p + w: the address p names plus the word w, as `law p / add w` adds them. */
+static inline word *operator+(word *p, word w) {
+    return pdp1_pointer((word::bits(pdp1_address(p)) + w).v & PDP1_ADDR);
+}
+
 template <class T> static inline T *home(T *p) { return p; }
 
 /* Instruction words, encoded as the machine encodes them. A memory
@@ -299,7 +342,7 @@ static inline insn pdp1_insn(pdp1_bits op, pdp1_bits low) { return word::bits(op
     static inline insn name(decltype(nullptr)) { return pdp1_insn(op, 0); }
 PDP1_MRI(I_AND, 002) PDP1_MRI(I_XOR, 006) PDP1_MRI(I_LAC, 020) PDP1_MRI(I_LIO, 022)
 PDP1_MRI(I_DAC, 024) PDP1_MRI(I_DIO, 032) PDP1_MRI(I_ADD, 040) PDP1_MRI(I_SUB, 042)
-PDP1_MRI(I_IDX, 044) PDP1_MRI(I_JMP, 060)
+PDP1_MRI(I_IDX, 044) PDP1_MRI(I_JMP, 060) PDP1_MRI(I_DZM, 034)
 #undef PDP1_MRI
 static const pdp1_bits PDP1_OPR = 076, PDP1_SKP = 064, PDP1_SHIFT = 066, PDP1_IOT = 072;
 static const pdp1_bits PDP1_I = 1u << 12;           /* the indirect (or IOT wait) bit */
@@ -361,6 +404,24 @@ static inline unsigned pdp1_flag_bits(int n) { return n == 7 ? 077u : 1u << (6 -
 static inline void stf(int n) { pdp1_program_flags |= pdp1_flag_bits(n); }
 static inline void clf(int n) { pdp1_program_flags &= ~pdp1_flag_bits(n); }
 static inline bool flag(int n) { return (pdp1_program_flags & pdp1_flag_bits(n)) != 0; }
+
+/* The console and the control boxes. lat() reads the test word switches;
+ * control_boxes() is `iot 11`, the MIT control boxes' buttons; halt(ac, io)
+ * stops with ac and io on the console lights, until continued. */
+static word pdp1_test_word;
+static word pdp1_control_boxes;
+static inline word lat() { return pdp1_test_word; }
+static inline word control_boxes() { return pdp1_control_boxes; }
+static inline void halt(word ac, word io) { pdp1_plotted.push_back({PDP1_OPR << 12 | 0400, ac.v, io.v}); }
+
+/* A word returned in IO; SKIPNOT(c) is c; SWAP(x) is x (both choose an
+ * encoding only). CONSTANTS() and VARIABLES() place the literal and pool
+ * words, which the native build has no place for. */
+typedef word io_word;
+#define SKIPNOT(c) (c)
+#define SWAP(x) (x)
+#define CONSTANTS() extern void pdp1_constants(void)
+#define VARIABLES() extern void pdp1_variables(void)
 
 /* The AC:IO pair: hi is AC, lo is IO. */
 struct dword { word hi, lo; };

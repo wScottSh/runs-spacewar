@@ -84,10 +84,19 @@ RULES: dict[str, str] = {
                      "then `jsp i p`; the result comes back in AC (and IO)",
     "SKIP-SLOT": "a call of a SKIPS function: `opr` after its inline words, the word it returns past "
                  "unless it does not skip; the call means the same either way",
-    "HOMED-VALUE": "a HOMED pointer read in the value a dap stores: its home word (`lac p`, `add p`), whose "
-                   "address field is the pointer, or nothing when AC's address field already holds it",
+    "HOMED-VALUE": "a HOMED pointer read in the value a dap stores (p, p + n, n + p): its home word "
+                   "(`lac p`, `add p`), whose address field is the pointer, or nothing when AC's address "
+                   "field already holds it",
     "ST-HOMED-INSN": "HOMED shift x: the instruction at its home, xct(x, ...), laid out there with its initial "
                "word; x = e stores the whole word (dac x)",
+    "EX-ELEMENT": "a[k] for a file-scope array a, or an address a + n in one, and a constant k: "
+                  "the memory operand a+n+k",
+    "CALL-COMPUTED": "((f *)e)() for a JSP function type f: e into AC, `dap L`, `L, jsp .`",
+    "SKIPNOT": "SKIPNOT(c) for a sign test of AC: skip when c fails on c's own skip with the i bit "
+               "flipped (`spa i`, not `sma`)",
+    "SWAP": "SWAP(x): x moved between AC and IO by `rcl 9s` twice, the `swap` turn, instead of `rcr`",
+    "LAY-POOL": "CONSTANTS() / VARIABLES(): the `constants` / `variables` directive, where macro1 "
+                "lays out the literal and pool words",
 }
 
 

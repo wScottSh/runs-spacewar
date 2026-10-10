@@ -126,11 +126,11 @@ word random_number SYM("ran") = 0;               /* 31: state of the random numb
  * ship, and the same in the low 4 bits for the other. Normally it reads the
  * control boxes. */
 
-JSP SYM("mg1") dword read_control_boxes(void);
+JSP SYM("mg1") io_word read_control_boxes(register word io);
 
-AT(040) JSP SYM("cwr") dword control_word_routine(void)
+AT(040) JSP SYM("cwr") io_word control_word_routine(register word io)
 {
-    return read_control_boxes();
+    return read_control_boxes(io);
 }
 
 RESERVE word control_word_space[020];

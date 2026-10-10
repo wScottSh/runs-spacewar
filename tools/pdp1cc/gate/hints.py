@@ -10,7 +10,9 @@ SYM is the exception: deleting it always renames a label, so that test
 cannot catch a stale one. A SYM earns its place while unlifted source text
 still names the symbol it pins, or while another lifted file pins the same
 symbol: the two files name one object, and without the pin each would give
-it a symbol of its own. The gate fails when neither holds.
+it a symbol of its own. A SYM in a header is shared the same way when two of
+the files that include it use the name it declares. The gate fails when
+none of these holds.
 
 A header the files include with `#include "x.h"` is checked too: a hint
 deleted there must change the output of some file that includes it."""
@@ -25,9 +27,10 @@ from pathlib import Path
 from ..cli import COMPILE_ERRORS, compile_file
 
 SYM = re.compile(r'SYM\s*\(\s*"(\w+)"\s*\)')
-HINT = re.compile(r"\b(?:PLACE|ARGS_DONE)\s*\([^()]*\)\s*;"
+HINT = re.compile(r"\b(?:PLACE|ARGS_DONE|CONSTANTS|VARIABLES)\s*\([^()]*\)\s*;"
                   r"|\b(?:SYM|ENTRY_CELL|AT)\s*\([^()]*\)"
-                  r"|\b(?:JDA|BLOCK|BYNAME|INLINE|XCT|JSP|POOL|HOMED|RESERVE|register|home)\b")
+                  r"|\b(?:JDA|BLOCK|BYNAME|INLINE|XCT|JSP|POOL|HOMED|RESERVE|register|home"
+                  r"|SKIPNOT|SWAP)\b")
 COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
 DIRECTIVE = re.compile(r"^[ \t]*#[^\n]*", re.M)
 INCLUDE = re.compile(r'^[ \t]*#[ \t]*include[ \t]+"([^"]+)"', re.M)
@@ -97,10 +100,19 @@ def pinned(h: Hint) -> str | None:
     return m.group(1) if m else None
 
 
-def stale(h: Hint, unlifted: str, pins: dict[Path, set[str]]) -> bool:
+DECLARED = re.compile(r"(\w+)\s*(?:\[[^]]*\])?\s*SYM\s*\(")
+
+
+def stale(h: Hint, unlifted: str, pins: dict[Path, set[str]],
+          includers: tuple[Path, ...] = ()) -> bool:
     """unlifted: the source text no region covers, comments removed. pins:
-    the symbols each file's SYMs pin."""
+    the symbols each file's SYMs pin. includers: the files that include
+    h's header."""
     shared = any(pinned(h) in syms for f, syms in pins.items() if f != h.path)
+    line = h.path.read_text().splitlines()[h.line - 1]
+    if (m := DECLARED.search(line)) is not None:
+        users = [f for f in includers if re.search(rf"\b{m.group(1)}\b", f.read_text())]
+        shared |= len(users) >= 2
     return not shared and not re.search(rf"(?<!\w){pinned(h)}(?!\w)", unlifted)
 
 
@@ -121,7 +133,7 @@ def gate(files: list[Path], unlifted: str) -> int:
     bad = {h: "deleting it leaves the output unchanged"
            for h, out in zip(others, changed) if out == base[h.path]}
     bad |= {h: "no unlifted source text names the symbol it pins"
-            for h in syms if stale(h, unlifted, pins)}
+            for h in syms if stale(h, unlifted, pins, headers.get(h.path, ()))}
     for f in files:
         mine = [h for h in hints if h.path == f]
         lines = f.read_text().count("\n") or 1

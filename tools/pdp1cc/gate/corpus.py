@@ -40,7 +40,8 @@ def calls_for(ac_values: list[int]) -> list[simh.Inputs]:
     io = lcg(2, len(ac_values))
     byname = lcg(3, len(ac_values))
     sense = [v & 0o77 for v in lcg(4, len(ac_values))]
-    return [simh.Inputs(a, i, b, w) for a, i, b, w in zip(ac_values, io, byname, sense)]
+    test = lcg(5, len(ac_values))
+    return [simh.Inputs(a, i, b, w, t) for a, i, b, w, t in zip(ac_values, io, byname, sense, test)]
 
 
 @dataclass
@@ -95,8 +96,9 @@ def load(path: Path) -> Program:
 def assemble(prog: Program, macro1: Path, work: Path) -> tuple[Path, dict[str, int]]:
     work.mkdir(parents=True, exist_ok=True)
     mac = work / f"{prog.path.stem}.mac"
-    mac.write_text(f"corpus {prog.path.stem}\n{ORIGIN:o}/\n" + emit.emit(prog.words)
-                   + f"\tconstants\n\tvariables\n\tstart {ORIGIN:o}\n")
+    text = emit.emit(prog.words)
+    pools = "" if any(isinstance(w, ir.PoolPlacement) for w in prog.words) else "\tconstants\n\tvariables\n"
+    mac.write_text(f"corpus {prog.path.stem}\n{ORIGIN:o}/\n" + text + pools + f"\tstart {ORIGIN:o}\n")
     for ext in (".rim", ".lst"):
         mac.with_suffix(ext).unlink(missing_ok=True)
     subprocess.run([str(macro1), "-r", "-d", mac.name], cwd=work, check=True, capture_output=True)
@@ -106,7 +108,7 @@ def assemble(prog: Program, macro1: Path, work: Path) -> tuple[Path, dict[str, i
     return mac.with_suffix(".rim"), splice.symbols(lst)
 
 
-DISPLAY_WORD = re.compile(r"^\s*\d*\s+([0-7]{5}) ([0-7]{6})\s+(?:\w+,)?\s*dpy\b", re.M)
+DISPLAY_WORD = re.compile(r"^\s*\d*\s+([0-7]{5}) ([0-7]{6})\s+(?:[\w, ]+,)?\s*(?:dpy\b|hlt\s+/ EX-HW)", re.M)
 
 
 def display_words(lst: Path) -> dict[int, int]:

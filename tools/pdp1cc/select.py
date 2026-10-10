@@ -111,6 +111,8 @@ def address_fact(e: ir.Expr) -> AddressBits | PointerBits | None:
 
 
 def fact(v: ir.Var) -> Local | Cell:
+    if isinstance(v.storage, ir.Element):
+        return Cell(f"{v.storage.sym}+{v.storage.offset:o}")
     if isinstance(v.storage, ir.Memory):
         return Cell(ir.mem_sym(v.storage))
     if isinstance(v.storage, ir.Homed):
@@ -131,6 +133,8 @@ def _via(v: ir.Var) -> tuple[str, ...]:
         return ("ST-HOMED",)
     if isinstance(v.storage, ir.HomedInsn):
         return ("ST-HOMED-INSN",)
+    if isinstance(v.storage, ir.Element):
+        return ("EX-ELEMENT",)
     return ()
 
 
@@ -154,7 +158,8 @@ def _via_operand(e: ir.Expr) -> tuple[str, ...]:
 def mem(v: ir.Var) -> ir.Sym:
     if not isinstance(v.storage, ir.Memory):
         raise SelectError(f"{v.name} is a register local or by-name parameter, not a memory operand")
-    return ir.Sym(ir.mem_sym(v.storage), pool=isinstance(v.storage, ir.Pool))
+    return ir.Sym(ir.mem_sym(v.storage), pool=isinstance(v.storage, ir.Pool),
+                  offset=v.storage.offset if isinstance(v.storage, ir.Element) else 0)
 
 
 def cell(v: ir.Var) -> ir.Sym:
@@ -195,6 +200,11 @@ def swap() -> list[ir.Word]:
     return [W("rcr", "EX-MOVE", ir.ShiftCount(SWAP_HALF)) for _ in range(2)]
 
 
+def rotate_swap() -> list[ir.Word]:
+    """SWAP(x): the same exchange turned the other way, as the `swap` macro turns it."""
+    return [W("rcl", "EX-MOVE", ir.ShiftCount(SWAP_HALF), via=("SWAP",)) for _ in range(2)]
+
+
 @dataclass
 class _Loop:
     top: str
@@ -217,6 +227,7 @@ class FunctionLowerer:
     keeps_io: dict[str, bool] = field(default_factory=dict)   # callees laid out earlier
     inlines: dict[str, ir.Function] = field(default_factory=dict)
     home_ops: dict[str, str] = field(default_factory=dict)
+    exitless: frozenset[str] = frozenset()     # BLOCKs that tail-call several BLOCKs
     instances: list[_Instance] = field(default_factory=list)
     strides_prev: dict[str, int] = field(default_factory=dict)
     strides_out: dict[str, int] = field(default_factory=dict)
@@ -252,10 +263,15 @@ class FunctionLowerer:
         plain = [r for r in _returns(fn.body) if r not in tails and r not in jumps]
         if tails:
             targets = {t.value.sig.name for t in tails}
-            if plain or len(targets) != 1:
+            several = fn.sig.conv is ir.Conv.BLOCK and not fn.sig.inline_count and \
+                not any(t.value.sig.inline_count for t in tails)
+            if plain or (len(targets) != 1 and not several):
                 raise SelectError(f"{fn.sig.name}: every return must tail-call the same BLOCK")
-            self.adopted = tails[0].value.sig
-            if self.adopted.inline_count != fn.sig.inline_count:
+            self.adopted = tails[0].value.sig if len(targets) == 1 else None
+            if self.adopted and self.adopted.name in self.exitless and fn.sig.conv is not ir.Conv.BLOCK:
+                raise SelectError(f"{fn.sig.name}: {self.adopted.name} tail-calls several BLOCKs, so it "
+                                  "has no exit to share; return through a BLOCK they all reach")
+            if self.adopted and self.adopted.inline_count != fn.sig.inline_count:
                 raise SelectError(
                     f"{fn.sig.name}: takes {fn.sig.inline_count} inline word(s) but tail-calls "
                     f"{self.adopted.name}, which returns past {self.adopted.inline_count}")
@@ -352,6 +368,12 @@ class FunctionLowerer:
                 return [W("jmp", "GOTO", ir.Sym(s.label))], None
             case ir.Assign():
                 return self.assign(s.target, s.value, st)
+            case ir.Eval(expr=ir.ComputedCall() as c):
+                return self.computed_call(c, st)
+            case ir.Eval(expr=ir.Halt() as h):
+                items, st = self.to_ac(h.ac, st)
+                self.need_io(h.io, st)
+                return items + [W("hlt", "EX-HW", note="AC and IO on the console lights")], st
             case ir.AssignPair():
                 items, st = self.to_ac(s.value, st)
                 return items, State(frozenset({fact(s.hi)}), frozenset({fact(s.lo)}))
@@ -441,15 +463,24 @@ class FunctionLowerer:
         return items + [self.through(d, "dac", "EX-STORE")], self.after_store_through(st)
 
     def home_store(self, s: ir.HomeStore, st: State):
-        """*home(p) = e is the store that holds p: `p, dac .`, or `p, dio .`
-        from a register local; home(p)->addr = e is `p, dap .`."""
+        """*home(p) = e is the store that holds p: `p, dac .`, `p, dzm .` for
+        0, or `p, dio .` from a register local; home(p)->addr = e is
+        `p, dap .`."""
         p = s.pointer
-        if not s.addr and isinstance(s.value, ir.Var) and isinstance(s.value.storage, ir.Io):
+        items: list[ir.Item] = []
+        if s.addr:
+            items, st = self.to_ac(s.value, st)
+            op, rule = "dap", "EX-STORE-ADDR"
+        elif s.value == ir.Const(0):
+            op, rule = "dzm", "EX-STORE-ZERO"
+        elif isinstance(s.value, ir.Var) and isinstance(s.value.storage, ir.Io):
             self.need_io(s.value, st)
-            items, op, rule = [], "dio", "EX-STORE-IO"
+            op, rule = "dio", "EX-STORE-IO"
         else:
             items, st = self.to_ac(s.value, st)
-            op, rule = ("dap", "EX-STORE-ADDR") if s.addr else ("dac", "EX-STORE")
+            op, rule = "dac", "EX-STORE"
+        if self.home_op(p) != op:
+            raise SelectError(f"{p.name}'s home is `{self.home_op(p)} .`, not `{op} .`")
         return items + [ir.LabelDef(p.storage.sym),
                         W(op, "HOMED-HOME", home_address(p), via=(rule, *_via(p)))], \
             self.after_store_through(st)
@@ -478,6 +509,13 @@ class FunctionLowerer:
                             note="run in place")]
         keeps_io = isinstance(x.insn, ir.Insn) and x.insn.op in AC_SHIFTS
         return items, State(frozenset(), st.io if keeps_io else frozenset())
+
+    def computed_call(self, c: ir.ComputedCall, st: State):
+        """((f *)e)(): e, its address into the call (`dap L`), then `L, jsp .`."""
+        items, st = self.to_ac(c.target, st)
+        here = self.label()
+        return items + [W("dap", "CALL-COMPUTED", ir.Sym(here)), ir.LabelDef(here),
+                        W("jsp", "CALL-COMPUTED", ir.Here(), note="patched by the dap")], State()
 
     @staticmethod
     def after_idx(t: ir.Var, st: State) -> State:
@@ -682,6 +720,18 @@ class FunctionLowerer:
                 return words, State(st.ac, frozenset({kt}))
             case ir.Hw(name="tyi"):
                 return [W("tyi", "EX-HW")], State(st.ac - {kt}, frozenset({kt}))
+            case ir.Hw(name="control_boxes"):
+                return [W("iot", "EX-HW", ir.Num(0o11), note="the control boxes")], \
+                    State(st.ac - {kt}, frozenset({kt}))
+            case ir.Swapped(operand=x):
+                items, st = self.to_ac(x, st)
+                return items + rotate_swap(), State(frozenset(), frozenset({kt}))
+            case ir.Call() if value.sig.returns == "io":
+                items, st = self.call(value, st)
+                return items, State(st.ac - {kt}, frozenset({kt}))
+            case ir.ComputedCall() if value.sig.returns == "io":
+                items, st = self.computed_call(value, st)
+                return items, State(st.ac - {kt}, frozenset({kt}))
             case ir.Rot(op=op, operand=v) if op in ir.IO_ROTATES:
                 if v != t:
                     raise SelectError(f"{op} rotates IO in place: write {t.name} = {op}({t.name}, n)")
@@ -749,6 +799,9 @@ class FunctionLowerer:
             table = ()
             skip_c = skips.ac_skip_when(c.op)
             skip_not_c = skips.ac_skip_when(skips.NEGATE[c.op])
+            if c.skipnot:
+                table = ("SKIPNOT",)
+                skip_c, skip_not_c = skips.flip_i(skip_not_c), skips.flip_i(skip_c)
 
         if isinstance(c, ir.Compare) and c.against is None:
             what = f"{c.op} 0"
@@ -848,6 +901,14 @@ class FunctionLowerer:
                 items.append(W("lio", "EX-LOAD-IO", mem(lo), via=_via(lo)))
             else:
                 raise SelectError("the low half of a returned dword must be a register local or memory")
+        elif self.sig.returns == "io" and s.value is not None:
+            v = s.value
+            if isinstance(v, ir.Var) and isinstance(v.storage, ir.Io):
+                self.need_io(v, st)
+            elif isinstance(v, ir.Var) and isinstance(v.storage, ir.Memory):
+                items.append(W("lio", "EX-LOAD-IO", mem(v), via=_via(v)))
+            else:
+                raise SelectError(f"{self.sig.name} returns an io_word: return a register local or a word")
         elif s.value is not None:
             items, st = self.to_ac(s.value, st)
         return items, st
@@ -991,6 +1052,11 @@ class FunctionLowerer:
             case ir.Neg():
                 items, st = self.to_ac(e.operand, st)
                 return items + [W("cma", "EX-UNARY")], State(frozenset(), st.io)
+            case ir.Hw(name="lat"):
+                return [W("lat", "EX-HW", note="the test word switches")], State(frozenset(), st.io)
+            case ir.Swapped(operand=ir.Var(storage=ir.Io()) as v):
+                self.need_io(v, st)
+                return rotate_swap(), State()
             case ir.Binary(right=ir.HomeLoad(pointer=p)):
                 items, st = self.to_ac(e.left, st)
                 return items + [ir.LabelDef(p.storage.sym),
@@ -1077,6 +1143,9 @@ class FunctionLowerer:
                 return ir.Lit(o)
             case ir.Var(storage=s) if isinstance(s, ir.Memory):
                 return mem(e)
+            case ir.Var(storage=ir.Homed()):
+                raise SelectError(f"{e.name} is HOMED: its value is the address field of an "
+                                  f"instruction, so {e.name} + n is stored only by a dap")
         raise SelectError(f"operand {e} must be a memory operand or a constant; "
                           "name a static to hold it")
 

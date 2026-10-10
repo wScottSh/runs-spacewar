@@ -37,7 +37,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from oracle_check import ROOT, built_symbols, lifted_units
+from oracle_check import ROOT, built_symbols, lifted_units, oracle_symbols
 from pdp1cc import ir, splice
 from pdp1cc.gate import corpus, reference, simh
 from pdp1cc.gate.simh import Inputs
@@ -145,7 +145,7 @@ def native(routine: Routine, unit: ir.Unit, address: dict[str, int], placed, sta
            offsets: dict[str, int], size: int, watch: list[str]) -> Path:
     rows = ",\n".join("{" + f"{s.slot}u, 0{s.ran:o}u, 0{s.control:o}u, {len(s.table)}u" + "}" for s in states)
     sets = ",\n".join(", ".join(f"{{0{k:o}u, 0{v:o}u}}" for k, v in sorted(s.table.items())) for s in states)
-    defined = {n for n, st in unit.objects.items() if isinstance(st, ir.Homed)}
+    defined = {n for n, st in unit.objects.items() if isinstance(st, ir.Homed) and st.here}
     cursors = "".join(f"word *{name};\n" for _, _, name, _ in PROPERTIES if name not in defined)
     points = "\n".join(f"    {name} = &object_table[0{offsets[first]:o}u + slot];"
                        for first, _, name, _ in PROPERTIES)
@@ -248,7 +248,7 @@ def paths(routine: Routine, states: list[State], want, address: dict[str, int], 
 
 
 def main(calls_per_routine: int = CALLS) -> int:
-    address = built_symbols()
+    address = oracle_symbols() | built_symbols()
     units = lifted_units(LIFT)
     unit = units[SPACESHIP]
     placed = [p for u in units.values() for p in reference.placements(u, address)]

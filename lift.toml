@@ -66,3 +66,15 @@ name = "spaceship"
 lines = "1079-1333"
 c = "lift/spaceship.c"
 prefix = "zp"
+
+[[region]]
+name = "main_loop"
+lines = ["664-941", "1357-1366"]
+c = "lift/main_loop.c"
+prefix = "zg"
+
+# Macro definitions and equates whose every user is lifted. They make no words.
+[[dropped]]
+name = "prelude"
+lines = ["3-60", "117-189", "622-628", "663-663"]
+why = "every macro and equate of the prelude (szm .. ranct) and nob: no unlifted user"

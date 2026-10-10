@@ -32,17 +32,28 @@ class Region:
         return any(a <= n <= b for a, b in self.ranges)
 
 
+def _ranges(entry: dict, what: str) -> tuple[tuple[int, int], ...]:
+    spans = [entry["lines"]] if isinstance(entry["lines"], str) else entry["lines"]
+    ranges = tuple(tuple(int(x) for x in span.split("-")) for span in spans)
+    if list(ranges) != sorted(ranges):
+        raise SystemExit(f"lift.toml: {what}: line ranges go in source order")
+    return ranges
+
+
+def dropped(cfg: dict) -> tuple[tuple[int, int], ...]:
+    """Source lines that make no words and that nothing uses any more: macro
+    definitions and equates whose users are all lifted. The build leaves
+    them out; the hash shows they made no words."""
+    return tuple(span for d in cfg.get("dropped", []) for span in _ranges(d, f"dropped {d['name']}"))
+
+
 def load(toml_path: Path) -> tuple[dict, list[Region]]:
     cfg = tomllib.loads(toml_path.read_text())
     root = toml_path.parent
     regions = []
     for r in cfg["region"]:
-        spans = [r["lines"]] if isinstance(r["lines"], str) else r["lines"]
-        ranges = tuple(tuple(int(x) for x in span.split("-")) for span in spans)
-        if list(ranges) != sorted(ranges):
-            raise SystemExit(f"lift.toml: region {r['name']}: line ranges go in source order")
-        regions.append(Region(r["name"], ranges, root / r["c"], r["prefix"]))
-    spans = sorted(span for r in regions for span in r.ranges)
+        regions.append(Region(r["name"], _ranges(r, f"region {r['name']}"), root / r["c"], r["prefix"]))
+    spans = sorted([span for r in regions for span in r.ranges] + list(dropped(cfg)))
     if any(a[1] >= b[0] for a, b in zip(spans, spans[1:])):
         raise SystemExit("lift.toml: line ranges overlap")
     prefixes = [r.prefix for r in regions]
@@ -59,8 +70,9 @@ def unlifted_text(toml_path: Path) -> str:
     after whitespace starts a comment; `n/` sets the location."""
     cfg, regions = load(toml_path)
     lines = (toml_path.parent / cfg["source"]).read_text().split("\n")
+    gone = dropped(cfg)
     return "\n".join(MACRO_COMMENT.sub("", line) for n, line in enumerate(lines, 1)
-                     if not any(r.covers(n) for r in regions))
+                     if not any(r.covers(n) for r in regions) and not any(a <= n <= b for a, b in gone))
 
 
 def labels_defined(text: str) -> set[str]:
@@ -72,7 +84,8 @@ def labels_defined(text: str) -> set[str]:
 def interface_errors(src_lines: list[str], region: Region, compiled: str) -> list[str]:
     """Symbols the original region defines and unlifted text uses must still be defined."""
     inside = "\n".join(line for n, line in enumerate(src_lines, 1) if region.covers(n))
-    outside = "\n".join(line for n, line in enumerate(src_lines, 1) if not region.covers(n))
+    outside = "\n".join(MACRO_COMMENT.sub("", line) for n, line in enumerate(src_lines, 1)
+                        if not region.covers(n))
     defined_now = labels_defined(compiled)
     errs = []
     for sym in labels_defined(inside):
@@ -96,14 +109,28 @@ def symbols(listing_text: str) -> dict[str, int]:
     return {s: int(v, 8) for s, v in LISTING_SYMBOL.findall(listing_text)}
 
 
+LISTING_LINE = re.compile(r"^ {0,4}\d+ ")
+
+
 def lifted_coverage(lst: Path) -> tuple[int, int]:
     """(words emitted by compiled C, all words placed) in an assembled listing.
-    A compiled word's listing line carries its rule id; the constants pool
-    is placed by unlifted text and counts as not lifted."""
-    words, _ = listing(lst)
-    compiled = sum(1 for _, text in words.values()
-                   if (m := re.search(r"/\s*([A-Z][A-Z0-9-]+)", text)) and m.group(1) in RULES)
-    return compiled, len(words)
+    A compiled word's listing line carries its rule id. The words a line
+    makes after its first, listed under it without a line number, belong to
+    that line: the literal constants under a compiled CONSTANTS() count as
+    compiled, those under the source's own `constants` do not."""
+    seen: set[int] = set()
+    compiled = 0
+    owner = ""
+    for line in lst.read_text(errors="replace").splitlines():
+        m = LISTING_WORD.match(line)
+        if LISTING_LINE.match(line):
+            owner = m.group(3) or "" if m else line
+        if not m or int(m.group(1), 8) in seen:
+            continue
+        seen.add(int(m.group(1), 8))
+        rule = re.search(r"/\s*([A-Z][A-Z0-9-]+)", owner)
+        compiled += bool(rule and rule.group(1) in RULES)
+    return compiled, len(seen)
 
 
 def diagnose(got_lst: Path, want_lst: Path) -> list[str]:
@@ -150,6 +177,10 @@ def build(toml_path: Path) -> int:
         chunks += zip(r.ranges, parts)
         spans = ", ".join(f"{a}-{b}" for a, b in r.ranges)
         print(f"  {r.name:<10} {spans}  compiled from {r.c.relative_to(root)}")
+    for d in cfg.get("dropped", []):
+        spans = ", ".join(f"{a}-{b}" for a, b in _ranges(d, d["name"]))
+        print(f"  {d['name']:<10} {spans}  dropped: {d['why']}")
+    chunks += [(span, []) for span in dropped(cfg)]
     for (a, b), lines in sorted(chunks, reverse=True):
         spliced[a - 1:b] = lines
     if errors:

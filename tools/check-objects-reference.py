@@ -21,12 +21,13 @@ their limits.
 
 Usage: uv run python tools/check-objects-reference.py"""
 import random
+import re
 import sys
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from oracle_check import ROOT, built_symbols, lifted_units
+from oracle_check import ROOT, built_symbols, lifted_units, oracle_symbols
 from pdp1cc import ir
 from pdp1cc.gate import corpus, reference, simh
 from pdp1cc.gate.simh import Inputs
@@ -113,6 +114,15 @@ ROUTINES = [
 ]
 
 
+def idle_cursors() -> list[str]:
+    """Pool cursors object_table.h declares that no calc routine here uses:
+    the main loop and the spaceship calc routine walk them. The native
+    build defines them so the address table can name them."""
+    header = (ROOT / "lift/object_table.h").read_text()
+    used = {name for *_, name in PROPERTIES}
+    return [n for n in re.findall(r"extern POOL word \*(\w+)", header) if n not in used]
+
+
 def native(routine: Routine, unit: ir.Unit, address: dict[str, int], placed,
            states: list[State], watch: list[str]) -> Path:
     mtb, nnn = address["mtb"], address["nnn"]
@@ -124,7 +134,7 @@ def native(routine: Routine, unit: ir.Unit, address: dict[str, int], placed,
     scratch = (f"word pdp1_table[0{nnn - mtb:o}];\n"
                + "".join(f"word *{name};\n" for _, cursor, name in PROPERTIES if cursor not in POOL_CURSORS)
                + "".join(f"word *{name};\n" for _, cursor, name in PROPERTIES if cursor in POOL_CURSORS)
-               + "word *fuel_slot;\nword *torpedoes_slot;\n"      # cursors these routines do not use
+               + "".join(f"word *{name};\n" for name in idle_cursors())
                + f"static const unsigned pdp1_states[][{len(PROPERTIES) + 2}] = {{\n{rows}\n}};\n"
                + "static void pdp1_setup(unsigned n) {\n"
                + "    const unsigned *s = pdp1_states[n];\n    unsigned slot = s[0];\n"
@@ -178,7 +188,7 @@ def compare(label: str, calls, want, got, names: list[str]) -> int:
 
 
 def main() -> int:
-    address = built_symbols()
+    address = oracle_symbols() | built_symbols()
     units = lifted_units(LIFT)
     unit = units[OBJECTS]
     placed = [p for u in units.values() for p in reference.placements(u, address)]

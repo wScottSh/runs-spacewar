@@ -71,9 +71,9 @@ def placements(unit: ir.Unit, symbols: dict[str, int]) -> list[Placement]:
 
 def symbol_table(placed: list[Placement]) -> str:
     rows = [f"    {{{'reinterpret_cast<const void *>(' + p.native + ')' if p.function else p.native},"
-            f" {p.words}u, 0{p.address:o}u}},\n" for p in placed]
+            f" {p.words}u, 0{p.address:o}u, {'true' if p.function else 'false'}}},\n" for p in placed]
     return ("const pdp1_symbol pdp1_symbols[] = {\n" + "".join(rows)
-            + "    {nullptr, 0u, 0u},\n};\n"
+            + "    {nullptr, 0u, 0u, false},\n};\n"
             + f"const unsigned pdp1_symbol_count = {len(placed)}u;\n")
 
 
@@ -174,7 +174,8 @@ def stub(sig: ir.Signature, body: str = "std::abort();") -> str:
     an unlifted routine. The reference run must never reach it, unless the
     check gives it a body that stands for the unlifted code."""
     params = ", ".join(native_param(p) for p in sig.params)
-    return f"{sig.returns} {sig.name}({params}) {{ {body} }}\n"
+    returns = {"io": "io_word", "word*": "word *"}.get(sig.returns, sig.returns)
+    return f"{returns} {sig.name}({params}) {{ {body} }}\n"
 
 
 def call_expr(sig: ir.Signature, native: str | None = None) -> str:
@@ -221,7 +222,7 @@ def build(c_files: list[Path], out: Path, call: str, inline_words: int = 0, watc
 
 
 def run(binary: Path, calls: list[Inputs]) -> list[Outcome]:
-    text = "".join(f"{c.ac:o} {c.io:o} {c.byname:o} {c.sense:o}\n" for c in calls)
+    text = "".join(f"{c.ac:o} {c.io:o} {c.byname:o} {c.sense:o} {c.test_word:o}\n" for c in calls)
     out = subprocess.run([str(binary)], input=text, capture_output=True, text=True, check=True).stdout
     outcomes = []
     for line in out.splitlines():

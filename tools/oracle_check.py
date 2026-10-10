@@ -52,6 +52,13 @@ def built_symbols() -> dict[str, int]:
     return splice.symbols(lst.read_text(errors="replace"))
 
 
+def oracle_symbols() -> dict[str, int]:
+    """The oracle listing's symbol table. It names what the lifted C no
+    longer defines as symbols, such as the object table's equates (nx1 ..
+    nnn); a build that matches the oracle has them at the same addresses."""
+    return splice.symbols((ROOT / "build/oracle.lst").read_text(errors="replace"))
+
+
 def lifted_units(c_files: list[Path]) -> dict[Path, ir.Unit]:
     """Each file lowered with its region's label prefix, as the build lowers it."""
     _, regions = splice.load(ROOT / "lift.toml")

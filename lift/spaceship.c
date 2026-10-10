@@ -44,10 +44,10 @@ JSP SYM("mex") void explosion(void);
 JSP SYM("tcr") void torpedo(void);
 JSP SYM("hp1") void in_hyperspace(register word io);
 
-/* Cursors whose homes are in this routine. */
-HOMED word *angular_momentum_slot SYM("mom");
-HOMED word *angle_slot SYM("mth");
-HOMED word *previous_control_slot SYM("mco");
+/* Cursors whose homes are in this routine (HOMED in object_table.h). */
+word *angular_momentum_slot SYM("mom");
+word *angle_slot SYM("mth");
+word *previous_control_slot SYM("mco");
 
 POOL word heading_sine;
 POOL word heading_cosine;
