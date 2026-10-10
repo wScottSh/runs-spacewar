@@ -14,10 +14,6 @@ def compile_file(path: Path, label_prefix: str = "z", trace: bool = True) -> str
     return emit.emit(lay_out(front.parse(path), label_prefix), trace)
 
 
-def compile_ast(ast, label_prefix: str = "z", trace: bool = True) -> str:
-    return emit.emit(lay_out(ast, label_prefix), trace)
-
-
 def compile_regions(path: Path, label_prefix: str) -> list[list[str]]:
     """The Macro lines of each region the file's REGION_BREAK()s separate."""
     return emit.regions(lay_out(front.parse(path), label_prefix))
