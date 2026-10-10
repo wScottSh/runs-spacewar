@@ -6,8 +6,10 @@ from . import ir
 
 def operand_text(o: ir.Operand) -> str:
     match o:
-        case ir.Sym(name=n):
-            return n
+        case ir.Sym(name=n, pool=pool):
+            return ("\\" if pool else "") + n
+        case ir.Insn():
+            return insn_text(o)
         case ir.Num(value=v):
             return f"{v:o}"
         case ir.Lit(value=v):
@@ -17,6 +19,11 @@ def operand_text(o: ir.Operand) -> str:
         case ir.ShiftCount(n=n):
             return f"{n}s"
     raise TypeError(o)
+
+
+def insn_text(n: ir.Insn) -> str:
+    parts = [n.op] + (["i"] if n.i else []) + ([operand_text(n.operand)] if n.operand else [])
+    return " ".join(parts)
 
 
 def word_text(w: ir.Word) -> str:

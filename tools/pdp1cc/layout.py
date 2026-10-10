@@ -7,7 +7,7 @@ from dataclasses import replace
 from . import ir
 from .dialect import Namer
 from .rules import check
-from .select import FunctionLowerer, W
+from .select import FunctionLowerer, W, datum_words, preserves_io
 
 
 class LayoutError(Exception):
@@ -18,6 +18,7 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Word]:
     namer = Namer(label_prefix, unit.next_label)
     items: list[ir.Item] = []
     entered_by_fallthrough = False
+    keeps_io: dict[str, bool] = {}
     for n, top in enumerate(unit.items):
         if top.at is not None:
             items.append(ir.Place("origin", top.at, check("LAY-AT")))
@@ -25,14 +26,15 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Word]:
             case ir.Function():
                 after = unit.items[n + 1] if n + 1 < len(unit.items) else None
                 following = after.sym if after is not None and after.at is None else None
-                lowerer = FunctionLowerer(top, namer, following)
+                lowerer = FunctionLowerer(top, namer, following, keeps_io)
                 own = lowerer.lower()
+                keeps_io[top.sym] = preserves_io(own) and not lowerer.fell_through
                 if entered_by_fallthrough:
                     own = _tag_first_word(own, "LAY-FALLTHROUGH")
                 entered_by_fallthrough = lowerer.fell_through
                 items += own
             case ir.Datum():
-                items += [ir.LabelDef(top.sym), W(None, "ST-PLACED", ir.Num(top.value))]
+                items += datum_words(top)
             case ir.Space():
                 items += [ir.LabelDef(top.sym), ir.Place("reserve", top.size, check("ST-RESERVE"))]
     return attach_labels(items)
@@ -49,8 +51,12 @@ def attach_labels(items: list[ir.Item]) -> list[ir.Word | ir.Place]:
     words: list[ir.Word | ir.Place] = []
     pending: list[str] = []
     alias: dict[str, str] = {}
+    defined: set[str] = set()
     for it in items:
         if isinstance(it, ir.LabelDef):
+            if it.name in defined:
+                raise LayoutError(f"{it.name} is defined twice (a HOMED pointer has one home)")
+            defined.add(it.name)
             pending.append(it.name)
             continue
         if isinstance(it, ir.Place) and it.kind == "origin":

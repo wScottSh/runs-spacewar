@@ -18,6 +18,12 @@ const  a constant c used as a value becomes c + 1 (-c becomes -(c + 1)).
 count  a shift or rotate count n becomes n + 1. The run of 9s chunks for n
        becomes the run for n + 1. In an XCT function a run that would grow
        past one word is predicted to be refused.
+flag   a program flag n (stf, clf, flag, I_STF, I_CLF, I_SZF) becomes n + 1:
+       the one instruction or literal that names flag n names n + 1. Past
+       flag 7 (flag 6 for a test) it is refused. An I_RCL-style count n
+       becomes n + 1 in its literal (`rcl 3s` -> `rcl 4s`), refused past 9.
+
+Case labels and array lengths are not values: their edits are not made.
 
 The predictions are written here from the rule tables, not computed by the
 compiler's own lowering code."""
@@ -42,6 +48,11 @@ COMPARE = {"<", ">=", "==", "!=", "<=", ">"}
 SHIFT = {"<<": "sal", ">>": "sar"}
 COUNT_ARG = {"rcl": 2, "rcr": 2, "scl": 2, "scr": 2, "ral": 1, "rar": 1, "ril": 1, "rir": 1}
 MAX_SHIFT = 35
+# A builtin whose argument is a field of one instruction: its mnemonic,
+# whether the field is a shift count, the largest value, and the error past it.
+FIELD_ARG = {"stf": ("stf", False, 7), "clf": ("clf", False, 7), "flag": ("szf", False, 6),
+             "I_STF": ("stf", False, 7), "I_CLF": ("clf", False, 7), "I_SZF": ("szf", False, 7),
+             "I_RCL": ("rcl", True, 9), "I_RAL": ("ral", True, 9)}
 
 Line = tuple[str, str]          # (label, instruction text)
 
@@ -201,6 +212,11 @@ def sites(ast: c_ast.FileAST, unit: ir.Unit) -> list[Site]:
             continue
         if isinstance(parent, c_ast.BinaryOp) and field == "right" and parent.op in COMPARE:
             continue
+        if isinstance(parent, (c_ast.Case, c_ast.ArrayDecl)):
+            continue
+        if (fieldarg := field_arg(parent, ctx)) is not None:
+            out.append(replace(field_site(index, node, *fieldarg, token), copies=ctx.get('copies', 1)))
+            continue
         if isinstance(parent, c_ast.BinaryOp) and field == "right" and parent.op in SHIFT:
             if token + 1 <= MAX_SHIFT:
                 out.append(one_word_limit(replace(count_site(index, node, SHIFT[parent.op], token),
@@ -219,6 +235,33 @@ def sites(ast: c_ast.FileAST, unit: ir.Unit) -> list[Site]:
         new = dialect.to_word(-(token + 1) if negated else token + 1, node)
         out.append(replace(const_site(index, node, old, new), copies=ctx.get('copies', 1)))
     return out
+
+
+def field_arg(parent, ctx: dict) -> tuple[str, bool, int] | None:
+    call = ctx.get("call_node")
+    if not isinstance(parent, c_ast.ExprList) or call is None or call.args is not parent:
+        return None
+    name = call.name.name if isinstance(call.name, c_ast.ID) else None
+    return FIELD_ARG.get(name)
+
+
+def field_site(index: int, node: c_ast.Constant, mnemonic: str, shift: bool, largest: int,
+               n: int) -> Site:
+    unit = "s" if shift else ""
+    old_t, new_t = rf"\b{mnemonic}( i)? {n:o}{unit}\b", f"{mnemonic}\\1 {n + 1:o}{unit}"
+
+    def rewrites(old: list[Line]) -> list[Rewrite]:
+        return [(i, i + 1, [(lab, re.sub(old_t, new_t, instr, count=1))])
+                for i, (lab, instr) in enumerate(old) if re.search(old_t, instr)]
+
+    def edit(n_: c_ast.Constant) -> None:
+        n_.value = str(n + 1)
+
+    error = None
+    if n + 1 > largest:
+        error = "shifts 1..9 places" if shift else "flag"
+    return Site("flag", index, node.coord.line, f"{mnemonic} field {n} -> {n + 1}", rewrites, edit,
+                error=error)
 
 
 def builtin_count(parent, field: str, ctx: dict) -> str | None:
@@ -349,7 +392,7 @@ def gate(files: list[Path]) -> int:
         tested, failures = check_file(f)
         total = sum(tested.values())
         status = "ok" if not failures else f"{len(failures)} WRONG"
-        kinds = " ".join(f"{k} {tested[k]}" for k in ("swap", "const", "count"))
+        kinds = " ".join(f"{k} {tested[k]}" for k in ("swap", "const", "count", "flag"))
         print(f"  {f.name:<16} {total:>3} edits ({kinds})  {status}")
         for line in failures[:8]:
             print("    " + line)

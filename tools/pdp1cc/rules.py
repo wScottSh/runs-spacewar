@@ -23,7 +23,7 @@ RULES: dict[str, str] = {
     "GOTO": "goto L: jmp L; a C label names the first word of its statement",
     "EX-STEP": "mus(h, l, m) / dis(h, l, m): one multiply or divide step on AC:IO",
     "EX-MOVE": "value between AC and IO (register local from AC, or into AC): rcr 9s; rcr 9s",
-    "EX-CONST-IO": "register local = 0: cli",
+    "EX-CONST-IO": "constant into a register (IO) local: 0 -> cli, else lio (c",
     "EX-STORE-IO": "x = register local: dio x",
     "JDA-CALL": "f(...) for a JDA f: AC argument, jda f",
     "JDA-BYNAME-ARG": "BYNAME argument: the inline word `lac x` (constant -> literal) after the call",
@@ -43,10 +43,23 @@ RULES: dict[str, str] = {
     "JSP-FORWARD": "a JSP function whose body is `return g(...)` for a JSP g: `jmp g`, AC still holds the return address",
     "LAY-AT": "AT(a) on a definition: the origin `a/` before it",
     "ST-RESERVE": "RESERVE object: `. n/` sets its n words aside, not punched",
-    "EX-CODE": "a function's name as a value: its address, `law f`",
+    "EX-CODE": "a function's name, an array's name or &object as a value: its address, `law x`",
     "TAIL-CALL-INDIRECT": "return p(...) through a pointer-to-function object p: arguments, `jmp i p`",
     "EX-HW": "a hardware builtin with no operand (tyi, lsm): its one instruction",
     "SKIP-IO": "a register (IO) local compared with 0: io < 0 skips on `spi i`, io >= 0 on `spi`",
+    "ST-POOL": "POOL object: a `\\x` variable macro1 allocates at `variables`, named with `\\` everywhere",
+    "EX-INSN": "I_* constructor: an instruction word as a constant, a literal `(lac x` or a data word",
+    "EX-POSTINC-STORE": "*p++ = e with p a pointer word: dac i p (dio i p from IO); idx p",
+    "EX-STORE-ADDR": "x.addr = e, or p = e for a HOMED p: e into AC, dap x",
+    "INLINE-READ": "read of an INLINE parameter: lac i R, the constant word after the call",
+    "JDA-INLINE-ARG": "INLINE argument: the constant or address itself, as the word after the call",
+    "SWITCH": "switch ((int)e) over 0..n: add (T; dap J; J, jmp .; T: a jmp per goto case, opr per "
+              "empty case, the last case in its slot",
+    "HOMED-HOME": "*home(p): the instruction that holds HOMED pointer p, `lac .` / `lio .` under p's label",
+    "ST-HOMED": "HOMED pointer: stored by dap and advanced by idx at its home",
+    "LAY-PLACE": "PLACE(x, ...): the words of x laid out at the statement, which control cannot reach",
+    "EX-FLAG": "stf(n) / clf(n): set or clear program flag n",
+    "SKIP-FLAG": "flag(n) as a condition: !flag(n) skips on `szf n`, flag(n) on `szf i n`",
 }
 
 

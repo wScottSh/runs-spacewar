@@ -31,6 +31,11 @@ def io_skip_when(op: str) -> str | None:
     return IO_SKIP.get(op)
 
 
+def flag_skip_when(n: int, negated: bool) -> str:
+    """`szf n` skips when program flag n is clear: skip_when(!flag(n))."""
+    return f"szf {n}" if negated else f"szf i {n}"
+
+
 def isp_skip_when(op: str) -> str | None:
     """`++m >= 0` is `isp m`. `++m < 0` has no skip: callers use IF-MULTI."""
     return "isp" if op == ">=" else None
