@@ -14,7 +14,7 @@ class LayoutError(Exception):
     pass
 
 
-def place(unit: ir.Unit, label_prefix: str) -> list[ir.Word]:
+def place(unit: ir.Unit, label_prefix: str) -> list[ir.Emitted]:
     namer = Namer(label_prefix, unit.next_label)
     items: list[ir.Item] = []
     entered_by_fallthrough = False
@@ -23,7 +23,7 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Word]:
     homes = home_ops([t for t in unit.items if isinstance(t, ir.Function)] + list(inlines.values()))
     for n, top in enumerate(unit.items):
         if top.at is not None:
-            items.append(ir.Place("origin", top.at, check("LAY-AT")))
+            items.append(ir.Origin(top.at, check("LAY-AT")))
         match top:
             case ir.RegionBreak():
                 items.append(ir.Break())
@@ -41,7 +41,7 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Word]:
             case ir.Datum():
                 items += datum_words(top)
             case ir.Space():
-                items += [ir.LabelDef(top.sym), ir.Place("reserve", top.size, check("ST-RESERVE"))]
+                items += [ir.LabelDef(top.sym), ir.Reserve(top.size, check("ST-RESERVE"))]
     return attach_labels(items)
 
 
@@ -63,8 +63,8 @@ def _tag_first_word(items: list[ir.Item], rule: str) -> list[ir.Item]:
     return items[:n] + [replace(items[n], via=items[n].via + (rule,))] + items[n + 1:]
 
 
-def attach_labels(items: list[ir.Item]) -> list[ir.Word | ir.Place]:
-    words: list[ir.Word | ir.Place] = []
+def attach_labels(items: list[ir.Item]) -> list[ir.Emitted]:
+    words: list[ir.Emitted] = []
     pending: list[str] = []
     defined: set[str] = set()
     for it in items:
@@ -74,7 +74,7 @@ def attach_labels(items: list[ir.Item]) -> list[ir.Word | ir.Place]:
             defined.add(it.name)
             pending.append(it.name)
             continue
-        if isinstance(it, ir.Break) or (isinstance(it, ir.Place) and it.kind == "origin"):
+        if isinstance(it, (ir.Break, ir.Origin)):
             if pending:
                 raise LayoutError(f"labels {pending} come before an origin")
             words.append(it)

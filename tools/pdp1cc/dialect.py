@@ -10,7 +10,6 @@ from . import ir, macro
 
 PAIR_SHIFTS = {"rcl", "rcr", "scl", "scr"}
 PAIR_STEPS = {"mus", "dis"}
-ROTATES = {"ral": "ac", "rar": "ac", "ril": "io", "rir": "io"}
 BIN_OPS = {"+", "-", "&", "|", "^"}
 MACRO_SYMBOL_LEN = 6
 CMP_OPS = {"<", ">=", "==", "!=", "<=", ">"}
@@ -31,7 +30,7 @@ INSN_FLAG = {"I_STF": "stf", "I_CLF": "clf", "I_SZF": "szf"}
 INSN_SHIFT = {"I_RCL": "rcl", "I_RAL": "ral"}
 INSN_CONSTANT = {"I_CMA": ir.Insn("cma"),
                  "I_IOH": ir.Insn("iot", None, True),         # ioh: iot i, wait for completion
-                 "I_DPY_NOWAIT": ir.Insn("dpy-4000")}          # plot, ask for a completion pulse
+                 "I_DPY_NOWAIT": ir.Insn(ir.DPY_NOWAIT)}
 MAX_FLAG = 7                        # flag 7 names all six program flags
 MAX_INSN_SHIFT = 9                  # one shift instruction moves 1..9 places
 MACRO_SYMBOL = re.compile(r"[a-z][a-z0-9]{0,%d}" % (MACRO_SYMBOL_LEN - 1))
@@ -850,8 +849,10 @@ class _Lowerer:
             want = 3 if name == "dpy" else 2
             if len(args) != want:
                 raise _err(node, f"{name} takes {want} arguments")
-            intensity = c_int(args[2]) if name == "dpy" else None
-            if intensity is not None and not 0 <= intensity <= MAX_INTENSITY:
+            if name == "dpy_nowait":
+                return ir.DpyNowait(self.expr(args[0]), self.lvalue(args[1]))
+            intensity = c_int(args[2])
+            if not 0 <= intensity <= MAX_INTENSITY:
                 raise _err(node, "dpy(x, y, n): the intensity n is 0..7")
             return ir.Dpy(self.expr(args[0]), self.lvalue(args[1]), intensity)
         if name in self.pointers and self._is_variable(name):
@@ -864,9 +865,9 @@ class _Lowerer:
                 raise _err(node, f"{name}(hi, lo, x) takes three arguments")
             hi, lo = self.lvalue(args[0]), self.lvalue(args[1])
             if name in PAIR_SHIFTS:
-                return ir.PairOp(name, hi, lo, count=c_int(args[2]))
-            return ir.PairOp(name, hi, lo, operand=self.expr(args[2]))
-        if name in ROTATES:
+                return ir.PairShift(name, hi, lo, c_int(args[2]))
+            return ir.PairStep(name, hi, lo, self.expr(args[2]))
+        if name in ir.AC_ROTATES | ir.IO_ROTATES:
             if len(args) != 2:
                 raise _err(node, f"{name}(x, n) takes two arguments")
             return ir.Rot(name, self.lvalue(args[0]), c_int(args[1]))

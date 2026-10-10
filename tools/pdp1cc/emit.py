@@ -37,19 +37,17 @@ def word_text(w: ir.Word) -> str:
     return " ".join(parts)
 
 
-def emit(words: list[ir.Word | ir.Place], trace: bool = True) -> str:
+def emit(words: list[ir.Emitted], trace: bool = True) -> str:
     lines = []
     for w in words:
         if isinstance(w, ir.Break):
             lines.append(BREAK)
             continue
-        label = "".join(f"{lab}, " for lab in w.labels)[:-1]
-        if isinstance(w, ir.Place) and w.kind == "origin":
+        if isinstance(w, ir.Origin):
             line = f"{w.n:o}/"
-        elif isinstance(w, ir.Place):
-            line = f"{label}\t. {w.n:o}/"
         else:
-            line = f"{label}\t{word_text(w)}"
+            label = "".join(f"{lab}, " for lab in w.labels)[:-1]
+            line = f"{label}\t" + (f". {w.n:o}/" if isinstance(w, ir.Reserve) else word_text(w))
         if trace:
             note = getattr(w, "note", "")
             line += f"\t/ {w.rule}" + "".join(f" +{v}" for v in w.via) + (f" {note}" if note else "")

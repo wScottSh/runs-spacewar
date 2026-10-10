@@ -8,6 +8,9 @@ from typing import Union
 WORD_BITS = 18
 WORD_MASK = (1 << WORD_BITS) - 1
 ADDR_MASK = (1 << 12) - 1
+AC_ROTATES = {"ral", "rar"}
+IO_ROTATES = {"ril", "rir"}
+DPY_NOWAIT = "dpy-4000"     # plot, and ask for a completion pulse
 
 
 # ---------------------------------------------------------------- storage
@@ -114,12 +117,19 @@ class Rot:              # ral/rar(ac, n), ril/rir(io, n): one register rotated
 
 
 @dataclass(frozen=True)
-class PairOp:           # rcl(h, l, n) / mus(h, l, m) etc: h in AC, l in IO, both updated
+class PairShift:        # rcl(h, l, n) etc: h in AC, l in IO, both shifted as one
     op: str
     hi: Var
     lo: Var
-    count: int | None = None        # shift count, or
-    operand: Expr | None = None     # memory operand of a multiply/divide step
+    count: int
+
+
+@dataclass(frozen=True)
+class PairStep:         # mus(h, l, m) / dis(h, l, m): one multiply or divide step on AC:IO
+    op: str
+    hi: Var
+    lo: Var
+    operand: Expr
 
 
 class Conv(Enum):
@@ -228,10 +238,16 @@ class Flag:             # stf(n) / clf(n): set or clear program flag n
 
 
 @dataclass(frozen=True)
-class Dpy:
+class Dpy:              # dpy(x, y, n): plot (x, y) at intensity n
     x: "Expr"
     y: Var
-    intensity: int | None
+    intensity: int
+
+
+@dataclass(frozen=True)
+class DpyNowait:        # dpy_nowait(x, y): plot (x, y), ask for a completion pulse
+    x: "Expr"
+    y: Var
 
 
 @dataclass(frozen=True)
@@ -241,8 +257,8 @@ class HomeWord:
     increment: bool
 
 
-Expr = Union[Const, Var, PreInc, Neg, Binary, Shift, Rot, PairOp, Call, Half, Pair, CodeRef,
-             IndirectCall, Hw, Insn, AddrOf, HomeLoad, Flag, Dpy, HomeWord]
+Expr = Union[Const, Var, PreInc, Neg, Binary, Shift, Rot, PairShift, PairStep, Call, Half, Pair,
+             CodeRef, IndirectCall, Hw, Insn, AddrOf, HomeLoad, Flag, Dpy, DpyNowait, HomeWord]
 
 
 @dataclass(frozen=True)
@@ -489,9 +505,16 @@ class LabelDef:
 
 
 @dataclass(frozen=True)
-class Place:
-    """A location directive, not a word: `a/` (origin) or `. n/` (reserve n)."""
-    kind: str           # "origin" | "reserve"
+class Origin:
+    """`a/`: a location directive, not a word. What follows is laid out from a."""
+    n: int
+    rule: str
+    via: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Reserve:
+    """`. n/`: n words set aside, not punched."""
     n: int
     rule: str
     labels: tuple[str, ...] = ()
@@ -503,4 +526,5 @@ class Break:
     labels: tuple[str, ...] = ()
 
 
-Item = Union[Word, LabelDef, Place, Break]
+Item = Union[Word, LabelDef, Origin, Reserve, Break]
+Emitted = Union[Word, Origin, Reserve, Break]  # an item laid out: one line of output

@@ -12,10 +12,6 @@ from .rules import check
 
 BIN_MNEMONIC = {"+": "add", "-": "sub", "&": "and", "|": "ior", "^": "xor"}
 SHIFT_MNEMONIC = {"<<": "sal", ">>": "sar"}
-PAIR_SHIFTS = {"rcl", "rcr", "scl", "scr"}
-PAIR_STEPS = {"mus", "dis"}
-AC_ROTATES = {"ral", "rar"}
-IO_ROTATES = {"ril", "rir"}
 LAW_MAX = (1 << 12) - 1
 SWAP_HALF = 9           # rcr 9s twice exchanges AC and IO
 MAX_PASSES = 20
@@ -28,7 +24,6 @@ LEAVES_ELSEWHERE = {"TAIL-CALL", "TAIL-CALL-INDIRECT", "JSP-FORWARD", "RET-INDIR
 # what each writes. Parts that write different things do not depend on the
 # order the hardware applies them in, so the word means the comma expression.
 OPR_WRITES = {"cla": "AC", "cma": "AC", "cli": "IO", "clf": "a program flag", "stf": "a program flag"}
-DPY_NOWAIT = "dpy-4000"
 
 
 class SelectError(Exception):
@@ -360,13 +355,13 @@ class FunctionLowerer:
                 return self.homed_switch(s, st)
             case ir.OprCombine():
                 return self.opr_combine(s, st)
-            case ir.Eval(expr=ir.Dpy() as d):
+            case ir.Eval(expr=ir.Dpy() | ir.DpyNowait() as d):
                 return self.dpy(d, st)
             case ir.Switch():
                 return self.switch(s, st)
             case ir.PlaceHere():
                 return self.place_here(s, st)
-            case ir.Eval(expr=ir.PairOp() as p):
+            case ir.Eval(expr=ir.PairShift() | ir.PairStep() as p):
                 return self.pair_op(p, st)
             case ir.Eval(expr=ir.Call() as c):
                 return self.call(c, st)
@@ -420,11 +415,11 @@ class FunctionLowerer:
         text = " ".join(emit.word_text(w) for w in words) + "-opr" * (len(words) - 1)
         return [W(text, "OPR-COMBINE", via=tuple(dict.fromkeys(vias)))], st
 
-    def dpy(self, d: ir.Dpy, st: State):
+    def dpy(self, d: ir.Dpy | ir.DpyNowait, st: State):
         items, st = self.to_ac(d.x, st)
         self.need_io(d.y, st)
-        if d.intensity is None:
-            text = DPY_NOWAIT
+        if isinstance(d, ir.DpyNowait):
+            text = ir.DPY_NOWAIT
         else:
             text = "dpy-i" + (f"+{d.intensity << 6:o}" if d.intensity else "")
         return items + [W(text, "EX-DPY", note="plot (AC, IO)")], st
@@ -584,7 +579,7 @@ class FunctionLowerer:
                     State(st.ac - {kt}, frozenset({kt}))
             case ir.Hw(name="tyi"):
                 return [W("tyi", "EX-HW")], State(st.ac - {kt}, frozenset({kt}))
-            case ir.Rot(op=op, operand=v) if op in IO_ROTATES:
+            case ir.Rot(op=op, operand=v) if op in ir.IO_ROTATES:
                 if v != t:
                     raise SelectError(f"{op} rotates IO in place: write {t.name} = {op}({t.name}, n)")
                 self.need_io(v, st)
@@ -597,12 +592,12 @@ class FunctionLowerer:
         if fact(v) not in st.io:
             raise SelectError(f"register local {v.name} no longer holds its value in IO")
 
-    def pair_op(self, p: ir.PairOp, st: State):
+    def pair_op(self, p: ir.PairShift | ir.PairStep, st: State):
         if not isinstance(p.hi.storage, ir.Acc) or fact(p.hi) not in st.ac:
             raise SelectError(f"{p.op}: {p.hi.name} must be an AC local holding its value")
         if not isinstance(p.lo.storage, ir.Io) or fact(p.lo) not in st.io:
             raise SelectError(f"{p.op}: {p.lo.name} must be a register local holding its value")
-        if p.op in PAIR_STEPS:
+        if isinstance(p, ir.PairStep):
             words = [W(p.op, "EX-STEP", self.memory_operand(p.operand))]
         else:
             words = [W(p.op, "EX-ROT", ir.ShiftCount(n)) for n in shift_chunks(p.count)]
@@ -873,7 +868,7 @@ class FunctionLowerer:
                 words = [W(SHIFT_MNEMONIC[e.op], "EX-SHIFT", ir.ShiftCount(n))
                          for n in shift_chunks(e.count)]
                 return items + words, State(frozenset(), st.io)
-            case ir.Rot(op=op) if op in AC_ROTATES:
+            case ir.Rot(op=op) if op in ir.AC_ROTATES:
                 items, st = self.to_ac(e.operand, st)
                 words = [W(op, "EX-ROT", ir.ShiftCount(n)) for n in shift_chunks(e.count)]
                 return items + words, State(frozenset(), st.io)
