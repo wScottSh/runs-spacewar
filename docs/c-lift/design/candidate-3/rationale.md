@@ -97,7 +97,7 @@ Load-bearing decisions:
 
 ## Implementation reconciliation
 
-Phase F steps 1-4 (synthesis.md) are implemented for the sqt subset. This section records where the code differs from this design and why.
+Phase F is complete: `pdp1cc build` compiles every word of the image from `lift/` (M8 section). This section records where the code differs from this design and why, milestone by milestone. A later section can supersede an earlier one; the M8 section says which parts of the splice-era contract are gone.
 
 **Front end.** pycparserext 2026.1 (`GnuCParser`, over pycparser 3.11, pinned in `uv.lock`) keeps `__attribute__((pdp1_*))` in every position the dialect uses: before a function, on a parameter, before a declarator, and after one (`word *mdx POOL`). The `_Pragma` fallback is not needed. `front.py` runs `gcc -E -D__PDP1CC__ -include pdp1.h` and keeps line markers, so errors name the C line.
 
@@ -111,9 +111,9 @@ Phase F steps 1-4 (synthesis.md) are implemented for the sqt subset. This sectio
 
 **TRACK.** Lowering is a pure function of (statement, AC/IO state). A `for (;;)` body is lowered again until the state at its head is a fixpoint. A read of an AC local whose value is no longer in AC is a compile error that asks for a static.
 
-**Labels.** Generated labels use a per-region prefix from `lift.toml` (`zs` for sqt), not a region letter. Several labels may name one word, and each stays a name of it (`zh73, zh17, jmp .`); M3 merged them into one (M4 section).
+**Labels.** Generated labels use a per-file prefix from `lift.toml` (`zs` for sqt), not a region letter. Several labels may name one word, and each stays a name of it (`zh73, zh17, jmp .`); M3 merged them into one (M4 section).
 
-**Splice build.** The interface check reads the source text. A label defined inside the region and named outside it must still be defined by the compiled text. It does not use the oracle xref. On a mismatch, `build` reports whether the `variables` base moved, then the first differing address with the expected word, the actual word and the rule id. There is no per-region cache.
+**Build.** Until M7 the build spliced compiled regions into the source text, with an interface check that a symbol unlifted text named was still defined. Since M8 it compiles `lift/` into one program (M8 section). On a mismatch, `build` reports whether the `variables` base moved, then the first differing address with the expected word, the actual word and the rule id. There is no per-region cache.
 
 **Gates.**
 - G1 runs as `tools/check-*-reference.py`, one per lifted routine group. Each compares the native build of the lifted C with SIMH running the routine in the oracle `.rim`, in one SIMH session, and compares every JDA entry word after every call. sqt covers 0..0177777.
@@ -386,6 +386,46 @@ Deviations from the design, and why:
 
 **Frame-level check.** `tools/check-main-loop-frames.py` runs SIMH on the oracle image and on the built image in lockstep: 17 scenarios (start at 5 and at 4, sense switches, seeds, `ddd` = 0, tunables that fill the table), ship controls and match switches on the test word from a seeded policy, a stop at every frame seam (ml0) and every halt. At each stop it compares the object table, the scores, the game count, the restart delay, the spare time, `ran`, AC, IO and the flags: 96049 stops, 0 differ. Identical images make that trivial; its value is coverage of the built image, read by self-removing SIMH breakpoints (xct targets counted through their xct). After the merge with M6, 1412 of 1442 compiled code words run (97.9%), main_loop 261/261, spaceship 276/277. The `jmp .-1` after the full-table halt counts as run when the halt repeats after `cont`. The 30 that do not: the sequence-break flush, the outline compiler's direction code 2 (no shipped outline uses it), sin's overflow clamp, dvd's entry (only idv is called), a mex path and pof's wait loop that need a negative instruction count, and some heavens scan-wrap paths, which check-heavens-reference covers. A one-word change to the built image (`maa`) fails at stop 2. It says nothing about what the C means natively.
 
+### M8 the finish line (the program build, review follow-ups)
+
+`pdp1cc build` compiles the files `lift.toml` lists, in that order, into one Macro program and assembles it. No line of `source/spacewar3.1_complete.txt` takes part; the source stays in the repo as the oracle's input. Lifted coverage is 2514/2514 words. `tools/check-g3.py` runs the whole build in a tree without `source/` and `build/` and gets the oracle hash.
+
+**What the residue was.** After M7 the build still spliced into the source text, and the lines left were titles, `start` directives, comments and blanks. Each tape-level fact now has a C form or is shown to make no byte:
+- **Titles.** macro1 reads the first line of a tape as its title. The title goes to the listing and to stderr, never to the tape (`processLine` in `tools/macro1.c`; assembling with another title gives the same `.rim`). The compiler frames the program with its own title line, `pdp1cc lift.toml`.
+- **`start` with no operand** (source lines 62, 655, 1368). It flushes the loader block and ends a tape segment, and the next line is read as a title. Removing all three, with their titles, leaves the hash unchanged: each falls where the next word starts a new block anyway (an origin change). They have no C form.
+- **`start 4`.** It ends the tape with `jmp 4`, the address the loader starts the program at. In C it is `START` on the start vector `start` in `tunables.c`: the BLOCK function the tape starts at.
+- **Comments and blanks** make no byte.
+
+New rule:
+- `LAY-START`. `START` on a BLOCK function with no parameters ends the program with `start f`. The program emitter puts it last, since macro1 ends a tape at `start`; a second START is an error (rejects `start-twice`, `start-not-block`). Corpus `odometer`, `thermostat` and `console` use it; G2 checks that SIMH's PC after loading the tape is the START function's address.
+
+Extended rule: `CALL-INDIRECT` takes a JSP function type that returns an `io_word`: the result is in IO (corpus `turnstile`, `console`; `spaceship.c`'s control word).
+
+**Linking by C name.** A C name of external linkage is one Macro symbol in every file of the program (`dialect.external_symbols`): a short name is its own symbol, a long one gets a generated `y<n>`, numbered in order of first declaration across the files. A lone file is its own program. A static name always gets a fresh symbol, since another file may use the same name, and a short name shaped like a generated symbol (`y12`, `zt3`) gets one too; `lift.toml` prefixes are `z` and a letter, so generated symbols and C names never meet. Two files that each define a START function are an error. `SYM` existed to make spliced C and unlifted text agree on symbols; with no unlifted text, every pin failed G5, so `SYM` is gone from the dialect, `pdp1.h`, `lift/` and the gate (rejects `sym-*` gone). Each definition keeps the original symbol in its comment. Two pins had joined objects that had different C names:
+- `\bx`, `\by`: the central star's slope and the spaceship's gravity. One pool pair now, `star_vector_x` and `star_vector_y` in `star_vector.h`; each user names it for its own meaning with a macro.
+- `\cwg`: `main_loop.c` declared it a pointer to `io_word f(register word io)`, `spaceship.c` a pointer to `dword f(void)`. `control_word.h` declares the type and the pointer once: `io_word control_word_reader(void) JSP`. The getters take no parameter now; `read_test_word` is `SWAP(lat())` (the same `rcl 9s` pair).
+
+**Declarations agree across files.** The build refuses a function, or an object that points to a function type, declared with different shapes in two files (convention, parameter kinds, return, SKIPS). It found the `\cwg` mismatch when that was put back as a test.
+
+**Files.** `REGION_BREAK` is gone. The star catalog is `lift/star_catalog.c`, the last unit on the tape; the constants, variables, patch space and object table are `lift/core_layout.c`. `NOB`, the table's size and each property's start moved to `object_table.h`, since three files use them.
+
+**Nested SKIPS.** A SKIPS function that called another SKIPS function other than as its tail call leaked the inner skip into its own native skip count: the reference build guards only functions that are not SKIPS. The shape is rejected (`skips-nested`); nothing used it.
+
+**Entering the compiled outline stays a tail call.** The review asked for `(*home(draw_outline))(); return outline_drawn();` so that `outline_drawn` reads as part of one flow. The words would allow it (`jmp .` at the home, and the tail call elided by fallthrough), but the C would claim something the compiler cannot check. A statement call means the callee comes back to the next statement. The compiled outline comes back only because the outline compiler wrote `jmp outline_drawn` into it; a call through a pointer gives a BLOCK no return address and patches no exit. Lowered as a bare jump, the same statement with any compiled BLOCK target would run the continuation twice natively (once inside the callee's own tail call, once after it) and once on the machine. So the entry stays `return (*home(draw_outline))();`, and the return path is stated where it is made: `*code++ = I_JMP(outline_drawn)` in `outline_compiler.c`, with a comment at `outline_drawn` pointing there.
+
+**Byte-fit hints.** `SKIPNOT(c)` and `SWAP(x)` are encoding selectors with identity native meaning: `SKIPNOT(c)` is `c` and `SWAP(x)` is `x` under g++. They choose between two encodings of the same computation, `spa i` over `sma` and `rcl 9s` twice over `rcr 9s` twice, where the binary records the authors' choice. G5 fails each if deleting it leaves the words unchanged, and G6 cannot see them, so their only evidence is the hash. They belong with `PLACE` and `ARGS_DONE`: hints that fit bytes, not semantics.
+
+**Second corpus users.** `io_word` results (a direct JSP call, a computed call, a call through a pool pointer), `control_boxes()` and `extern HOMED` each had one corpus user or none. `thermostat` and `turnstile` use all three and mirror no lifted routine. Both run `iot 11` in SIMH: with the CPU's display option off, headless SIMH leaves IO unchanged on `iot 11` and does not stop, so a reader that clears IO first reads no buttons, as the native `control_boxes()` does. The M7 note that SIMH stops on `iot 11` was wrong; the frame check's control-box scenarios also run `read_control_boxes`.
+
+**Naming.** A pass across `lift/` replaced short or opaque names with what the value means; each definition keeps the source's symbol in its comment. The main ones (source symbol in parentheses):
+- `sqt` is `square_root` (`lift/square_root.c`, `tools/check-square-root-reference.py`); `sq1`, `sq2` are `root_passes_left`, `partial_root`.
+- The outline's direction steps, pool words the outline compiler's code reads: `down_step_x`, `down_step_y` (ssn, scn), `out_step_x`, `out_step_y` (scm, ssm), `out_down_step_x`, `out_down_step_y` (ssc, csm), `in_down_step_x`, `in_down_step_y` (csn, ssd).
+- `object_table.h`: `OUTLINE_STARTS` (not) is the table property holding each ship's compiled outline; `OUTLINE_CODE_SPACE` (nnn) is the free core the outline compiler writes into. `NOB` is `OBJECT_COUNT`, `SPINS` `ANGULAR_MOMENTA`, `OLD_CONTROLS` `PREVIOUS_CONTROLS`.
+- The spaceship's gravity: `work` is `gravity_operand` (\t1), and the locals `d`, `f`, `q` are `capture_margin`, `distance_cubed`, `pull`.
+- Locals in every file named for their meaning (`flame_dots`, `launch_coordinate`, `particle_count`, `routine_changed`, ...). Kept: `a` and `b` in multiply (interchangeable factors, which `integer_multiply` passes swapped), `a` in the sine series (the reduced angle, then the running sum), and the starfield's `x`, `y`.
+
+**What the checks still do not prove.** The frame check runs 1412 of 1442 compiled code words, as after M7; the 30 it does not run are at the same places (M7 section). `check-divide-reference` calls dvd's entry; no check measures whether the other 29 run, and the hash covers them. The main loop has no native reference, since it runs generated code.
+
 ## Open questions and risks
 
 - Runtime-generated code: M3 settles the writing side and M6 the entry: a jump through a HOMED pointer to a BLOCK function type, at its home, and a BLOCK at the return point (M6 section). M7's main loop stores the address (`mot, lac . / dap sp5`) through its extern declaration of `draw_outline`.
@@ -397,4 +437,4 @@ Deviations from the design, and why:
 
 ## Next implementation step
 
-Build `skips.py`, `select.py`, and `emit.py` for the sqt subset, then make `pdp1cc lower examples/sqt.c` output assemble to the oracle hash through `splice.py`, with the G2 corpus started in the same change.
+None. M8 met the finish line of `docs/lift-playbook.md`: the image builds from `lift/` alone, the gate is green and every reference check is green.

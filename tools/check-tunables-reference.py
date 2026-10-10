@@ -10,8 +10,8 @@ every edge pair plus 100000 seeded random AC:IO pairs.
 Usage: uv run python tools/check-tunables-reference.py"""
 import sys
 
-from oracle_check import ROOT, Inputs, check, edges, seeded
-from pdp1cc import dialect, front, ir
+from oracle_check import ROOT, Inputs, check, edges, lifted_units, seeded
+from pdp1cc import ir
 
 LIFT = "lift/tunables.c"
 N = 100_000
@@ -26,7 +26,7 @@ def random_pairs(seed: int, n: int) -> list[Inputs]:
 
 
 def main() -> int:
-    sigs = dialect.lower_unit(front.parse(ROOT / LIFT)).signatures
+    sigs = lifted_units([ROOT / LIFT])[ROOT / LIFT].signatures
     failed = 0
     for n, sig in enumerate(s for s in sigs.values() if s.conv is ir.Conv.XCT):
         kinds = [p.kind for p in sig.params]
@@ -38,7 +38,7 @@ def main() -> int:
             e = edges()
             calls = [Inputs(a, i) for a in e for i in e] + random_pairs(n, N)
             domain = f"{len(e) ** 2} edge pairs + {N} seeded random AC:IO pairs"
-        failed |= check(sig.sym, [LIFT], sig.name, calls, domain)
+        failed |= check(sig.name, [LIFT], sig.name, calls, domain)
     return failed
 
 

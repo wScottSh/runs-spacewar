@@ -12,7 +12,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from .. import dialect, emit, front, ir, layout, splice
+from .. import dialect, emit, front, ir, layout, program
 from ..rules import RULES
 from . import reference, simh
 
@@ -96,16 +96,16 @@ def load(path: Path) -> Program:
 def assemble(prog: Program, macro1: Path, work: Path) -> tuple[Path, dict[str, int]]:
     work.mkdir(parents=True, exist_ok=True)
     mac = work / f"{prog.path.stem}.mac"
-    text = emit.emit(prog.words)
     pools = "" if any(isinstance(w, ir.PoolPlacement) for w in prog.words) else "\tconstants\n\tvariables\n"
-    mac.write_text(f"corpus {prog.path.stem}\n{ORIGIN:o}/\n" + text + pools + f"\tstart {ORIGIN:o}\n")
+    mac.write_text(emit.program(f"corpus {prog.path.stem}\n{ORIGIN:o}/", [prog.words], tail=pools,
+                                default_start=ORIGIN))
     for ext in (".rim", ".lst"):
         mac.with_suffix(ext).unlink(missing_ok=True)
     subprocess.run([str(macro1), "-r", "-d", mac.name], cwd=work, check=True, capture_output=True)
     lst = mac.with_suffix(".lst").read_text()
     if "No errors detected" not in lst:
         raise SystemExit(f"{mac}: macro1 reported errors")
-    return mac.with_suffix(".rim"), splice.symbols(lst)
+    return mac.with_suffix(".rim"), program.symbols(lst)
 
 
 DISPLAY_WORD = re.compile(r"^\s*\d*\s+([0-7]{5}) ([0-7]{6})\s+(?:[\w, ]+,)?\s*(?:dpy\b|hlt\s+/ EX-HW)", re.M)
@@ -176,6 +176,8 @@ def run_program(prog: Program, simh_bin: Path, macro1: Path, work: Path) -> list
     rim, symbols = assemble(prog, macro1, work)
     placed = reference.placements(prog.unit, symbols)
     diffs = []
+    if prog.unit.start is not None and (pc := simh.start_address(simh_bin, rim)) != symbols[prog.unit.start]:
+        diffs.append(f"the tape starts at {pc:o}, not at the START function ({symbols[prog.unit.start]:o})")
     for sig in prog.entries:
         watch = stand_in_watch(watched(prog), sig.name, prog.native.get(sig.name))
         machine = simh.run_jda(simh_bin, rim, symbols[sig.sym], prog.calls, sig.byname,
@@ -192,7 +194,7 @@ def run_program(prog: Program, simh_bin: Path, macro1: Path, work: Path) -> list
 
 
 def rules_used(words: list[ir.Word]) -> Counter:
-    return Counter(r for w in words if not isinstance(w, ir.Break) for r in (w.rule, *w.via))
+    return Counter(r for w in words for r in (w.rule, *w.via))
 
 
 def coverage(programs: list[Program], lift_words: dict[str, Counter]) -> tuple[list[str], bool]:

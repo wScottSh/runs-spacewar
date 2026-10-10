@@ -6,20 +6,20 @@
 
 static inline word move_x(word acceleration)
 {
-    word dx = acceleration + *dx_slot;
-    *dx_slot = dx;
-    word x = xct(I_SAR(3), dx) + *x_slot;
-    *x_slot = x;
-    return x;
+    word velocity = acceleration + *dx_slot;
+    *dx_slot = velocity;
+    word position = xct(I_SAR(3), velocity) + *x_slot;
+    *x_slot = position;
+    return position;
 }
 
 static inline word move_y(word acceleration)
 {
-    word dy = acceleration + *dy_slot;
-    *dy_slot = dy;
-    word y = xct(I_SAR(3), dy) + *y_slot;
-    *y_slot = y;
-    return y;
+    word velocity = acceleration + *dy_slot;
+    *dy_slot = velocity;
+    word position = xct(I_SAR(3), velocity) + *y_slot;
+    *y_slot = position;
+    return position;
 }
 
 #endif

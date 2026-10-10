@@ -1,80 +1,59 @@
-# Lifted regions of source/spacewar3.1_complete.txt. `pdp1cc build` compiles each
-# region's C, splices it over the region's lines, assembles with macro1 and
-# compares the .rim sha256 with the oracle.
-source = "source/spacewar3.1_complete.txt"
+# The lifted program. `pdp1cc build` compiles the files in this order into
+# one Macro program, assembles it with macro1 and compares the .rim sha256
+# with the oracle. The order is the order of the words on the tape.
 macro1 = "build/macro1"
 macro1_src = "tools/macro1.c"
 oracle_sha256 = "8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf"
 oracle_listing = "build/oracle.lst"
 
-[[region]]
-name = "sqt"
-lines = "309-343"
-c = "lift/sqt.c"
-prefix = "zs"
-
-[[region]]
-name = "multiply"
-lines = "257-301"
-c = "lift/multiply.c"
-prefix = "zm"
-
-[[region]]
-name = "divide"
-lines = "346-396"
-c = "lift/divide.c"
-prefix = "zd"
-
-[[region]]
-name = "sincos"
-lines = "190-254"
-c = "lift/sincos.c"
-prefix = "zc"
-
-[[region]]
-name = "tunables"
-lines = "67-116"
+[[unit]]
 c = "lift/tunables.c"
 prefix = "zt"
 
-[[region]]
-name = "oc"
-lines = "398-507"
+[[unit]]
+c = "lift/sincos.c"
+prefix = "zc"
+
+[[unit]]
+c = "lift/multiply.c"
+prefix = "zm"
+
+[[unit]]
+c = "lift/square_root.c"
+prefix = "zs"
+
+[[unit]]
+c = "lift/divide.c"
+prefix = "zd"
+
+[[unit]]
 c = "lift/outline_compiler.c"
 prefix = "zo"
 
-[[region]]
-name = "outlines"
-lines = "1336-1356"
-c = "lift/outlines.c"
-prefix = "zl"
-
-[[region]]
-name = "heavens"
-lines = ["510-621", "629-653", "1373-1866"]
+[[unit]]
 c = "lift/heavens.c"
 prefix = "zh"
 
-[[region]]
-name = "objects"
-lines = "946-1077"
-c = "lift/objects.c"
-prefix = "zx"
-
-[[region]]
-name = "spaceship"
-lines = "1079-1333"
-c = "lift/spaceship.c"
-prefix = "zp"
-
-[[region]]
-name = "main_loop"
-lines = ["664-941", "1357-1366"]
+[[unit]]
 c = "lift/main_loop.c"
 prefix = "zg"
 
-# Macro definitions and equates whose every user is lifted. They make no words.
-[[dropped]]
-name = "prelude"
-lines = ["3-60", "117-189", "622-628", "663-663"]
-why = "every macro and equate of the prelude (szm .. ranct) and nob: no unlifted user"
+[[unit]]
+c = "lift/objects.c"
+prefix = "zx"
+
+[[unit]]
+c = "lift/spaceship.c"
+prefix = "zp"
+
+[[unit]]
+c = "lift/outlines.c"
+prefix = "zl"
+
+[[unit]]
+c = "lift/core_layout.c"
+prefix = "zb"
+
+[[unit]]
+c = "lift/star_catalog.c"
+prefix = "zk"

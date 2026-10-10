@@ -8,32 +8,32 @@
 #define TWO_PI      0311040
 #define ONE         0377777         /* largest fraction: the answer saturates here */
 
-/* The reduced angle times 2/pi is x; the answer is the odd polynomial
- * x (C1 + x^2 (C3 + x^2 (C5 + x^2 C7))) scaled up by 8, each product the
- * high half of a multiply. */
+/* The reduced angle times 2/pi is x (series_x); the answer is the odd
+ * polynomial x (C1 + x^2 (C3 + x^2 (C5 + x^2 C7))) scaled up by 8, each
+ * product the high half of a multiply. */
 #define TWO_OVER_PI 0242763
 #define C1          0144417
 #define C3          -0245266
 #define C5          0121312
 #define C7          -021674
 
-JDA SYM("mpy") dword multiply(word a, BYNAME word b);
+JDA dword multiply(word a, BYNAME word b);
 
-JDA SYM("cos") word cosine(word angle);
-JDA SYM("sin") word sine(word angle);
+JDA word cosine(word angle);
+JDA word sine(word angle);
 BLOCK word sine_series(word a);
 
-ENTRY_CELL(sine) word x;            /* sin's entry word: the scaled angle */
-ENTRY_CELL(cosine) word x_squared;  /* cos's entry word: x^2 ... */
-ENTRY_CELL(cosine) word result;     /* ... then the answer */
+ENTRY_CELL(sine) word series_x;            /* sin's entry word: the angle, then x */
+ENTRY_CELL(cosine) word series_x_squared;  /* cos's entry word: x^2 ... */
+ENTRY_CELL(cosine) word series_answer;     /* ... then the answer */
 
-JDA SYM("cos") word cosine(word angle)
+JDA word cosine(word angle)  /* cos */
 {
-    x = HALF_PI + angle;            /* cos a = sin(a + pi/2) */
-    return sine_series(x);
+    series_x = HALF_PI + angle;     /* cos a = sin(a + pi/2) */
+    return sine_series(series_x);
 }
 
-JDA SYM("sin") word sine(word angle)
+JDA word sine(word angle)  /* sin */
 {
     return sine_series(angle);
 }
@@ -48,24 +48,24 @@ reduce: a += TWO_PI;
     a += HALF_PI;
 series:                             /* a is in [0, pi/2] */
     a = ral(a, 2);
-    x = multiply(a, TWO_OVER_PI).hi;
-    x_squared = multiply(x, x).hi;
-    a = multiply(x_squared, C7).hi + C5;
-    a = multiply(a, x_squared).hi + C3;
-    a = multiply(a, x_squared).hi + C1;
+    series_x = multiply(a, TWO_OVER_PI).hi;
+    series_x_squared = multiply(series_x, series_x).hi;
+    a = multiply(series_x_squared, C7).hi + C5;
+    a = multiply(a, series_x_squared).hi + C3;
+    a = multiply(a, series_x_squared).hi + C1;
     {
-        dword p = multiply(a, x);
-        scl(p.hi, p.lo, 3);
-        result = p.hi;
+        dword product = multiply(a, series_x);
+        scl(product.hi, product.lo, 3);
+        series_answer = product.hi;
     }
-    if ((result ^ x) < 0) {         /* the series overshot +-1 */
+    if ((series_answer ^ series_x) < 0) {  /* the series overshot +-1 */
         a = ONE;
-        register word sign = x;
+        register word sign = series_x;
         if (sign < 0)
             a = -a;
         return a;
     }
-    return result;
+    return series_answer;
 
 past_quarter:                       /* fold a beyond pi/2 back into [0, pi/2] */
     a = -a + HALF_PI;

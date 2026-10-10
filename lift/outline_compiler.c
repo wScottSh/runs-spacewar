@@ -25,27 +25,33 @@
 /* The ship being drawn, as the spaceship calc routine leaves it for the
  * compiled outline: its position in dpy coordinates (the pen starts there
  * and ends at the tail) and the steps rotated to the ship's heading. */
-POOL word ship_x SYM("sx1");
-POOL word ship_y SYM("sy1");
-POOL word sine_step SYM("ssn");         /* down: x += sin */
-POOL word cosine_step SYM("scn");       /* down: y -= cos */
-POOL word out_x SYM("scm");             /* out: x +=, in: x -= */
-POOL word out_y SYM("ssm");             /* out: y +=, in: y -= */
-POOL word out_down_x SYM("ssc");
-POOL word out_down_y SYM("csm");        /* subtracted */
-POOL word in_down_x SYM("csn");
-POOL word in_down_y SYM("ssd");         /* subtracted */
-POOL word saved_x;                      /* the position code 6 stores */
-POOL word saved_y;
+POOL word ship_x;           /* sx1 */
+POOL word ship_y;           /* sy1 */
+
+/* The pen's step for each direction code, rotated to the heading: each
+ * word is added to x or added to or subtracted from y, as it says. "In"
+ * subtracts the out step; "out and down" and "in and down" are the sums of
+ * their two steps. Drawing the other side negates the out step and
+ * exchanges the two diagonal steps. */
+POOL word down_step_x;      /* ssn: sin, added to x */
+POOL word down_step_y;      /* scn: cos, subtracted from y */
+POOL word out_step_x;       /* scm: cos, added to x (subtracted for in) */
+POOL word out_step_y;       /* ssm: sin, added to y (subtracted for in) */
+POOL word out_down_step_x;  /* ssc: sin + cos, added to x */
+POOL word out_down_step_y;  /* csm: cos - sin, subtracted from y */
+POOL word in_down_step_x;   /* csn: sin - cos, added to x */
+POOL word in_down_step_y;   /* ssd: sin + cos, subtracted from y */
+POOL word saved_x;          /* ssa: the position code 6 stores */
+POOL word saved_y;          /* ssi */
 
 /* Where the compiled outline returns to, in the spaceship calc routine. */
-BLOCK SYM("sq6") void outline_drawn(void);
+BLOCK void outline_drawn(void);
 
 POOL word codes_left;                   /* codes still to read in this outline word */
 POOL word codes_rest;                   /* the outline word, rotated past the codes read */
 HOMED const word *outline_word;         /* the outline word being read */
 
-JDA SYM("oc") word *outline_compiler(word *code, INLINE const word *outline);
+JDA word *outline_compiler(word *code, INLINE const word *outline);
 
 ENTRY_CELL(outline_compiler) word *code;    /* oc's entry word: where the next word goes */
 
@@ -62,12 +68,12 @@ JSP void compile_twice(register insn half)
     *code++ = half;
 }
 
-JDA SYM("oc") word *outline_compiler(word *code, INLINE const word *outline)
+JDA word *outline_compiler(word *code, INLINE const word *outline)  /* oc */
 {
-    register word bits;
+    register word codes;
     register insn swap_half;
     word direction;
-    insn second;                        /* the instruction that moves y */
+    insn pending;                       /* the next word to compile: a y step, a dot, a y store or load */
 
     outline_word = outline;
     *code++ = I_STF(5);                 /* flag 5: drawing the first side */
@@ -78,11 +84,11 @@ JDA SYM("oc") word *outline_compiler(word *code, INLINE const word *outline)
     clf(6);
 next_word:
     codes_left = -6;
-    bits = *home(outline_word);
+    codes = *home(outline_word);
 next_code:
     direction = 0;
-    rcl(direction, bits, 3);
-    codes_rest = bits;
+    rcl(direction, codes, 3);
+    codes_rest = codes;
     swap_half = I_RCL(9);
     switch ((int)direction) {
     case 0:
@@ -100,64 +106,64 @@ next_code:
         *code++ = I_DIO(&ship_y);
         *code++ = I_JMP(outline_drawn);
         *code++ = I_CLF(5);             /* mirror the steps for the other side */
-        *code++ = I_LAC(&out_x);
+        *code++ = I_LAC(&out_step_x);
         *code++ = I_CMA;
-        *code++ = I_DAC(&out_x);
-        *code++ = I_LAC(&out_y);
+        *code++ = I_DAC(&out_step_x);
+        *code++ = I_LAC(&out_step_y);
         *code++ = I_CMA;
-        *code++ = I_DAC(&out_y);
-        *code++ = I_LAC(&out_down_y);   /* exchange out-and-down with in-and-down */
-        *code++ = I_LIO(&in_down_y);
-        *code++ = I_DAC(&in_down_y);
-        *code++ = I_DIO(&out_down_y);
-        *code++ = I_LAC(&out_down_x);
-        *code++ = I_LIO(&in_down_x);
-        *code++ = I_DAC(&in_down_x);
-        *code++ = I_DIO(&out_down_x);
+        *code++ = I_DAC(&out_step_y);
+        *code++ = I_LAC(&out_down_step_y);  /* exchange out-and-down with in-and-down */
+        *code++ = I_LIO(&in_down_step_y);
+        *code++ = I_DAC(&in_down_step_y);
+        *code++ = I_DIO(&out_down_step_y);
+        *code++ = I_LAC(&out_down_step_x);
+        *code++ = I_LIO(&in_down_step_x);
+        *code++ = I_DAC(&in_down_step_x);
+        *code++ = I_DIO(&out_down_step_x);
         *code++ = start_over;
         return code;
     }
     PLACE(start_over, to_other_side);
 
 down:
-    *code++ = I_ADD(&sine_step);
+    *code++ = I_ADD(&down_step_x);
     compile_twice(swap_half);
-    second = I_SUB(&cosine_step);
+    pending = I_SUB(&down_step_y);
 plot:
-    *code++ = second;
+    *code++ = pending;
     compile_twice(swap_half);
     *code++ = I_IOH;                    /* wait for the last dot */
-    second = I_DPY_NOWAIT;              /* plot this one */
+    pending = I_DPY_NOWAIT;             /* plot this one */
 next:
-    *code++ = second;
-    bits = codes_rest;
+    *code++ = pending;
+    codes = codes_rest;
     if (++codes_left < 0)
         goto next_code;
     ++outline_word;
     goto next_word;
 
 out:
-    *code++ = I_ADD(&out_x);
+    *code++ = I_ADD(&out_step_x);
     compile_twice(swap_half);
-    second = I_ADD(&out_y);
+    pending = I_ADD(&out_step_y);
     goto plot;
 
 out_down:
-    *code++ = I_ADD(&out_down_x);
+    *code++ = I_ADD(&out_down_step_x);
     compile_twice(swap_half);
-    second = I_SUB(&out_down_y);
+    pending = I_SUB(&out_down_step_y);
     goto plot;
 
 in:
-    *code++ = I_SUB(&out_x);
+    *code++ = I_SUB(&out_step_x);
     compile_twice(swap_half);
-    second = I_SUB(&out_y);
+    pending = I_SUB(&out_step_y);
     goto plot;
 
 in_down:
-    *code++ = I_ADD(&in_down_x);
+    *code++ = I_ADD(&in_down_step_x);
     compile_twice(swap_half);
-    second = I_SUB(&in_down_y);
+    pending = I_SUB(&in_down_step_y);
     goto plot;
 
 store_or_restore:                       /* alternate, starting with store */
@@ -165,11 +171,11 @@ store_or_restore:                       /* alternate, starting with store */
         goto restore;
     stf(6);
     *code++ = I_DAC(&saved_x);
-    second = I_DIO(&saved_y);
+    pending = I_DIO(&saved_y);
     goto next;
 restore:
     clf(6);
     *code++ = I_LAC(&saved_x);
-    second = I_LIO(&saved_y);
+    pending = I_LIO(&saved_y);
     goto next;
 }

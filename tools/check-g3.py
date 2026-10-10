@@ -3,9 +3,11 @@
 1. Lint tools/pdp1cc: no string literal equal to a symbol of the oracle's
    symbol table, and no 6-digit octal number equal to a word of the oracle.
 2. Isolation: copy the compiler, macro1's source (whose symbol tables the
-   compiler reads), lift/ and tests/corpus/ into an empty tree
-   with no source/ and no build/oracle*, compile every C file there in a
-   fresh environment, and require the output to equal the in-tree output.
+   compiler reads), lift.toml, lift/ and tests/corpus/ into an empty tree
+   with no source/ and no build/, compile every C file there in a fresh
+   environment and require the output to equal the in-tree output. Then
+   run the whole build there, macro1 built from its source included, and
+   require the oracle hash: the image comes from lift/ alone.
 
 Usage: uv run python tools/check-g3.py"""
 import ast
@@ -78,24 +80,32 @@ def isolation() -> list[str]:
     want = lower_all(ROOT, files)
     with tempfile.TemporaryDirectory() as tmp:
         tree = Path(tmp)
-        for item in ["pyproject.toml", "uv.lock", "tools/pdp1cc", "tools/macro1.c", "lift", "tests/corpus"]:
+        for item in ["pyproject.toml", "uv.lock", "tools/pdp1cc", "tools/macro1.c", "lift.toml", "lift",
+                     "tests/corpus"]:
             src, dst = ROOT / item, tree / item
             dst.parent.mkdir(parents=True, exist_ok=True)
             if src.is_dir():
                 shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__"))
             else:
                 shutil.copy(src, dst)
-        assert not (tree / "source").exists() and not list(tree.glob("build/oracle*"))
+        assert not (tree / "source").exists() and not (tree / "build").exists()
         where = subprocess.run(["uv", "run", "--quiet", "--project", str(tree), "python", "-c",
                                 "import pdp1cc; print(pdp1cc.__file__)"],
                                cwd=tree, capture_output=True, text=True).stdout.strip()
         if not where.startswith(str(tree)):
             return [f"isolated tree imported the compiler from {where!r}"]
         got = lower_all(tree, files)
-    problems = [f"{f}: output differs without source/ and build/oracle*" for f in files
+        build = subprocess.run(["uv", "run", "--quiet", "--project", str(tree), "pdp1cc", "build", "lift.toml"],
+                               cwd=tree, capture_output=True, text=True)
+    problems = [f"{f}: output differs without source/ and build/" for f in files
                 if got[str(f)] != want[str(f)] or got[str(f)].startswith("FAILED")]
-    print(f"isolation: {len(files)} files compiled in a tree without source/ or build/oracle*, "
+    print(f"isolation: {len(files)} files compiled in a tree without source/ or build/, "
           f"{len(files) - len(problems)} identical")
+    verdict = (build.stdout.strip().splitlines() or ["(no output)"])[-1]
+    print(f"isolation: whole build in that tree: {verdict.strip()}")
+    if build.returncode != 0 or not verdict.endswith("MATCH"):
+        problems.append("the build without source/ and build/ does not produce the oracle hash:\n"
+                        + build.stdout + build.stderr)
     return problems
 
 

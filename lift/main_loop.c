@@ -9,69 +9,38 @@
  * set on the test word switches; a new game clears the object table, puts
  * the two spaceships at their start and compiles their outlines.
  *
- * The object table sits after the code, the literal constants, the pool
- * words and the patch space: parallel arrays, one per property, stacked one
- * upon the other in one block (Inside Spacewar! part 3). The first NOB
- * slots of each array are the objects; the spaceship-only properties have
- * a slot per ship. */
+ * The object table's layout is in object_table.h, and its place in core in
+ * core_layout.c. */
 
 #include "object_table.h"
+#include "control_word.h"
 
-#define NOB 030                     /* nob: objects in the table, two ships then torpedoes */
-#define SHIPS 2
-#define TABLE_WORDS (7 * NOB + 10 * SHIPS)
-
-/* Each property's array, where it starts in the object table (nx1, ny1,
- * na1, nb1, ndx, ndy, nom, nth, nfu, ntr, not, nco, nh1 .. nh4). */
-#define ROUTINES (object_table)
-#define X_POSITIONS (ROUTINES + NOB)
-#define Y_POSITIONS (X_POSITIONS + NOB)
-#define COUNTERS (Y_POSITIONS + NOB)
-#define CYCLES (COUNTERS + NOB)
-#define DX_VELOCITIES (CYCLES + NOB)
-#define DY_VELOCITIES (DX_VELOCITIES + NOB)
-#define SPINS (DY_VELOCITIES + NOB)
-#define ANGLES (SPINS + SHIPS)
-#define FUEL (ANGLES + SHIPS)
-#define TORPEDOES (FUEL + SHIPS)
-#define OUTLINES (TORPEDOES + SHIPS)
-#define OLD_CONTROLS (OUTLINES + SHIPS)
-#define SAVED_ROUTINES (OLD_CONTROLS + SHIPS)
-#define JUMPS_LEFT (SAVED_ROUTINES + SHIPS)
-#define RECHARGES (JUMPS_LEFT + SHIPS)
-#define UNCERTAINTIES (RECHARGES + SHIPS)
-#define COMPILED_OUTLINES (UNCERTAINTIES + SHIPS)  /* nnn: free core after the table,
-                                                      where the outline compiler writes */
-
-/* The control word routine: it leaves the control word in IO, ship 1's
- * buttons in the high four bits and ship 2's in the low four. */
-typedef io_word control_word_reader(register word io) JSP;
 typedef void calc_routine(void) JSP;
 typedef void compiled_outline(void) BLOCK;
 
 /* Routines the main loop calls, defined elsewhere. */
-JSP SYM("ss1") void first_spaceship(void);
-JSP SYM("ss2") void second_spaceship(void);
-JSP SYM("mex") void explosion(void);
-JSP SYM("bck") void expensive_planetarium(void);
-JSP SYM("blp") void central_star(void);
-JDA SYM("oc") word *outline_compiler(word *code, INLINE const word *outline);
-extern word needle_outline[8] SYM("ot1");
-extern word wedge_outline[8] SYM("ot2");
-JSP SYM("cwr") io_word control_word_routine(register word io);
+JSP void first_spaceship(void);
+JSP void second_spaceship(void);
+JSP void explosion(void);
+JSP void expensive_planetarium(void);
+JSP void central_star(void);
+JDA word *outline_compiler(word *code, INLINE const word *outline);
+extern word needle_outline[8];
+extern word wedge_outline[8];
+JSP io_word control_word_routine(void);
 
-XCT SYM("tno") word torpedo_supply(void);
-XCT SYM("tlf") word torpedo_life(void);
-XCT SYM("mhs") word hyperspace_shots(void);
-extern word fuel_supply SYM("foo");
-extern word collision_radius SYM("me1");
-extern word collision_radius_half SYM("me2");
-extern word separate_outlines SYM("ddd");
+XCT word torpedo_supply(void);
+XCT word torpedo_life(void);
+XCT word hyperspace_shots(void);
+extern word fuel_supply;
+extern word collision_radius;
+extern word collision_radius_half;
+extern word separate_outlines;
 
 HOMED word *outline_slot;           /* mot: a ship's compiled outline, the code that draws it */
-extern HOMED compiled_outline *draw_outline SYM("sp5");  /* the spaceship calc routine's jump into it */
+extern HOMED compiled_outline *draw_outline;  /* the spaceship calc routine's jump into it */
 
-POOL control_word_reader *control_word_getter SYM("cwg");
+POOL control_word_reader *control_word_getter;  /* cwg */
 POOL word spare_time;               /* mtc: the frame's instruction budget, counting up */
 POOL word restart_delay;            /* ntd: frames until the next game, counting up */
 POOL word first_score;              /* 1sc */
@@ -92,13 +61,13 @@ HOMED word *other_cycles_slot;
 HOMED word *clearing = 0;           /* the slot a new game clears next (the `clear` macro) */
 
 BLOCK void objects(void);
-BLOCK SYM("a1") void start_with_test_word(void);
-BLOCK SYM("a40") void start_with_control_boxes(void);
+BLOCK void start_with_test_word(void);
+BLOCK void start_with_control_boxes(void);
 BLOCK void between_games(void);
 BLOCK void new_match(void);
 BLOCK void new_game(void);
-JSP SYM("mg1") io_word read_control_boxes(register word io);
-JSP io_word read_test_word(register word io);
+JSP io_word read_control_boxes(void);
+JSP io_word read_test_word(void);
 
 /* ------------------------------------------------------- the frame seam */
 
@@ -117,19 +86,19 @@ BLOCK void next_frame(void)
      * so one pointer stepped by an array's length reaches every first slot. */
     word *slot = ROUTINES;
     routine_slot = slot;
-    slot = slot + NOB;
+    slot = slot + OBJECT_COUNT;
     x_slot = slot;
-    slot = slot + NOB;
+    slot = slot + OBJECT_COUNT;
     y_slot = slot;
-    slot = slot + NOB;
+    slot = slot + OBJECT_COUNT;
     counter_slot = slot;
-    slot = slot + NOB;
+    slot = slot + OBJECT_COUNT;
     cycles_slot = slot;
-    slot = slot + NOB;
+    slot = slot + OBJECT_COUNT;
     dx_slot = slot;
-    slot = slot + NOB;
+    slot = slot + OBJECT_COUNT;
     dy_slot = slot;
-    slot = slot + NOB;
+    slot = slot + OBJECT_COUNT;
     angular_momentum_slot = slot;
     slot = slot + SHIPS;
     angle_slot = slot;
@@ -173,15 +142,15 @@ game_ending:
      * but flag 2 is cleared again at once, and nothing reads them. */
     stf(1);
     stf(2);
-    word gone = first_spaceship ^ ROUTINES[0];
-    if (gone != 0)
+    word routine_changed = first_spaceship ^ ROUTINES[0];
+    if (routine_changed != 0)
         clf(1);
-    if (gone == 0)
+    if (routine_changed == 0)
         ++first_score;
-    gone = second_spaceship ^ ROUTINES[1];
-    if (gone != 0)
+    routine_changed = second_spaceship ^ ROUTINES[1];
+    if (routine_changed != 0)
         clf(2);
-    if (gone == 0)
+    if (routine_changed == 0)
         ++second_score;
     clf(2);
     return between_games();
@@ -189,16 +158,17 @@ game_ending:
 
 /* ------------------------------------------------- starting and scoring */
 
-/* a1, from start at 5: read the test word switches as the control word. */
-BLOCK SYM("a1") void start_with_test_word(void)
+/* a1, entered when the operator starts the machine at address 5: read the
+ * test word switches as the control word. */
+BLOCK void start_with_test_word(void)  /* a1 */
 {
     control_word_getter = read_test_word;
     return between_games();
 }
 
-/* a40, from start at 4: read the control boxes, through the control word
- * routine. */
-BLOCK SYM("a40") void start_with_control_boxes(void)
+/* a40, entered when the operator starts the machine at address 4: read the
+ * control boxes, through the control word routine. */
+BLOCK void start_with_control_boxes(void)  /* a40 */
 {
     control_word_getter = control_word_routine;
     return new_match();
@@ -222,9 +192,9 @@ ask:
     if ((lat() & 040) == 0)
         return new_game();
 show_scores:
-    word first = first_score;
-    register word second = second_score;
-    halt(first, second);
+    word first_lights = first_score;
+    register word second_lights = second_score;
+    halt(first_lights, second_lights);
     if ((lat() & 040) != 0)
         return new_game();
     first_score = 0;
@@ -253,27 +223,27 @@ BLOCK void new_game(void)
     clearing = ROUTINES;
 clear:
     *home(clearing) = 0;
-    if (I_DZM(++clearing) != I_DZM(COMPILED_OUTLINES))
+    if (I_DZM(++clearing) != I_DZM(OUTLINE_CODE_SPACE))
         goto clear;
 
     ROUTINES[0] = first_spaceship;
     ROUTINES[1] = second_spaceship;
-    word corner = 0200000;
-    X_POSITIONS[0] = corner;
-    Y_POSITIONS[0] = corner;
-    corner = -corner;
-    X_POSITIONS[1] = corner;
-    Y_POSITIONS[1] = corner;
+    word start_corner = 0200000;
+    X_POSITIONS[0] = start_corner;
+    Y_POSITIONS[0] = start_corner;
+    start_corner = -start_corner;
+    X_POSITIONS[1] = start_corner;
+    Y_POSITIONS[1] = start_corner;
     ANGLES[0] = 0144420;            /* pi */
 
-    word *code = COMPILED_OUTLINES;
-    OUTLINES[0] = (word)code;
+    word *code = OUTLINE_CODE_SPACE;
+    OUTLINE_STARTS[0] = (word)code;
     register word separate = separate_outlines;
     if (separate >= 0)
-        goto second;
+        goto second_outline;
     code = outline_compiler(code, needle_outline);
-second:
-    OUTLINES[1] = (word)code;
+second_outline:
+    OUTLINE_STARTS[1] = (word)code;
     outline_compiler(code, wedge_outline);
 
     word supply = torpedo_supply();
@@ -294,18 +264,17 @@ second:
 /* ------------------------------------------------ control word getters */
 
 /* mg1: the control boxes. IO is cleared, then read from the boxes. */
-JSP SYM("mg1") io_word read_control_boxes(register word io)
+JSP io_word read_control_boxes(void)  /* mg1 */
 {
-    io = 0;
+    register word io = 0;
     io = control_boxes();
     return io;
 }
 
 /* mg2: the test word switches, swapped into IO. */
-JSP io_word read_test_word(register word io)
+JSP io_word read_test_word(void)
 {
-    word switches = lat();
-    rcl(switches, io, 18);
+    register word io = SWAP(lat());
     return io;
 }
 
@@ -325,9 +294,9 @@ object:
     word routine = *home(routine_slot);
     if (routine == 0)
         goto next_object;
-    register word calc = SWAP(routine);
+    register word routine_sign = SWAP(routine);  /* negative: does not collide */
     ++objects_seen;
-    if (calc < 0)
+    if (routine_sign < 0)
         goto run;
 
     other_routine_slot = 1 + routine_slot;
@@ -337,8 +306,8 @@ object:
     other_cycles_slot = 1 + cycles_slot;
     draw_outline = (compiled_outline *)*home(outline_slot);
 compare:
-    word other = *home(other_routine_slot);
-    if (other <= 0)
+    word other_routine = *home(other_routine_slot);
+    if (other_routine <= 0)
         goto next_other;
     word dx = *home(x_slot) - *home(other_x_slot);
     if (dx < 0)
@@ -354,9 +323,9 @@ compare:
         goto next_other;
     if (dy + distance_x - collision_radius_half >= 0)
         goto next_other;
-    word bang = explosion | NON_COLLIDING;
-    *routine_slot = bang;
-    *other_routine_slot = bang;
+    word exploding = explosion | NON_COLLIDING;
+    *routine_slot = exploding;
+    *other_routine_slot = exploding;
     word frames = *cycles_slot + *home(other_cycles_slot);
     frames = (-frames >> 8) + 1;
     *home(counter_slot) = frames;
@@ -366,7 +335,7 @@ next_other:
     ++other_y_slot;
     ++other_counter_slot;
     ++other_cycles_slot;
-    if (I_LAC(++other_routine_slot) != I_LAC(ROUTINES + NOB))
+    if (I_LAC(++other_routine_slot) != I_LAC(ROUTINES + OBJECT_COUNT))
         goto compare;
 
 run:
@@ -390,7 +359,7 @@ next_object:
     ++jumps_left_slot;
     ++recharge_slot;
     ++uncertainty_slot;
-    if (I_LAC(++routine_slot) != I_LAC(ROUTINES + (NOB - 1)))
+    if (I_LAC(++routine_slot) != I_LAC(ROUTINES + (OBJECT_COUNT - 1)))
         goto object;
 
     routine = *routine_slot;
@@ -406,12 +375,3 @@ spare:
         goto spare;
     return next_frame();
 }
-
-REGION_BREAK();
-
-/* ------------------------------------------- after the code: core layout */
-
-CONSTANTS();                        /* the literal constants */
-VARIABLES();                        /* the pool words */
-RESERVE word patch_space[0200];
-RESERVE word object_table[TABLE_WORDS] SYM("mtb");

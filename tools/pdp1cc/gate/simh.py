@@ -118,3 +118,13 @@ def run_jda(simh: Path, rim: Path, entry: int, calls: list[Inputs], byname: bool
     return [Outcome(values[i * per], values[i * per + 1], pc - (CALL + 1),
                     tuple(values[i * per + 2:(i + 1) * per]), tuple(plots[i]))
             for i, pc in enumerate(halts)]
+
+
+def start_address(simh: Path, rim: Path) -> int:
+    """Where the tape starts the program: the PC after loading it."""
+    out = subprocess.run([str(simh)], input=f"set cpu nomdv\nload {rim}\nex PC\nquit\n",
+                         capture_output=True, text=True, timeout=60).stdout
+    m = re.search(r"PC:\s+([0-7]+)", out)
+    if m is None:
+        raise SimhError(f"no PC after loading {rim}:\n{out[-500:]}")
+    return int(m.group(1), 8)

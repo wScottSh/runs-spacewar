@@ -26,8 +26,6 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Emitted]:
         if top.at is not None:
             items.append(ir.Origin(top.at, check("LAY-AT")))
         match top:
-            case ir.RegionBreak():
-                items.append(ir.Break())
             case ir.Directive(name=name):
                 items.append(ir.PoolPlacement(name, check("LAY-POOL")))
             case ir.Function():
@@ -46,6 +44,8 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Emitted]:
                 items += datum_words(top)
             case ir.Space():
                 items += [ir.LabelDef(top.sym), ir.Reserve(top.size, check("ST-RESERVE"))]
+    if unit.start is not None:
+        items.append(ir.StartAddress(unit.start, check("LAY-START")))
     labels = {i.name for i in items if isinstance(i, ir.LabelDef)}
     homeless = [name for name, s in unit.objects.items() if isinstance(s, ir.HomedInsn)
                 and s.sym not in labels]
@@ -125,7 +125,7 @@ def attach_labels(items: list[ir.Item]) -> list[ir.Emitted]:
             defined.add(it.name)
             pending.append(it.name)
             continue
-        if isinstance(it, (ir.Break, ir.Origin, ir.PoolPlacement)):
+        if isinstance(it, (ir.Origin, ir.PoolPlacement, ir.StartAddress)):
             if pending:
                 raise LayoutError(f"labels {pending} come before an origin")
             words.append(it)

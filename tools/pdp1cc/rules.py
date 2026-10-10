@@ -95,6 +95,8 @@ RULES: dict[str, str] = {
     "SKIPNOT": "SKIPNOT(c) for a sign test of AC: skip when c fails on c's own skip with the i bit "
                "flipped (`spa i`, not `sma`)",
     "SWAP": "SWAP(x): x moved between AC and IO by `rcl 9s` twice, the `swap` turn, instead of `rcr`",
+    "LAY-START": "START on a BLOCK function: the program's last line `start f`, which ends the tape "
+                 "with a jump to f",
     "LAY-POOL": "CONSTANTS() / VARIABLES(): the `constants` / `variables` directive, where macro1 "
                 "lays out the literal and pool words",
 }

@@ -12,12 +12,12 @@
 #include "random.h"
 #include "inertia.h"
 
-extern word hyperspatial_uncertainty SYM("hur");
-XCT SYM("the") word torpedo_space_warpage(word v);
-XCT SYM("hd2") word breakout_time(void);
-XCT SYM("hd3") word hyperfield_recharge_time(void);
-XCT SYM("hr1") dword hyperspatial_displacement(word hi, register word lo);
-XCT SYM("hr2") dword hyperspatial_velocity(word hi, register word lo);
+extern word hyperspatial_uncertainty;
+XCT word torpedo_space_warpage(word position);
+XCT word breakout_time(void);
+XCT word hyperfield_recharge_time(void);
+XCT dword hyperspatial_displacement(word high, register word low);
+XCT dword hyperspatial_velocity(word high, register word low);
 
 #define TWO_PI 0311040              /* an angle's full turn */
 
@@ -35,33 +35,33 @@ extern shift spread_scales[2];
 /* An exploding object keeps drifting and is drawn as a cloud of dots, one
  * per 8 instructions of its calc routine's time, for as many frames as its
  * counter has left; then its slot is freed. */
-JSP SYM("mex") void explosion(void)
+JSP void explosion(void)  /* mex */
 {
-    word count;
-    dword spot;
+    word particle_count;
+    dword dot;
 
     move_x(0);
     move_y(0);
     spread_scale = spread_scales;
-    count = *cycles_slot;
-    count = -count, spot.lo = 0;
-    count = count >> 3;
-    particles = count;
-    /* Meant to give a big explosion the wider spread, but count is
+    particle_count = *cycles_slot;
+    particle_count = -particle_count, dot.lo = 0;
+    particle_count = particle_count >> 3;
+    particles = particle_count;
+    /* Meant to give a big explosion the wider spread, but particle_count is
      * negative here, so the test never passes (Inside Spacewar! part 7). */
-    if (count - 0140 >= 0)
+    if (particle_count - 0140 >= 0)
         ++spread_scale;
 particle:
     particle_shift = I_SCL_BITS(next_random() & 0777);
-    spot.hi = next_random();
-    scr(spot.hi, spot.lo, 9);           /* a random half in each register */
-    spot.lo = spot.lo >> 9;
-    spot = xct(*home(spread_scale), spot.hi, spot.lo);
-    spot = xct(particle_shift, spot.hi, spot.lo);
-    spot.hi = spot.hi + *y_slot;
-    rcl(spot.hi, spot.lo, 18);          /* swap: x into AC, y into IO */
-    spot.hi = spot.hi + *x_slot;
-    dpy(spot.hi, spot.lo, 3);
+    dot.hi = next_random();
+    scr(dot.hi, dot.lo, 9);             /* a random half in each register */
+    dot.lo = dot.lo >> 9;
+    dot = xct(*home(spread_scale), dot.hi, dot.lo);
+    dot = xct(particle_shift, dot.hi, dot.lo);
+    dot.hi = dot.hi + *y_slot;
+    rcl(dot.hi, dot.lo, 18);            /* swap: x into AC, y into IO */
+    dot.hi = dot.hi + *x_slot;
+    dpy(dot.hi, dot.lo, 3);
     if (++particles < 0)
         goto particle;
     if (++*counter_slot < 0)
@@ -76,9 +76,9 @@ shift spread_scales[2] = { I_SCR(1), I_SCR(3) };
 /* A torpedo flies straight, bent only by the torpedo space warpage (each
  * velocity takes a little of the other axis's position), until its life
  * runs out and it explodes. */
-JSP SYM("tcr") void torpedo(void)
+JSP void torpedo(void)  /* tcr */
 {
-    word a;
+    word coordinate;
 
     if (++*counter_slot < 0)
         goto fly;
@@ -86,12 +86,12 @@ JSP SYM("tcr") void torpedo(void)
     *counter_slot = -2;
     return;
 fly:
-    a = *x_slot >> 9;
-    a = move_y(torpedo_space_warpage(a));
-    a = a >> 9;
-    a = move_x(torpedo_space_warpage(a));
-    register word y = *y_slot;
-    dpy(a, y, 1);
+    coordinate = *x_slot >> 9;
+    coordinate = move_y(torpedo_space_warpage(coordinate));
+    coordinate = coordinate >> 9;
+    coordinate = move_x(torpedo_space_warpage(coordinate));
+    register word dot_y = *y_slot;
+    dpy(coordinate, dot_y, 1);
 }
 
 /* --------------------------------------------------------- hyperspace */
@@ -104,39 +104,40 @@ POOL word angle_steps;              /* passes left to bring the new heading with
  * up it jumps by a random displacement, takes a random velocity and
  * heading, and breakout begins. IO holds whatever the main loop left
  * there; shifting a random number in pushes it out. */
-JSP SYM("hp1") void in_hyperspace(register word io)
+JSP void in_hyperspace(register word io)  /* hp1 */
 {
-    word r;
-    dword d;
+    word random_high;                   /* a random number's high half */
+    word heading;
+    dword scaled;                       /* a random pair, scaled: the jump, then the velocity */
 
     if (++*counter_slot < 0)
         return;
     *routine_slot = breakout;
     *cycles_slot = 7;
-    r = next_random();
-    scr(r, io, 9);                      /* a random half in each register */
+    random_high = next_random();
+    scr(random_high, io, 9);            /* a random half in each register */
     io = io >> 9;
-    d = hyperspatial_displacement(r, io);
-    d.hi = d.hi + *x_slot;
-    *x_slot = d.hi;
-    rcl(d.hi, d.lo, 18);                /* swap */
-    d.hi = d.hi + *y_slot;
-    *y_slot = d.hi;
-    r = next_random();
-    scr(r, d.lo, 9);
-    d.lo = d.lo >> 9;
-    d = hyperspatial_velocity(r, d.lo);
-    *dy_slot = d.hi;
-    *dx_slot = d.lo;
+    scaled = hyperspatial_displacement(random_high, io);
+    scaled.hi = scaled.hi + *x_slot;
+    *x_slot = scaled.hi;
+    rcl(scaled.hi, scaled.lo, 18);      /* swap */
+    scaled.hi = scaled.hi + *y_slot;
+    *y_slot = scaled.hi;
+    random_high = next_random();
+    scr(random_high, scaled.lo, 9);
+    scaled.lo = scaled.lo >> 9;
+    scaled = hyperspatial_velocity(random_high, scaled.lo);
+    *dy_slot = scaled.hi;
+    *dx_slot = scaled.lo;
     angle_steps = -3;
     *angle_slot = random_number;
 turn:
-    r = *angle_slot;
-    if (r >= 0)
-        r = r - TWO_PI;
-    if (r < 0)
-        r = r + TWO_PI;
-    *angle_slot = r;
+    heading = *angle_slot;
+    if (heading >= 0)
+        heading = heading - TWO_PI;
+    if (heading < 0)
+        heading = heading + TWO_PI;
+    *angle_slot = heading;
     if (++angle_steps < 0)
         goto turn;
     *counter_slot = breakout_time();
@@ -148,8 +149,9 @@ turn:
  * survives only if a random number outweighs the uncertainty. */
 JSP void breakout(void)
 {
-    word a;
-    register word y;
+    word uncertainty;
+    word dot_x;
+    register word dot_y;
 
     if (++*counter_slot < 0)
         goto show;
@@ -160,15 +162,15 @@ JSP void breakout(void)
     *jumps_left_slot = 0;
 recharge:
     *recharge_slot = hyperfield_recharge_time();
-    a = *uncertainty_slot + hyperspatial_uncertainty;
-    *uncertainty_slot = a;
+    uncertainty = *uncertainty_slot + hyperspatial_uncertainty;
+    *uncertainty_slot = uncertainty;
     if ((next_random() | 0400000) + *uncertainty_slot < 0)
         return;
     *routine_slot = explosion | NON_COLLIDING;
     *counter_slot = -010;
     *cycles_slot = 02000;
 show:
-    a = *x_slot;
-    y = *y_slot;
-    dpy(a, y, 2);
+    dot_x = *x_slot;
+    dot_y = *y_slot;
+    dpy(dot_x, dot_y, 2);
 }

@@ -24,7 +24,7 @@ The run is done when all of these hold:
 Name C functions, variables, types, and fields after the concepts in Norbert Landsteiner's "Inside Spacewar!" (`source/masswerk/*.html`). Read the page for your region before naming anything. Examples of the vocabulary: object table, calc routine, outline compiler, outline, central star (the "sun"), heavens / Expensive Planetarium, gravity, hyperspace (hyperspatial uncertainty, breakout, recharge), torpedo, torpedo space warpage, explosion, collision, control word, sense switches, test word, main loop, frame timing / spare-time loop, sequence break, scores.
 
 - The C identifier is the readable concept (`square_root`, `object_table`, `outline_compiler`). The original Macro symbol goes in a comment on the definition, so a reader can cross-reference the listing.
-- The compiler generates Macro symbols itself. A long C name gets a generated symbol. `SYM("x")` pins a name only while unlifted original text still refers to that symbol. Once nothing unlifted references it, drop the `SYM`.
+- The compiler generates Macro symbols itself. A long C name gets a generated symbol, and files link by C name: a name of external linkage is one symbol in every file. (Until M8, `SYM("x")` pinned a symbol that unlifted original text named. M8 removed it with the last unlifted line.)
 - Short comments say what a thing means in the game, in masswerk's terms. Don't narrate instructions.
 
 ## Workflow per milestone

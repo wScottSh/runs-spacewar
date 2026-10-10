@@ -16,13 +16,13 @@ MACRO_SYMBOL_LEN = 6
 CMP_OPS = {"<", ">=", "==", "!=", "<=", ">"}
 ATTR = re.compile(r"pdp1_(\w+)(?:\((.*)\))?$")
 CONVS = {c.value: c for c in ir.Conv if c is not ir.Conv.INLINE}
-ATTRIBUTES = CONVS.keys() | {"byname", "inline", "sym", "entry_cell", "at", "reserve", "pool", "homed",
-                              "skips"}
+ATTRIBUTES = CONVS.keys() | {"byname", "inline", "entry_cell", "at", "reserve", "pool", "homed",
+                              "skips", "start"}
 HARDWARE = {"tyi", "lsm", "ioh", "hlt", "lat", "control_boxes"}   # one instruction, no operand
 DISPLAY = {"dpy", "dpy_nowait"}
 MAX_SENSE = 6
 MAX_INTENSITY = 7
-REGION_BREAK = "pdp1_region_break"
+DIALECT_PREFIX = "pdp1_"        # the names pdp1.h declares for the dialect itself
 DIRECTIVES = {"pdp1_constants": "constants", "pdp1_variables": "variables"}
 WORD_TYPES = {"word", "insn"}       # an insn is a word that holds an instruction
 FLAG_OPS = {"stf", "clf"}
@@ -201,10 +201,11 @@ def to_word(value: int, node: c_ast.Node) -> int:
 
 
 class Namer:
-    """Generated Macro symbols: the region prefix and a counter."""
+    """Generated Macro symbols: the unit's prefix and a counter. linked holds
+    the program's symbols for C names of external linkage (external_symbols)."""
 
-    def __init__(self, prefix: str, start: int = 0):
-        self.prefix, self.counter = prefix, start
+    def __init__(self, prefix: str, start: int = 0, linked: dict[str, str] | None = None):
+        self.prefix, self.counter, self.linked = prefix, start, linked or {}
 
     def fresh(self) -> str:
         self.counter += 1
@@ -226,19 +227,43 @@ class _Scope:
         raise _err(node, f"undeclared name {node.name!r}")
 
 
-def _symbol(name: str, attrs: dict[str, str], namer: Namer, node: c_ast.Node) -> str:
-    """SYM("x") pins a symbol; a short C name is its own symbol; a long one gets a fresh one."""
-    if "sym" in attrs:
-        sym = attrs["sym"].strip('"')
-        if not MACRO_SYMBOL.fullmatch(sym):
-            raise _err(node, f"SYM({sym!r}) is not a Macro symbol: a lower-case letter, then "
-                             f"letters or digits, {MACRO_SYMBOL_LEN} characters at most")
-        if macro.predefined(sym):
-            raise _err(node, f"SYM({sym!r}) is predefined by macro1")
-        return sym
-    if MACRO_SYMBOL.fullmatch(name) and not macro.predefined(name):
-        return name
-    return namer.fresh()
+LINKED_PREFIX = "y"
+GENERATED = re.compile(r"(?:y|z[a-z]?)[0-9]+")     # the shape of every generated symbol
+
+
+def _own_symbol(name: str) -> bool:
+    """A short C name that macro1 does not predefine, and that cannot be a
+    generated symbol, is its own Macro symbol."""
+    return MACRO_SYMBOL.fullmatch(name) is not None and not macro.predefined(name) \
+        and not GENERATED.fullmatch(name)
+
+
+def _symbol(decl: c_ast.Decl, namer: Namer) -> str:
+    """A static name gets a fresh symbol, since another file may use the same
+    name. Otherwise a short C name is its own symbol, and a long one has the
+    program's symbol for it."""
+    if "static" in decl.storage:
+        return namer.fresh()
+    if _own_symbol(decl.name):
+        return decl.name
+    return namer.linked.get(decl.name) or namer.fresh()
+
+
+def external_symbols(asts: list[c_ast.FileAST]) -> dict[str, str]:
+    """One Macro symbol per C name of external linkage across the units of a
+    program, so that every unit names a function or object by the same
+    symbol. A short name is its own symbol; a long one gets a generated one,
+    in order of first declaration."""
+    namer = Namer(LINKED_PREFIX)
+    out: dict[str, str] = {}
+    for ast in asts:
+        for ext in ast.ext:
+            decl = ext.decl if isinstance(ext, c_ast.FuncDef) else ext
+            if isinstance(decl, c_ast.Decl) and decl.name and not _in_header(decl) \
+                    and "static" not in decl.storage and not decl.name.startswith(DIALECT_PREFIX) \
+                    and not _own_symbol(decl.name) and decl.name not in out:
+                out[decl.name] = namer.fresh()
+    return out
 
 
 def _signature(decl: c_ast.Decl, namer: Namer, symbol: bool = True) -> ir.Signature:
@@ -300,18 +325,19 @@ def _signature(decl: c_ast.Decl, namer: Namer, symbol: bool = True) -> ir.Signat
                          "only a JDA function or the BLOCK it tail-calls can")
     if not symbol:
         return ir.Signature(decl.name, "", conv, tuple(params), returns, "", skips)
-    return ir.Signature(decl.name, _symbol(decl.name, attrs, namer, decl), conv, tuple(params),
+    return ir.Signature(decl.name, _symbol(decl, namer), conv, tuple(params),
                         returns, namer.fresh(), skips)
 
 
-def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
-    namer = Namer(prefix)
+def lower_unit(ast: c_ast.FileAST, prefix: str = "z", linked: dict[str, str] | None = None) -> ir.Unit:
+    """linked: the program's external_symbols; a lone unit is its own program."""
+    namer = Namer(prefix, linked=external_symbols([ast]) if linked is None else linked)
     sigs: dict[str, ir.Signature] = {}
     first: dict[str, c_ast.Decl] = {}
     for ext in ast.ext:
         decl = ext.decl if isinstance(ext, c_ast.FuncDef) else ext
         if isinstance(decl, c_ast.Decl) and _is_function(decl.type) and not _in_header(decl) \
-                and decl.name != REGION_BREAK and decl.name not in DIRECTIVES:
+                and decl.name not in DIRECTIVES:
             if "at" in _attrs(decl) and not isinstance(ext, c_ast.FuncDef):
                 raise _err(decl, f"{decl.name}: AT places a definition, not a declaration")
             if decl.name not in sigs:
@@ -320,6 +346,7 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
                 raise _err(decl, f"{decl.name}: declarations disagree with the one at "
                                  f"{first[decl.name].coord}")
 
+    start = _start(ast, sigs)
     types = {e.name: _signature(e, Namer("q"), symbol=False) for e in ast.ext
              if isinstance(e, c_ast.Typedef) and _is_function(e.type) and not _in_header(e)}
 
@@ -355,7 +382,7 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
             if ext.init is None or not is_insn(ext.init, sigs):
                 raise _err(ext, f"{ext.name}: a HOMED shift is the instruction at its home; "
                                 "initialize it with the instruction it holds first")
-            globals_[ext.name] = ir.HomedInsn(_symbol(ext.name, attrs, namer, ext),
+            globals_[ext.name] = ir.HomedInsn(_symbol(ext, namer),
                                          insn(ext.init, _Scope(globals_), sigs, arrays))
         elif "pool" in attrs or "homed" in attrs:
             if ext.init is not None and ("pool" in attrs or _word_type(ext.type) != "word*"):
@@ -365,24 +392,21 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
                                 "indexes the switch that is its home")
             if "pool" in attrs and _word_type(ext.type) is None and ext.name not in pointers:
                 raise _err(ext, f"{ext.name}: a POOL object is a `word` or a pointer")
-            sym = _symbol(ext.name, attrs, namer, ext)
+            sym = _symbol(ext, namer)
             if "pool" in attrs:
                 globals_[ext.name] = ir.Pool(sym)
             else:
                 defined = any("extern" not in o.storage for o in objects if o.name == ext.name)
                 globals_[ext.name] = ir.Homed(sym, _home_init(ext, globals_, sigs, arrays), defined)
         elif ext.init is not None or "reserve" in attrs:
-            globals_[ext.name] = ir.Placed(_symbol(ext.name, attrs, namer, ext))
+            globals_[ext.name] = ir.Placed(_symbol(ext, namer))
     for ext in objects:
         if ext.name in globals_:
             continue
-        attrs = _attrs(ext)
         if "extern" not in ext.storage:
             raise _err(ext, f"{ext.name}: an uninitialized file-scope object needs a storage "
-                            "class: POOL, RESERVE or HOMED (or extern for unlifted text)")
-        if not MACRO_SYMBOL.fullmatch(ext.name) and "sym" not in attrs:
-            raise _err(ext, f"{ext.name}: an extern names unlifted text; give it SYM(\"x\")")
-        globals_[ext.name] = ir.Extern(_symbol(ext.name, attrs, namer, ext))
+                            "class: POOL, RESERVE or HOMED (or extern when another unit defines it)")
+        globals_[ext.name] = ir.Extern(_symbol(ext, namer))
 
     for ext in objects:
         if ext.init is not None:
@@ -411,8 +435,6 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
                 inlines[fn.sig.name] = fn
                 continue
             items.append(ir.Function(fn.sig, fn.params, fn.body, _origin(ext.decl)))
-        elif isinstance(ext, c_ast.Decl) and ext.name == REGION_BREAK:
-            items.append(ir.RegionBreak())
         elif isinstance(ext, c_ast.Decl) and ext.name in DIRECTIVES:
             items.append(ir.Directive(DIRECTIVES[ext.name]))
         elif isinstance(ext, c_ast.Decl) and not _is_function(ext.type) and not _in_header(ext):
@@ -436,7 +458,27 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
                 continue
             if ext.name not in placed_later:
                 items.append(data[ext.name])
-    return ir.Unit(tuple(items), sigs, namer.counter, globals_, data, inlines)
+    statics = frozenset(d.name for e in ast.ext
+                        if isinstance(d := e.decl if isinstance(e, c_ast.FuncDef) else e, c_ast.Decl)
+                        and d.name and "static" in d.storage)
+    return ir.Unit(tuple(items), sigs, namer.counter, globals_, data, inlines, start, pointers, statics)
+
+
+def _start(ast: c_ast.FileAST, sigs: dict[str, ir.Signature]) -> str | None:
+    """The symbol of the START function: the address the tape starts the
+    program at. It is a BLOCK with no parameters, entered by a jump."""
+    marked = [e for e in ast.ext if isinstance(e, (c_ast.FuncDef, c_ast.Decl))
+              and "start" in _attrs(e.decl if isinstance(e, c_ast.FuncDef) else e)]
+    for e in marked:
+        decl = e.decl if isinstance(e, c_ast.FuncDef) else e
+        if not isinstance(e, c_ast.FuncDef):
+            raise _err(decl, f"{decl.name}: START marks a definition, not a declaration")
+        if sigs[decl.name].conv is not ir.Conv.BLOCK or sigs[decl.name].params:
+            raise _err(decl, f"{decl.name}: the START function is a BLOCK with no parameters; "
+                             "the machine enters it by a jump")
+    if len(marked) > 1:
+        raise _err(marked[1], "a program starts at one START function")
+    return sigs[marked[0].decl.name].sym if marked else None
 
 
 def _home_init(ext: c_ast.Decl, globals_: dict[str, ir.Storage], sigs: dict[str, ir.Signature],
@@ -621,7 +663,7 @@ def _same_declaration(a: c_ast.Decl, b: c_ast.Decl) -> bool:
     """Same parameters, return type and dialect attributes, so no single
     declaration's attribute is decoration."""
     sa, sb = _signature(a, Namer("q")), _signature(b, Namer("q"))
-    placement = {"at"}          # AT belongs to the definition alone
+    placement = {"at", "start"}     # AT and START belong to the definition alone
     attrs_a = {k: v for k, v in _attrs(a).items() if k not in placement}
     attrs_b = {k: v for k, v in _attrs(b).items() if k not in placement}
     return (sa.params, sa.returns, sa.conv) == (sb.params, sb.returns, sb.conv) and attrs_a == attrs_b

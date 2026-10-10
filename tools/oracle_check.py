@@ -3,9 +3,9 @@ the same routine in the ORACLE binary (build/oracle.rim), call by call.
 Shared by tools/check-*-reference.py.
 
 Addresses come from the listing of the last `pdp1cc build`, which names
-every lifted routine by the symbol the compiler gave it, pinned or
-generated. That build matched the oracle, so its addresses are the
-oracle's. Run `uv run pdp1cc build lift.toml` first."""
+every lifted routine by the symbol the compiler gave it. That build matched
+the oracle, so its addresses are the oracle's. Run `uv run pdp1cc build
+lift.toml` first."""
 from __future__ import annotations
 
 import hashlib
@@ -13,7 +13,7 @@ import random
 from collections import Counter
 from pathlib import Path
 
-from pdp1cc import dialect, front, ir, splice
+from pdp1cc import ir, program
 from pdp1cc.gate import corpus, reference, simh
 from pdp1cc.gate.simh import Inputs
 
@@ -41,29 +41,32 @@ def built_symbols() -> dict[str, int]:
     """The symbol table of the last build, which must match the oracle and be
     newer than every lifted file."""
     toml = ROOT / "lift.toml"
-    cfg, regions = splice.load(toml)
-    rim, lst = ROOT / "build/lift/spliced.rim", ROOT / "build/lift/spliced.lst"
+    cfg, files = program.load(toml)
+    rim, lst = program.output(toml, ".rim"), program.output(toml, ".lst")
     if not lst.exists() or hashlib.sha256(rim.read_bytes()).hexdigest() != cfg["oracle_sha256"]:
         raise SystemExit("build/lift does not hold a build matching the oracle: "
                          "run `uv run pdp1cc build lift.toml`")
-    lifted = [toml, *(r.c for r in regions), *(ROOT / "lift").glob("*.h")]
+    lifted = [toml, *(f.c for f in files), *(ROOT / "lift").glob("*.h")]
     if any(f.stat().st_mtime > lst.stat().st_mtime for f in lifted):
         raise SystemExit("build/lift is older than the lifted C: run `uv run pdp1cc build lift.toml`")
-    return splice.symbols(lst.read_text(errors="replace"))
+    return program.symbols(lst.read_text(errors="replace"))
 
 
 def oracle_symbols() -> dict[str, int]:
-    """The oracle listing's symbol table. It names what the lifted C no
-    longer defines as symbols, such as the object table's equates (nx1 ..
-    nnn); a build that matches the oracle has them at the same addresses."""
-    return splice.symbols((ROOT / "build/oracle.lst").read_text(errors="replace"))
+    """The oracle listing's symbol table: the source's own names (ran, mtb,
+    the object table's equates nx1 .. nnn). The lifted C names none of them;
+    a build that matches the oracle has them at the same addresses."""
+    return program.symbols((ROOT / "build/oracle.lst").read_text(errors="replace"))
 
 
 def lifted_units(c_files: list[Path]) -> dict[Path, ir.Unit]:
-    """Each file lowered with its region's label prefix, as the build lowers it."""
-    _, regions = splice.load(ROOT / "lift.toml")
-    prefix = {r.c.resolve(): r.prefix for r in regions}
-    return {f: dialect.lower_unit(front.parse(f), prefix[f.resolve()]) for f in c_files}
+    """Each file's unit, lowered as the build lowers it: as part of the program."""
+    units = program.units(ROOT / "lift.toml")
+    return {f: units[f.resolve()] for f in c_files}
+
+
+def built_listing() -> Path:
+    return program.output(ROOT / "lift.toml", ".lst")
 
 
 def check(label: str, lift_files: list[str], entry: str, calls: list[Inputs], domain: str) -> int:

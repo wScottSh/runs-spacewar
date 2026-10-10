@@ -24,7 +24,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from oracle_check import ROOT, built_symbols, lifted_units, seeded
+from oracle_check import ROOT, built_listing, built_symbols, lifted_units, oracle_symbols, seeded
 from pdp1cc import inline, ir
 from pdp1cc.gate import corpus, reference, simh
 from pdp1cc.gate.simh import Inputs
@@ -39,7 +39,8 @@ JUMP_FRAMES = 20000
 
 
 HEAVENS = ROOT / "lift/heavens.c"
-LIFT = [ROOT / "lift/tunables.c", HEAVENS]
+CATALOG = ROOT / "lift/star_catalog.c"
+LIFT = [ROOT / "lift/tunables.c", HEAVENS, CATALOG]
 
 
 def native(name: str, call: str, watch: list[str], placed, setup: str = "") -> Path:
@@ -76,7 +77,7 @@ def compare(label: str, calls, want, got, names: list[str]) -> int:
 
 
 def catalog(address: dict[str, int], us) -> int:
-    u = us[HEAVENS]
+    u = us[CATALOG]
     words = [(t, k) for t in TABLES for k in range(u.words(t))]
     first = address[u.objects[TABLES[0]].sym]
     script = f"load {ROOT / 'build/oracle.rim'}\nex {first:o}-{first + len(words) - 1:o}\nquit\n"
@@ -94,11 +95,11 @@ def catalog(address: dict[str, int], us) -> int:
 
 
 def main() -> int:
-    address = built_symbols()
+    address = oracle_symbols() | built_symbols()
     us = lifted_units(LIFT)
     heavens = us[HEAVENS]
     placed = [p for u in us.values() for p in reference.placements(u, address)]
-    display = corpus.display_words(ROOT / "build/lift/spliced.lst")
+    display = corpus.display_words(built_listing())
     failed = catalog(address, us)
 
     obj = heavens.objects
@@ -106,8 +107,8 @@ def main() -> int:
     duff = next(n for f in heavens.items if isinstance(f, ir.Function)
                 for n in inline.iter_nodes(f.body) if isinstance(n, ir.HomedSwitch))
     jump = f"word::bits(0600000 | (0{address[duff.table]:o}u + 8u * line_dots_skipped.v))"
-    star_watch = [("ran", address["ran"], "random_number"), ("bx", sym("slope_x"), "slope_x"),
-                  ("by", sym("slope_y"), "slope_y"),
+    star_watch = [("ran", address["ran"], "random_number"), ("bx", sym("star_vector_x"), "star_vector_x"),
+                  ("by", sym("star_vector_y"), "star_vector_y"),
                   ("bjm", address[duff.index.storage.sym], jump)]
     star = native("central_star", "central_star()", [w for *_, w in star_watch], placed,
                   f"if (ac == {SET}) random_number = word::bits(io);")
