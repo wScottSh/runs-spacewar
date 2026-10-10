@@ -33,7 +33,7 @@ JDA word sine(word angle);
 JDA word cosine(word angle);
 JDA word integer_multiply(word a, BYNAME word b);
 JDA dword multiply(word a, BYNAME word b);
-JDA word sqt(word r);
+JDA word square_root(word remainder);
 JDA SKIPS dword integer_divide(word dividend, register word lo, BYNAME word divisor);
 
 /* Calc routines a ship hands its object over to. */
@@ -164,7 +164,7 @@ thrust:
     if (d <= 0)
         return spaceship_in_star();
     work = d + star_capture_radius;
-    f = multiply(sqt(work) >> 9, work);
+    f = multiply(square_root(work) >> 9, work);
     scr(f.hi, f.lo, 2);
     if (!sense(2))
         scr(f.hi, f.lo, 2);

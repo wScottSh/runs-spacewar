@@ -19,7 +19,7 @@ c = "lift/multiply.c"
 prefix = "zm"
 
 [[unit]]
-c = "lift/sqt.c"
+c = "lift/square_root.c"
 prefix = "zs"
 
 [[unit]]

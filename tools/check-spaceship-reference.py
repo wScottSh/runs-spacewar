@@ -44,7 +44,7 @@ from pdp1cc.gate.simh import Inputs
 
 SPACESHIP = ROOT / "lift/spaceship.c"
 LIFT = [ROOT / f"lift/{f}.c" for f in
-        ("tunables", "outline_compiler", "sincos", "multiply", "sqt", "divide", "objects")] + [SPACESHIP]
+        ("tunables", "outline_compiler", "sincos", "multiply", "square_root", "divide", "objects")] + [SPACESHIP]
 NOB = 0o30
 MASK = ir.WORD_MASK
 TWO_PI = 0o311040
