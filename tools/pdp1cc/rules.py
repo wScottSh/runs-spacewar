@@ -33,7 +33,8 @@ RULES: dict[str, str] = {
     "SKIP-RETURN": "skip_return(): idx R, the call returns one word further",
     "TAIL-CALL": "return blk(...) for a BLOCK blk: arguments, jmp blk",
     "LAY-FALLTHROUGH": "a tail call of the BLOCK laid out next emits no jump; tags that block's first word",
-    "LAY-ADOPT": "a function whose returns all tail-call one BLOCK patches that block's exit",
+    "LAY-ADOPT": "a function whose returns all tail-call one BLOCK patches that block's exit, which is "
+                 "the exit of the BLOCK it in turn tail-calls when one is defined in the file",
     "LOOP-UNROLL": "for (int i = 0; i < N; i++) S: S emitted N times (N read as C reads it)",
     "ST-ENTRY-CELL": "ENTRY_CELL(f) object: f's entry word under another name",
     "XCT-CALL": "f(...) for an XCT f: arguments in AC and IO, then `xct f`",
@@ -57,8 +58,9 @@ RULES: dict[str, str] = {
     "JDA-INLINE-ARG": "INLINE argument: the constant or address itself, as the word after the call",
     "SWITCH": "switch ((int)e) over 0..n: add (T; dap J; J, jmp .; T: a jmp per goto case, opr per "
               "empty case, the last case in its slot",
-    "HOMED-HOME": "*home(p): the instruction that holds HOMED pointer p, `lac .` / `lio .` under p's label; "
-                  "xct(*home(p), ...) is `xct .` there",
+    "HOMED-HOME": "*home(p): the instruction that holds HOMED pointer p, under p's label: `lac .` / `lio .`, "
+                  "`add .` in a + *home(p), `dac .` / `dio .` for *home(p) = e, `dap .` for home(p)->addr = e, "
+                  "`jmp .` for (*home(p))(...); xct(*home(p), ...) is `xct .`",
     "ST-HOMED": "HOMED pointer: stored by dap and advanced by idx at its home",
     "LAY-PLACE": "PLACE(x, ...): the words of x laid out at the statement, which control cannot reach",
     "EX-FLAG": "stf(n) / clf(n): set or clear program flag n",
@@ -78,6 +80,12 @@ RULES: dict[str, str] = {
                 "names p's cell with the indirect bit (lac i, add i, dac i, dzm i, dio i, lio i, isp i, idx i)",
     "EX-XCT": "xct(w, a) / xct(w, hi, lo): the argument in AC (and IO), then w run: `xct (w` for a "
               "constant, `p, xct .` for *home(p), the word itself for a HOMED insn",
+    "CALL-INDIRECT": "p(...) through a pointer word p to a JSP function type: a register argument in IO, "
+                     "then `jsp i p`; the result comes back in AC (and IO)",
+    "SKIP-SLOT": "a call of a SKIPS function: `opr` after its inline words, the word it returns past "
+                 "unless it does not skip; the call means the same either way",
+    "HOMED-VALUE": "a HOMED pointer read in the value a dap stores: its home word (`lac p`, `add p`), whose "
+                   "address field is the pointer, or nothing when AC's address field already holds it",
     "ST-HOMED-INSN": "HOMED insn x: the instruction at its home, xct(x, ...), laid out there with its initial "
                "word; x = e stores the whole word (dac x)",
 }

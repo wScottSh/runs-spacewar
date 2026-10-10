@@ -7,14 +7,14 @@
  * (|high dividend| >= |divisor|). Then they return to that word, with
  * |divisor| (signed like a quotient) in AC and the high dividend in IO. */
 
-JDA SYM("idv") dword integer_divide(word dividend, register word lo, BYNAME word divisor);
-JDA dword divide(word hi, register word lo, BYNAME word divisor);
-BLOCK dword divide_steps(register word lo, BYNAME word divisor);
+JDA SKIPS SYM("idv") dword integer_divide(word dividend, register word lo, BYNAME word divisor);
+JDA SKIPS dword divide(word hi, register word lo, BYNAME word divisor);
+BLOCK SKIPS dword divide_steps(register word lo, BYNAME word divisor);
 
 ENTRY_CELL(divide) word dividend_hi;        /* dvd's entry word; later the remainder */
 ENTRY_CELL(integer_divide) word quotient;   /* idv's entry word: |divisor|, then the quotient */
 
-JDA SYM("idv") dword integer_divide(word dividend, register word lo, BYNAME word divisor)
+JDA SKIPS SYM("idv") dword integer_divide(word dividend, register word lo, BYNAME word divisor)
 {
     word h = dividend;
     scr(h, lo, 17);                 /* the dividend becomes the 36-bit AC:IO pair;
@@ -23,13 +23,13 @@ JDA SYM("idv") dword integer_divide(word dividend, register word lo, BYNAME word
     return divide_steps(lo, divisor);
 }
 
-JDA dword divide(word hi, register word lo, BYNAME word divisor)   /* dvd */
+JDA SKIPS dword divide(word hi, register word lo, BYNAME word divisor)   /* dvd */
 {
     dividend_hi = hi;               /* the same cell: no code */
     return divide_steps(lo, divisor);
 }
 
-BLOCK dword divide_steps(register word lo, BYNAME word divisor)
+BLOCK SKIPS dword divide_steps(register word lo, BYNAME word divisor)
 {
     word h = divisor;
     if (h < 0)

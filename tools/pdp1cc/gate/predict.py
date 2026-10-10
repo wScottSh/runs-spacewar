@@ -92,6 +92,8 @@ LineCopies = dict[ir.Construct, str]
 def load_const(v: int) -> str:
     if v == 0:
         return "cla"
+    if v == MASK:
+        return "clc"
     if v <= LAW_MAX:
         return f"law {v:o}"
     if v ^ MASK <= LAW_MAX:
@@ -105,6 +107,7 @@ def chunks(n: int) -> list[str]:
 
 OCTAL = r"([0-7]+)"
 FORMS = [(re.compile(r"cla$"), "load", lambda m: 0),
+         (re.compile(r"clc$"), "load", lambda m: MASK),
          (re.compile(r"law i " + OCTAL + "$"), "load", lambda m: int(m.group(1), 8) ^ MASK),
          (re.compile(r"law " + OCTAL + "$"), "load", lambda m: int(m.group(1), 8)),
          (re.compile(r"lac \(" + OCTAL + "$"), "load", lambda m: int(m.group(1), 8)),
@@ -264,8 +267,8 @@ class Leaves:
 
     def __init__(self, unit: ir.Unit, ast: c_ast.FileAST):
         self.unit = unit
-        self.arrays = {name for name, d in (unit.data or {}).items() if d.array} | \
-            {t.name for t in unit.items if isinstance(t, ir.Space) and t.array}
+        self.arrays = {e.name for e in ast.ext
+                       if isinstance(e, c_ast.Decl) and isinstance(e.type, c_ast.ArrayDecl)}
         self.locals: dict[str, set[str]] = {}
         self.registers: dict[str, set[str]] = {}
         for ext in ast.ext:
@@ -291,6 +294,8 @@ class Leaves:
             entry = next((p for p in sig.params if p.kind is ir.ParamKind.AC), None)
             return sig.sym if sig.conv is ir.Conv.JDA and entry and entry.name == node.name else None
         storage = self.unit.objects.get(node.name)
+        if isinstance(storage, ir.Pool):
+            return "\\" + storage.sym
         return storage.sym if isinstance(storage, ir.Memory) else None
 
     def constant(self, node: c_ast.Node) -> int | None:

@@ -15,8 +15,9 @@ MACRO_SYMBOL_LEN = 6
 CMP_OPS = {"<", ">=", "==", "!=", "<=", ">"}
 ATTR = re.compile(r"pdp1_(\w+)(?:\((.*)\))?$")
 CONVS = {c.value: c for c in ir.Conv if c is not ir.Conv.INLINE}
-ATTRIBUTES = CONVS.keys() | {"byname", "inline", "sym", "entry_cell", "at", "reserve", "pool", "homed"}
-HARDWARE = {"tyi", "lsm", "ioh"}    # builtins that are one instruction with no operand
+ATTRIBUTES = CONVS.keys() | {"byname", "inline", "sym", "entry_cell", "at", "reserve", "pool", "homed",
+                              "skips"}
+HARDWARE = {"tyi", "lsm", "ioh", "hlt"}    # builtins that are one instruction with no operand
 DISPLAY = {"dpy", "dpy_nowait"}
 MAX_SENSE = 6
 MAX_INTENSITY = 7
@@ -238,10 +239,14 @@ def _signature(decl: c_ast.Decl, namer: Namer, symbol: bool = True) -> ir.Signat
     returns = _word_type(ftype.type) or _base_type(ftype.type)
     if returns not in ("word", "word*", "dword", "void"):
         raise _err(decl, f"{decl.name}: returns word, a pointer to word, dword or void")
+    skips = "skips" in attrs
+    if skips and conv not in (ir.Conv.JDA, ir.Conv.BLOCK):
+        raise _err(decl, f"{decl.name}: SKIPS returns past a word after a jda call; "
+                         "only a JDA function or the BLOCK it tail-calls can")
     if not symbol:
-        return ir.Signature(decl.name, "", conv, tuple(params), returns, "")
+        return ir.Signature(decl.name, "", conv, tuple(params), returns, "", skips)
     return ir.Signature(decl.name, _symbol(decl.name, attrs, namer, decl), conv, tuple(params),
-                        returns, namer.fresh())
+                        returns, namer.fresh(), skips)
 
 
 def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
@@ -269,7 +274,7 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
                and not _in_header(e)]
     seen: dict[str, c_ast.Decl] = {}
     for ext in objects:
-        if ext.name in seen and _decl_attrs(ext) != _decl_attrs(seen[ext.name]):
+        if ext.name in seen and not _same_object(ext, seen[ext.name]):
             raise _err(ext, f"{ext.name}: declarations disagree with the one at {seen[ext.name].coord}")
         seen.setdefault(ext.name, ext)
         if (fn_type := _pointee(ext.type, types)) is not None:
@@ -299,10 +304,10 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
         elif "pool" in attrs or "homed" in attrs:
             if ext.init is not None and ("pool" in attrs or _word_type(ext.type) != "word*"):
                 raise _err(ext, f"{ext.name}: a POOL object or a HOMED word has no initializer")
-            if "homed" in attrs and _word_type(ext.type) is None:
+            if "homed" in attrs and _word_type(ext.type) is None and ext.name not in pointers:
                 raise _err(ext, f"{ext.name}: HOMED declares a pointer, or a word that "
                                 "indexes the switch that is its home")
-            if "pool" in attrs and _word_type(ext.type) is None:
+            if "pool" in attrs and _word_type(ext.type) is None and ext.name not in pointers:
                 raise _err(ext, f"{ext.name}: a POOL object is a `word` or a pointer")
             sym = _symbol(ext.name, attrs, namer, ext)
             if "pool" in attrs:
@@ -492,6 +497,17 @@ def _decl_attrs(decl: c_ast.Decl) -> dict[str, str]:
     return {k: v for k, v in _attrs(decl).items() if k not in ("at", "reserve")}
 
 
+def _same_object(a: c_ast.Decl, b: c_ast.Decl) -> bool:
+    """Declarations of one object agree on its attributes. HOMED belongs to
+    the definition, as a storage class does in C: an extern declaration
+    reaches the pointer through its home by name, with or without it."""
+    attrs_a, attrs_b = _decl_attrs(a), _decl_attrs(b)
+    if "extern" in a.storage or "extern" in b.storage:
+        attrs_a.pop("homed", None)
+        attrs_b.pop("homed", None)
+    return attrs_a == attrs_b
+
+
 def _origin(decl: c_ast.Decl) -> int | None:
     attrs = _attrs(decl)
     if "at" not in attrs:
@@ -609,6 +625,12 @@ class _Lowerer:
                 if var is None or not isinstance(var.storage, ir.Memory):
                     raise _err(node, "x.addr = e needs a word x in memory")
                 return ir.AssignAddr(var, self.expr(node.rvalue))
+            case c_ast.Assignment(op="=", lvalue=c_ast.UnaryOp(op="*", expr=c_ast.FuncCall())) \
+                    if (p := self.home_of(node.lvalue.expr)) is not None:
+                return ir.HomeStore(p, self.expr(node.rvalue))
+            case c_ast.Assignment(op="=", lvalue=c_ast.StructRef(type="->", field=c_ast.ID(name="addr"))) \
+                    if (p := self.home_of(node.lvalue.name)) is not None:
+                return ir.HomeStore(p, self.expr(node.rvalue), addr=True)
             case c_ast.Assignment(op="=", lvalue=c_ast.UnaryOp(op="*")):
                 return ir.Assign(self.lvalue(node.lvalue), self.expr(node.rvalue))
             case c_ast.Assignment(op="=", lvalue=c_ast.ID()) if self._homed(node.lvalue.name):
@@ -836,10 +858,21 @@ class _Lowerer:
                 return ir.Pair(self.expr(node.init.exprs[0]), self.expr(node.init.exprs[1]))
             case c_ast.FuncCall(name=c_ast.ID(name=name)):
                 return self.call(node, name)
+            case c_ast.FuncCall(name=c_ast.UnaryOp(op="*")) if (p := self.home_of(node.name.expr)) is not None:
+                if p.name not in self.pointers:
+                    raise _err(node, f"(*home({p.name}))(...) jumps through a pointer to a function type")
+                sig = self.pointers[p.name]
+                args = node.args.exprs if node.args else []
+                if len(args) != len(sig.params):
+                    raise _err(node, f"{p.name} points to a {sig.name}, which takes {len(sig.params)} arguments")
+                return ir.IndirectCall(p, sig, tuple(self.expr(a) for a in args), home=True)
         raise _err(node, f"expression {type(node).__name__} is not in the implemented dialect yet")
 
     def deref(self, node: c_ast.UnaryOp) -> ir.Deref:
         """*p for a pointer p held in a memory word or in a homed address field."""
+        if isinstance(node.expr, c_ast.ID) and node.expr.name in self.arrays:
+            raise _err(node, f"*{node.expr.name}: an array's name is its address, not a pointer word; "
+                             "the instruction would reach through its first word")
         var = self.scope.lookup(node.expr) if isinstance(node.expr, c_ast.ID) else None
         if var is None or not isinstance(var.storage, ir.Memory + (ir.Homed,)) \
                 or isinstance(var.storage, ir.HomedInsn):
@@ -852,7 +885,17 @@ class _Lowerer:
         if flags & ir.ADDR_MASK:
             raise _err(node, f"{node.left.name} | {flags:o}: the flags must lie above the "
                              "address field (no bits in 07777)")
-        return ir.CodeRef(self.sigs[node.left.name], flags)
+        return ir.CodeRef(self.sigs[node.left.name], flags, word=True)
+
+    def home_of(self, node: c_ast.Node) -> ir.Var | None:
+        """p for `home(p)` with p a HOMED pointer."""
+        if not (isinstance(node, c_ast.FuncCall) and isinstance(node.name, c_ast.ID)
+                and node.name.name == "home" and _builtin("home", self.sigs)):
+            return None
+        args = node.args.exprs if node.args else []
+        if len(args) != 1 or not isinstance(args[0], c_ast.ID) or not self._homed(args[0].name):
+            raise _err(node, "home(p) names a HOMED pointer p")
+        return self.scope.lookup(args[0])
 
     def xct(self, node: c_ast.FuncCall, args: list[c_ast.Node]) -> ir.Xct:
         """xct(w, a) runs instruction word w on AC; xct(w, hi, lo) on AC:IO.
