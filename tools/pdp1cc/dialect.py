@@ -227,22 +227,26 @@ class _Scope:
         raise _err(node, f"undeclared name {node.name!r}")
 
 
+LINKED_PREFIX = "y"
+GENERATED = re.compile(r"(?:y|z[a-z]?)[0-9]+")     # the shape of every generated symbol
+
+
 def _own_symbol(name: str) -> bool:
-    """A short C name that macro1 does not predefine is its own Macro symbol."""
-    return MACRO_SYMBOL.fullmatch(name) is not None and not macro.predefined(name)
+    """A short C name that macro1 does not predefine, and that cannot be a
+    generated symbol, is its own Macro symbol."""
+    return MACRO_SYMBOL.fullmatch(name) is not None and not macro.predefined(name) \
+        and not GENERATED.fullmatch(name)
 
 
 def _symbol(decl: c_ast.Decl, namer: Namer) -> str:
-    """A short C name is its own symbol; a long one of external linkage has the
-    program's symbol for it; a static one gets a fresh one."""
-    if _own_symbol(decl.name):
-        return decl.name
+    """A static name gets a fresh symbol, since another file may use the same
+    name. Otherwise a short C name is its own symbol, and a long one has the
+    program's symbol for it."""
     if "static" in decl.storage:
         return namer.fresh()
+    if _own_symbol(decl.name):
+        return decl.name
     return namer.linked.get(decl.name) or namer.fresh()
-
-
-LINKED_PREFIX = "y"
 
 
 def external_symbols(asts: list[c_ast.FileAST]) -> dict[str, str]:
@@ -454,7 +458,10 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z", linked: dict[str, str] | N
                 continue
             if ext.name not in placed_later:
                 items.append(data[ext.name])
-    return ir.Unit(tuple(items), sigs, namer.counter, globals_, data, inlines, start, pointers)
+    statics = frozenset(d.name for e in ast.ext
+                        if isinstance(d := e.decl if isinstance(e, c_ast.FuncDef) else e, c_ast.Decl)
+                        and d.name and "static" in d.storage)
+    return ir.Unit(tuple(items), sigs, namer.counter, globals_, data, inlines, start, pointers, statics)
 
 
 def _start(ast: c_ast.FileAST, sigs: dict[str, ir.Signature]) -> str | None:

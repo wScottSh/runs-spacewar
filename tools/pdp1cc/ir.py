@@ -503,6 +503,7 @@ class Unit:
     inlines: dict[str, Function] = None
     start: str | None = None        # the START function's symbol: where the tape starts the program
     pointers: dict[str, Signature] = None   # objects that point to a function type: that type
+    statics: frozenset[str] = frozenset()   # file-scope names with internal linkage
 
     def words(self, name: str) -> int:
         """Words a file-scope object spans."""

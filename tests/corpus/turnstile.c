@@ -53,4 +53,4 @@ JDA word pass(word v)
     return c;
 }
 
-HOMED word *count;
+word *count;                    /* HOMED by the declaration above */

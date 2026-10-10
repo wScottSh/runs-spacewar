@@ -43,6 +43,8 @@ def load(toml_path: Path) -> tuple[dict, list[LiftedFile]]:
     cfg = tomllib.loads(toml_path.read_text())
     files = [LiftedFile(toml_path.parent / u["c"], u["prefix"]) for u in cfg["unit"]]
     prefixes = [f.prefix for f in files]
+    if bad := [p for p in prefixes if not dialect.GENERATED.fullmatch(p + "1")]:
+        raise SystemExit(f"lift.toml: label prefixes are z and a letter: {bad}")
     if len(set(prefixes)) != len(prefixes):
         raise SystemExit("lift.toml: label prefixes must be unique per file")
     return cfg, files
@@ -59,6 +61,8 @@ def compile_units(files: list[LiftedFile]) -> list[Compiled]:
     units = [dialect.lower_unit(ast, f.prefix, linked) for ast, f in zip(asts, files)]
     if errors := disagreements(files, units):
         raise dialect.DialectError("\n".join(errors))
+    if len(starts := [f.c.name for f, u in zip(files, units) if u.start]) > 1:
+        raise dialect.DialectError(f"a program starts at one START function: {', '.join(starts)} each define one")
     return [Compiled(f, u, layout.place(u, f.prefix)) for f, u in zip(files, units)]
 
 
@@ -78,8 +82,9 @@ def disagreements(files: list[LiftedFile], units: list[ir.Unit]) -> list[str]:
     seen: dict[tuple[str, str], tuple[tuple, Path]] = {}
     errors = []
     for f, u in zip(files, units):
-        named = [("function", n, s) for n, s in u.signatures.items() if s.conv is not ir.Conv.INLINE]
-        named += [("pointer", n, s) for n, s in (u.pointers or {}).items()]
+        named = [("function", n, s) for n, s in u.signatures.items()
+                 if s.conv is not ir.Conv.INLINE and n not in u.statics]
+        named += [("pointer", n, s) for n, s in (u.pointers or {}).items() if n not in u.statics]
         for kind, name, sig in named:
             first = seen.setdefault((kind, name), (_shape(sig), f.c))
             if first[0] != _shape(sig):

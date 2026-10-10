@@ -53,4 +53,4 @@ off:    heat = 0;
     return heat;
 }
 
-HOMED word *sensor;
+word *sensor;                   /* HOMED by the declaration above */
