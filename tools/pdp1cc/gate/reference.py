@@ -101,13 +101,8 @@ REWRITES = (
 )
 
 
-def entry_param(sig: ir.Signature) -> str | None:
-    """The parameter a JDA call stores in the entry word."""
-    p = entry(sig)
-    return p.name if p else None
-
-
 def entry(sig: ir.Signature) -> ir.Param | None:
+    """The parameter a JDA call stores in the entry word."""
     if sig.conv != "jda":
         return None
     return next((p for p in sig.params if p.kind == "ac"), None)
@@ -160,10 +155,6 @@ def bind(path: Path, defined: list[ir.Signature]) -> str:
 
 def units(c_files: list[Path]) -> dict[Path, ir.Unit]:
     return {f: dialect.lower_unit(front.parse(f)) for f in c_files}
-
-
-def signatures(c_files: list[Path]) -> dict[str, ir.Signature]:
-    return {name: s for u in units(c_files).values() for name, s in u.signatures.items()}
 
 
 def stub(sig: ir.Signature) -> str:

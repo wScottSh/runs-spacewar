@@ -655,16 +655,7 @@ class _Lowerer:
             raise _err(node, "a jump table switches on a word cast to int: switch ((int)w)")
         if isinstance(cond.expr, c_ast.ID) and self._homed(cond.expr.name):
             return self.homed_switch(node, self.scope.lookup(cond.expr))
-        body = node.stmt.block_items or [] if isinstance(node.stmt, c_ast.Compound) else []
-        cases: list[list[c_ast.Node]] = []
-        for item in body:
-            if isinstance(item, c_ast.Default) or not isinstance(item, c_ast.Case):
-                raise _err(item, "a jump table has cases 0..n and no default")
-            if c_int(item.expr) != len(cases):
-                raise _err(item, f"case {c_int(item.expr)}: a jump table's cases are 0, 1, ... in order")
-            cases.append(item.stmts or [])
-        if len(cases) < 2:
-            raise _err(node, "a jump table has at least two cases")
+        cases = _cases(node, "a jump table", "a jump table's cases")
         slots: list[ir.Stmt | None] = []
         for stmts in cases[:-1]:
             if not stmts:
@@ -679,16 +670,7 @@ class _Lowerer:
         return ir.Switch(self.expr(cond.expr), tuple(slots), last)
 
     def homed_switch(self, node: c_ast.Switch, index: ir.Var) -> ir.HomedSwitch:
-        body = node.stmt.block_items or [] if isinstance(node.stmt, c_ast.Compound) else []
-        cases: list[list[c_ast.Node]] = []
-        for item in body:
-            if isinstance(item, c_ast.Default) or not isinstance(item, c_ast.Case):
-                raise _err(item, "a switch has cases 0..n and no default")
-            if c_int(item.expr) != len(cases):
-                raise _err(item, f"case {c_int(item.expr)}: the cases are 0, 1, ... in order")
-            cases.append(item.stmts or [])
-        if len(cases) < 2:
-            raise _err(node, "a switch has at least two cases")
+        cases = _cases(node, "a switch", "the cases")
         lowered = []
         for stmts in cases:
             self.scope.frames.append({})
@@ -893,6 +875,21 @@ class _Lowerer:
         if len(args) != len(sig.params):
             raise _err(node, f"{name} takes {len(sig.params)} arguments")
         return ir.Call(sig, tuple(self.expr(a) for a in args))
+
+
+def _cases(node: c_ast.Switch, switch: str, its_cases: str) -> list[list[c_ast.Node]]:
+    """The statements of cases 0..n, in order; no default."""
+    body = node.stmt.block_items or [] if isinstance(node.stmt, c_ast.Compound) else []
+    cases: list[list[c_ast.Node]] = []
+    for item in body:
+        if isinstance(item, c_ast.Default) or not isinstance(item, c_ast.Case):
+            raise _err(item, f"{switch} has cases 0..n and no default")
+        if c_int(item.expr) != len(cases):
+            raise _err(item, f"case {c_int(item.expr)}: {its_cases} are 0, 1, ... in order")
+        cases.append(item.stmts or [])
+    if len(cases) < 2:
+        raise _err(node, f"{switch} has at least two cases")
+    return cases
 
 
 def _builtin(name: str, sigs: dict[str, ir.Signature]) -> bool:

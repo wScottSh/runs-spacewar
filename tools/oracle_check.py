@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import hashlib
 import random
-import re
 from collections import Counter
 from pathlib import Path
 
@@ -49,25 +48,23 @@ def built_symbols() -> dict[str, int]:
                          "run `uv run pdp1cc build lift.toml`")
     if any(f.stat().st_mtime > lst.stat().st_mtime for f in [toml, *(r.c for r in regions)]):
         raise SystemExit("build/lift is older than the lifted C: run `uv run pdp1cc build lift.toml`")
-    text = lst.read_text(errors="replace")
-    return {s: int(v, 8) for s, v in re.findall(r"^ (\w+)\s+([0-7]{6})$", text, re.M)}
+    return splice.symbols(lst.read_text(errors="replace"))
 
 
-def lifted_signatures(c_files: list[Path]) -> dict[str, ir.Signature]:
+def lifted_units(c_files: list[Path]) -> dict[Path, ir.Unit]:
     """Each file lowered with its region's label prefix, as the build lowers it."""
     _, regions = splice.load(ROOT / "lift.toml")
     prefix = {r.c.resolve(): r.prefix for r in regions}
-    return {name: s for f in c_files
-            for name, s in dialect.lower_unit(front.parse(f), prefix[f.resolve()]).signatures.items()}
+    return {f: dialect.lower_unit(front.parse(f), prefix[f.resolve()]) for f in c_files}
 
 
 def check(label: str, lift_files: list[str], entry: str, calls: list[Inputs], domain: str) -> int:
     """Also compares, after every call, the entry word of each JDA function
     the lifted files define."""
     files = [ROOT / f for f in lift_files]
-    sigs = lifted_signatures(files)
+    sigs = {name: s for u in lifted_units(files).values() for name, s in u.signatures.items()}
     sig = sigs[entry]
-    cells = [s for s in sigs.values() if reference.entry_param(s)]
+    cells = [s for s in sigs.values() if reference.entry(s)]
     native = reference.build(files, sig, ROOT / "build/ref" / entry,
                              [reference.cell(s.name) for s in cells])
     address = built_symbols()

@@ -19,6 +19,7 @@ from .rules import RULES
 LABEL_DEF = re.compile(r"^((?:[a-z0-9]+,\s*)+)", re.M)
 LISTING_WORD = re.compile(r"^\s*\d*\s+([0-7]{5}) ([0-7]{6})(?:\s+(.*))?$")
 LISTING_VARS = re.compile(r"^\s*\d+\s+([0-7]{5})\s+variables\b")
+LISTING_SYMBOL = re.compile(r"^ (\w+)\s+([0-7]{6})$", re.M)
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,11 @@ def listing(path: Path) -> tuple[dict[int, tuple[str, str]], int | None]:
         elif m := LISTING_WORD.match(line):
             words.setdefault(int(m.group(1), 8), (m.group(2), m.group(3) or ""))
     return words, variables
+
+
+def symbols(listing_text: str) -> dict[str, int]:
+    """The symbol table macro1 prints at the end of a listing."""
+    return {s: int(v, 8) for s, v in LISTING_SYMBOL.findall(listing_text)}
 
 
 def lifted_coverage(lst: Path) -> tuple[int, int]:

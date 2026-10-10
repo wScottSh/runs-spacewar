@@ -192,7 +192,7 @@ class FunctionLowerer:
         if fn.sig.conv == "jsp" and (target := _forwarded(fn.body)) is not None:
             return self.forward(target)
         tails = _tail_calls(fn.body)
-        jumps = _indirect_tails(fn.body)
+        jumps = [r for r in _returns(fn.body) if isinstance(r.value, ir.IndirectCall)]
         plain = [r for r in _returns(fn.body) if r not in tails and r not in jumps]
         if tails:
             targets = {t.value.sig.name for t in tails}
@@ -204,7 +204,7 @@ class FunctionLowerer:
                     f"{fn.sig.name}: takes {fn.sig.inline_count} inline word(s) but tail-calls "
                     f"{self.adopted.name}, which returns past {self.adopted.inline_count}")
         elif fn.sig.inline_count:
-            if not _any_byname_read(fn.body):
+            if not any(map(inline.is_byname_read, inline.iter_nodes(fn.body))):
                 raise SelectError(f"{fn.sig.name}: a BYNAME or INLINE parameter that is never read")
             fn = inline.place_args(fn)
         body = fn.body
@@ -911,25 +911,11 @@ def _forwarded(body: ir.Block) -> ir.Call | None:
     return None
 
 
-def _indirect_tails(node) -> list[ir.Return]:
-    return [r for r in _returns(node) if isinstance(r.value, ir.IndirectCall)]
-
-
 def _ends_in_transfer(b: ir.Block) -> bool:
     stmts = list(b.stmts)
     while stmts and isinstance(stmts[-1], ir.PlaceHere):    # data, laid out after the code
         stmts.pop()
-    if not stmts:
-        return False
-    last = stmts[-1]
-    while isinstance(last, (ir.Labeled, ir.Block)):
-        if isinstance(last, ir.Block):
-            if not last.stmts:
-                return False
-            last = last.stmts[-1]
-        else:
-            last = last.stmt
-    return isinstance(last, (ir.Return, ir.Forever, ir.Goto))
+    return isinstance(_final_stmt(ir.Block(tuple(stmts))), (ir.Return, ir.Forever, ir.Goto))
 
 
 def _children(node) -> list:
@@ -958,10 +944,6 @@ def _returns(node) -> list[ir.Return]:
 def _tail_calls(node) -> list[ir.Return]:
     return [r for r in _returns(node)
             if isinstance(r.value, ir.Call) and r.value.sig.conv == "block"]
-
-
-def _any_byname_read(node) -> bool:
-    return any(map(inline.is_byname_read, inline.iter_nodes(node)))
 
 
 def hardware_word(name: str) -> ir.Word:
