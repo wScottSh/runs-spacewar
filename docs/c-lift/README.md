@@ -5,19 +5,19 @@ Spacewar! 3.1 (MIT, 1962), lifted from PDP-1 assembly into readable C that compi
 The C is not a port. Our compiler, `pdp1cc`, compiles it to PDP-1 machine code. The result is the same paper-tape image the original assembly produces, with the same instructions at the same addresses. Same binary, same game.
 
 ```c
-JDA word sqt(word r)                /* r is the entry word: input, then remainder */
+JDA word square_root(word remainder)            /* sqt: the entry word, the input, then the remainder */
 {
-    sq1 = -023;                     /* isp counts up to 0: 022 (18) passes, 2 bits each */
-    sq2 = 0;                        /* root so far */
-    register word lo = r;           /* low half of the 36-bit AC:IO shift register */
-    r = 0;
+    root_passes_left = -023;                    /* isp counts up to 0: 022 (18) passes, 2 bits each */
+    partial_root = 0;
+    register word input_bits = remainder;       /* the low half of the 36-bit AC:IO shift register */
+    remainder = 0;
     for (;;) {
-        if (++sq1 >= 0)
-            return sq2;
+        if (++root_passes_left >= 0)
+            return partial_root;
         ...
 ```
 
-That is the integer square root routine (`lift/sqt.c`). Compiled by `pdp1cc`, it becomes the 32 words at octal addresses 00246-00305 of the original image.
+That is the integer square root routine (`lift/square_root.c`, the source's `sqt`). Compiled by `pdp1cc`, it becomes the 32 words at octal addresses 00246-00305 of the original image.
 
 ## Status
 

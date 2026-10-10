@@ -417,7 +417,12 @@ Extended rule: `CALL-INDIRECT` takes a JSP function type that returns an `io_wor
 
 **Second corpus users.** `io_word` results (a direct JSP call, a computed call, a call through a pool pointer), `control_boxes()` and `extern HOMED` each had one corpus user or none. `thermostat` and `turnstile` use all three and mirror no lifted routine. Both run `iot 11` in SIMH: with the CPU's display option off, headless SIMH leaves IO unchanged on `iot 11` and does not stop, so a reader that clears IO first reads no buttons, as the native `control_boxes()` does. The M7 note that SIMH stops on `iot 11` was wrong; the frame check's control-box scenarios also run `read_control_boxes`.
 
-**Naming.** NAMING_TABLE
+**Naming.** A pass across `lift/` replaced short or opaque names with what the value means; each definition keeps the source's symbol in its comment. The main ones (source symbol in parentheses):
+- `sqt` is `square_root` (`lift/square_root.c`, `tools/check-square-root-reference.py`); `sq1`, `sq2` are `root_passes_left`, `partial_root`.
+- The outline's direction steps, pool words the outline compiler's code reads: `down_step_x`, `down_step_y` (ssn, scn), `out_step_x`, `out_step_y` (scm, ssm), `out_down_step_x`, `out_down_step_y` (ssc, csm), `in_down_step_x`, `in_down_step_y` (csn, ssd).
+- `object_table.h`: `OUTLINE_STARTS` (not) is the table property holding each ship's compiled outline; `OUTLINE_CODE_SPACE` (nnn) is the free core the outline compiler writes into. `NOB` is `OBJECT_COUNT`, `SPINS` `ANGULAR_MOMENTA`, `OLD_CONTROLS` `PREVIOUS_CONTROLS`.
+- The spaceship's gravity: `work` is `gravity_operand` (\t1), and the locals `d`, `f`, `q` are `capture_margin`, `distance_cubed`, `pull`.
+- Locals in every file named for their meaning (`flame_dots`, `launch_coordinate`, `particle_count`, `routine_changed`, ...). Kept: `a` and `b` in multiply (interchangeable factors, which `integer_multiply` passes swapped), `a` in the sine series (the reduced angle, then the running sum), and the starfield's `x`, `y`.
 
 **What the checks still do not prove.** The frame check runs 1412 of 1442 compiled code words, as after M7; the 30 it does not run are at the same places (M7 section). `check-divide-reference` calls dvd's entry; no check measures whether the other 29 run, and the hash covers them. The main loop has no native reference, since it runs generated code.
 
