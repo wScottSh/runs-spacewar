@@ -232,12 +232,14 @@ def _own_symbol(name: str) -> bool:
     return MACRO_SYMBOL.fullmatch(name) is not None and not macro.predefined(name)
 
 
-def _symbol(name: str, namer: Namer) -> str:
+def _symbol(decl: c_ast.Decl, namer: Namer) -> str:
     """A short C name is its own symbol; a long one of external linkage has the
-    program's symbol for it; any other gets a fresh one."""
-    if _own_symbol(name):
-        return name
-    return namer.linked.get(name) or namer.fresh()
+    program's symbol for it; a static one gets a fresh one."""
+    if _own_symbol(decl.name):
+        return decl.name
+    if "static" in decl.storage:
+        return namer.fresh()
+    return namer.linked.get(decl.name) or namer.fresh()
 
 
 LINKED_PREFIX = "y"
@@ -319,7 +321,7 @@ def _signature(decl: c_ast.Decl, namer: Namer, symbol: bool = True) -> ir.Signat
                          "only a JDA function or the BLOCK it tail-calls can")
     if not symbol:
         return ir.Signature(decl.name, "", conv, tuple(params), returns, "", skips)
-    return ir.Signature(decl.name, _symbol(decl.name, namer), conv, tuple(params),
+    return ir.Signature(decl.name, _symbol(decl, namer), conv, tuple(params),
                         returns, namer.fresh(), skips)
 
 
@@ -376,7 +378,7 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z", linked: dict[str, str] | N
             if ext.init is None or not is_insn(ext.init, sigs):
                 raise _err(ext, f"{ext.name}: a HOMED shift is the instruction at its home; "
                                 "initialize it with the instruction it holds first")
-            globals_[ext.name] = ir.HomedInsn(_symbol(ext.name, namer),
+            globals_[ext.name] = ir.HomedInsn(_symbol(ext, namer),
                                          insn(ext.init, _Scope(globals_), sigs, arrays))
         elif "pool" in attrs or "homed" in attrs:
             if ext.init is not None and ("pool" in attrs or _word_type(ext.type) != "word*"):
@@ -386,21 +388,21 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z", linked: dict[str, str] | N
                                 "indexes the switch that is its home")
             if "pool" in attrs and _word_type(ext.type) is None and ext.name not in pointers:
                 raise _err(ext, f"{ext.name}: a POOL object is a `word` or a pointer")
-            sym = _symbol(ext.name, namer)
+            sym = _symbol(ext, namer)
             if "pool" in attrs:
                 globals_[ext.name] = ir.Pool(sym)
             else:
                 defined = any("extern" not in o.storage for o in objects if o.name == ext.name)
                 globals_[ext.name] = ir.Homed(sym, _home_init(ext, globals_, sigs, arrays), defined)
         elif ext.init is not None or "reserve" in attrs:
-            globals_[ext.name] = ir.Placed(_symbol(ext.name, namer))
+            globals_[ext.name] = ir.Placed(_symbol(ext, namer))
     for ext in objects:
         if ext.name in globals_:
             continue
         if "extern" not in ext.storage:
             raise _err(ext, f"{ext.name}: an uninitialized file-scope object needs a storage "
                             "class: POOL, RESERVE or HOMED (or extern when another unit defines it)")
-        globals_[ext.name] = ir.Extern(_symbol(ext.name, namer))
+        globals_[ext.name] = ir.Extern(_symbol(ext, namer))
 
     for ext in objects:
         if ext.init is not None:

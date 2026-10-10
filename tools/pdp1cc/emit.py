@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from . import ir
 
+
 def operand_text(o: ir.Operand) -> str:
     match o:
         case ir.Sym(name=n, pool=pool, offset=off):
