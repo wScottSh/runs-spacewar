@@ -106,6 +106,7 @@ typedef struct dword { word hi, lo; } dword;
 #define JDA __attribute__((pdp1_jda))
 #define BLOCK __attribute__((pdp1_block))
 #define BYNAME __attribute__((pdp1_byname))
+#define SKIPS __attribute__((pdp1_skips))
 #define SYM(s) __attribute__((pdp1_sym(s)))
 #define ENTRY_CELL(f) __attribute__((pdp1_entry_cell(f)))
 #define XCT __attribute__((pdp1_xct))
@@ -139,6 +140,7 @@ extern const insn I_CMA, I_IOH, I_DPY_NOWAIT;
 dword xct();
 word tyi(void);
 void lsm(void);
+void hlt(void);
 void rcl(word hi, word lo, int n);
 void rcr(word hi, word lo, int n);
 void scl(word hi, word lo, int n);
@@ -160,6 +162,7 @@ void skip_return(void);
 #define JDA
 #define BLOCK
 #define BYNAME
+#define SKIPS
 #define SYM(s)
 #define ENTRY_CELL(f)
 #define XCT
@@ -208,6 +211,14 @@ struct pdp1_address_field {
     pdp1_bits v;
     template <class T> pdp1_address_field &operator=(T *p) {
         v = (v & ~PDP1_ADDR) | pdp1_address(p);
+        return *this;
+    }
+    pdp1_address_field &operator=(int a) {          /* an address given as a number */
+        v = (v & ~PDP1_ADDR) | ((pdp1_bits)a & PDP1_ADDR);
+        return *this;
+    }
+    template <class W> auto operator=(const W &w) -> decltype((void)w.v, *this) {   /* a word's address bits */
+        v = (v & ~PDP1_ADDR) | (w.v & PDP1_ADDR);
         return *this;
     }
 };
@@ -453,6 +464,15 @@ static word pdp1_typewriter;
 static bool pdp1_break_mode;
 static inline word tyi() { return pdp1_typewriter; }
 static inline void lsm() { pdp1_break_mode = false; }
+static inline void hlt() { std::abort(); }      /* the machine stops */
+
+/* A function that is not SKIPS returns to the word after its call, whatever
+ * its callees skip: the reference build opens each such definition with a
+ * guard that restores pdp1_skips when it returns. */
+struct pdp1_skip_guard {
+    int saved = pdp1_skips;
+    ~pdp1_skip_guard() { pdp1_skips = saved; }
+};
 
 #else
 #error "pdp1.h: compile with g++ (executable reference) or pdp1cc"

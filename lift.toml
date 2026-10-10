@@ -57,6 +57,12 @@ prefix = "zh"
 
 [[region]]
 name = "objects"
-lines = ["946-1077", "1312-1333"]
+lines = "946-1077"
 c = "lift/objects.c"
 prefix = "zx"
+
+[[region]]
+name = "spaceship"
+lines = "1079-1333"
+c = "lift/spaceship.c"
+prefix = "zp"

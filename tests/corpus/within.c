@@ -4,13 +4,13 @@
  * the call returns to the word after lim; inside, IO is 0, `side` is cleared
  * and the call skips that word. */
 
-JDA dword within(word x, BYNAME word lim);
-BLOCK dword margin(BYNAME word lim);
+JDA SKIPS dword within(word x, BYNAME word lim);
+BLOCK SKIPS dword margin(BYNAME word lim);
 
 ENTRY_CELL(within) word mag;        /* within's entry word: x, then |x| */
 extern word edge, side;
 
-JDA dword within(word x, BYNAME word lim)
+JDA SKIPS dword within(word x, BYNAME word lim)
 {
     if (x < 0)
         x = -x;
@@ -18,7 +18,7 @@ JDA dword within(word x, BYNAME word lim)
     return margin(lim);
 }
 
-BLOCK dword margin(BYNAME word lim)
+BLOCK SKIPS dword margin(BYNAME word lim)
 {
     word e = lim;
     if (e < 0)

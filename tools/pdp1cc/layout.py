@@ -7,7 +7,7 @@ from dataclasses import replace
 from . import inline, ir
 from .dialect import Namer
 from .rules import check
-from .select import FunctionLowerer, W, datum_words, preserves_io
+from .select import BIN_MNEMONIC, FunctionLowerer, W, _returns, _tail_calls, datum_words, preserves_io
 
 
 class LayoutError(Exception):
@@ -21,6 +21,7 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Emitted]:
     keeps_io: dict[str, bool] = {}
     inlines = unit.inlines or {}
     homes = home_ops([t for t in unit.items if isinstance(t, ir.Function)] + list(inlines.values()))
+    exits = exit_cells([t for t in unit.items if isinstance(t, ir.Function)])
     for n, top in enumerate(unit.items):
         if top.at is not None:
             items.append(ir.Origin(top.at, check("LAY-AT")))
@@ -31,7 +32,7 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Emitted]:
                 after = unit.items[n + 1] if n + 1 < len(unit.items) else None
                 following = after.sym if isinstance(after, (ir.Function, ir.Datum, ir.Space)) and \
                     after.at is None else None
-                lowerer = FunctionLowerer(top, namer, following, keeps_io, inlines, homes)
+                lowerer = FunctionLowerer(top, namer, following, keeps_io, inlines, homes, exits=exits)
                 own = lowerer.lower()
                 keeps_io[top.sym] = preserves_io(own) and not lowerer.fell_through
                 if entered_by_fallthrough:
@@ -49,12 +50,38 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Emitted]:
     return attach_labels(items)
 
 
+def exit_cells(functions: list[ir.Function]) -> dict[str, str]:
+    """The exit cell each function returns through. One whose returns all
+    tail-call one BLOCK defined here returns through that block's exit
+    cell, so a function adopting it patches that cell (LAY-ADOPT)."""
+    defined = {f.sig.name: f for f in functions}
+    out: dict[str, str] = {}
+
+    def resolve(f: ir.Function, seen: frozenset[str]) -> str:
+        tails = _tail_calls(f.body)
+        targets = {r.value.sig.name for r in tails}
+        plain = [r for r in _returns(f.body) if r not in tails and not isinstance(r.value, ir.IndirectCall)]
+        if plain or len(targets) != 1 or (target := targets.pop()) not in defined or target in seen:
+            return f.sig.exit_sym
+        return resolve(defined[target], seen | {f.sig.name})
+    for f in functions:
+        out[f.sig.name] = resolve(f, frozenset())
+    return out
+
+
 def home_ops(functions: list[ir.Function]) -> dict[str, str]:
     ops: dict[str, str] = {}
     for fn in functions:
         for n in inline.iter_nodes(fn.body):
             if isinstance(n, ir.Xct) and isinstance(n.insn, ir.HomeLoad):
                 ops[n.insn.pointer.storage.sym] = "xct"
+            elif isinstance(n, ir.Binary) and isinstance(n.right, ir.HomeLoad):
+                ops[n.right.pointer.storage.sym] = BIN_MNEMONIC[n.op]
+            elif isinstance(n, ir.HomeStore):
+                io = isinstance(n.value, ir.Var) and isinstance(n.value.storage, ir.Io)
+                ops[n.pointer.storage.sym] = "dap" if n.addr else "dio" if io else "dac"
+            elif isinstance(n, ir.IndirectCall) and n.home:
+                ops[n.pointer.storage.sym] = "jmp"
             elif isinstance(n, ir.Assign) and isinstance(n.value, ir.HomeLoad):
                 op = "lio" if isinstance(n.target, ir.Var) and isinstance(n.target.storage, ir.Io) else "lac"
                 ops[n.value.pointer.storage.sym] = op

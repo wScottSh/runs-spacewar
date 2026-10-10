@@ -4,27 +4,27 @@
  * and the call skips the word after the divisor. When the quotient cannot
  * fit it returns to that word with |divisor| in AC. div1 divides x:0. */
 
-JDA dword udiv(word hi, register word lo, BYNAME word d);
-JDA dword div1(word x, BYNAME word d);
-BLOCK dword steps(register word lo, BYNAME word d);
+JDA SKIPS dword udiv(word hi, register word lo, BYNAME word d);
+JDA SKIPS dword div1(word x, BYNAME word d);
+BLOCK SKIPS dword steps(register word lo, BYNAME word d);
 
 ENTRY_CELL(udiv) word high;
 ENTRY_CELL(div1) word dmag;
 
-JDA dword div1(word x, BYNAME word d)
+JDA SKIPS dword div1(word x, BYNAME word d)
 {
     high = x;
     register word lo = 0;
     return steps(lo, d);
 }
 
-JDA dword udiv(word hi, register word lo, BYNAME word d)
+JDA SKIPS dword udiv(word hi, register word lo, BYNAME word d)
 {
     high = hi;
     return steps(lo, d);
 }
 
-BLOCK dword steps(register word lo, BYNAME word d)
+BLOCK SKIPS dword steps(register word lo, BYNAME word d)
 {
     word h = d;
     if (h < 0)

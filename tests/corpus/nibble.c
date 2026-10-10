@@ -4,12 +4,12 @@
  * four new quotient bits in `quot` and IO. A negative x skips the divide:
  * the call returns one word further with x in AC and 0 in IO. */
 
-JDA dword nibble(word x);
+JDA SKIPS dword nibble(word x);
 BLOCK dword finish(word h, register word lo);
 
 extern word ten, rem, quot;
 
-JDA dword nibble(word x)
+JDA SKIPS dword nibble(word x)
 {
     word h = x;
     if (h < 0)
