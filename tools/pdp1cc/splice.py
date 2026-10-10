@@ -23,8 +23,6 @@ LISTING_VARS = re.compile(r"^\s*\d+\s+([0-7]{5})\s+variables\b")
 
 @dataclass(frozen=True)
 class Region:
-    """A C file and the source line ranges its Macro text replaces, in order:
-    REGION_BREAK() in the C ends the text for one range."""
     name: str
     ranges: tuple[tuple[int, int], ...]
     c: Path
@@ -84,7 +82,6 @@ def interface_errors(src_lines: list[str], region: Region, compiled: str) -> lis
 
 
 def chunk_lines(text: str) -> list[list[str]]:
-    """The Macro text for each line range of a region."""
     parts: list[list[str]] = [[]]
     for line in text.rstrip("\n").split("\n"):
         if line == BREAK:

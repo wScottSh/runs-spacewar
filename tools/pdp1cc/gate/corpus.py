@@ -111,7 +111,6 @@ DISPLAY_WORD = re.compile(r"^\s*\d*\s+([0-7]{5}) ([0-7]{6})\s+(?:\w+,)?\s*dpy\b"
 
 
 def display_words(lst: Path) -> dict[int, int]:
-    """Address -> word of every display instruction in an assembled listing."""
     return {int(a, 8): int(w, 8) for a, w in DISPLAY_WORD.findall(lst.read_text(errors="replace"))}
 
 

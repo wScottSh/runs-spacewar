@@ -283,18 +283,14 @@ static const insn I_CMA = word::bits(PDP1_OPR << 12 | 01000);
 static const insn I_IOH = word::bits(PDP1_IOT << 12 | PDP1_I);     /* iot i: wait for completion */
 static const insn I_DPY_NOWAIT = word::bits((PDP1_IOT << 12 | PDP1_I | 07) - 04000);  /* dpy-4000 */
 
-/* The display. A reference run has no screen: each plotted point is
- * recorded as the instruction that plots it (dpy-i+n00 or dpy-4000) and
- * its x (AC) and y (IO). The reference driver prints and clears them. */
 struct pdp1_point { pdp1_bits instruction, x, y; };
 static std::vector<pdp1_point> pdp1_plotted;
 static inline void dpy(word x, word y, int intensity) {
     pdp1_plotted.push_back({PDP1_IOT << 12 | 07 | (pdp1_bits)(intensity & 7) << 6, x.v, y.v});
 }
 static inline void dpy_nowait(word x, word y) { pdp1_plotted.push_back({I_DPY_NOWAIT.v, x.v, y.v}); }
-static inline void ioh() {}             /* the completion pulse has always come */
+static inline void ioh() {}
 
-/* Sense switches 1-6, as the operator set them. */
 static unsigned pdp1_sense_switches;
 static inline bool sense(int n) { return (pdp1_sense_switches & (1u << (6 - n))) != 0; }
 

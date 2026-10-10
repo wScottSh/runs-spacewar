@@ -67,7 +67,7 @@ FIELD_ARG = {"stf": ("stf", False, 7), "clf": ("clf", False, 7), "flag": ("szf",
              "I_STF": ("stf", False, 7), "I_CLF": ("clf", False, 7), "I_SZF": ("szf", False, 7),
              "I_RCL": ("rcl", True, 9), "I_RAL": ("ral", True, 9),
              "sense": ("szs", False, 6), "dpy": ("dpy", False, 7)}
-FIELD_POSITION = {"dpy": "exprs[2]"}        # the argument that is the field; default any
+FIELD_POSITION = {"dpy": "exprs[2]"}
 FIELD_ERROR = {"szs": "sense switch", "dpy": "intensity"}
 FOLD = {"+": lambda a, b: a + b, "-": lambda a, b: a - b, "*": lambda a, b: a * b,
         "<<": lambda a, b: a << b, ">>": lambda a, b: a >> b}
@@ -130,8 +130,6 @@ class Site:
     n: int = 0                  # a count site's count
 
     def matches(self, old: list[Line], new: list[Line]) -> bool:
-        """new is old with exactly `copies` of the predicted rewrites applied,
-        at non-overlapping places, and nothing else changed."""
         at: dict[int, list[tuple[int, list[Line]]]] = {}
         for start, end, words in self.rewrites(old):
             if old[start:end] != words:
@@ -158,8 +156,6 @@ Rewrite = tuple[int, int, list[Line]]   # old[start:end] becomes these lines
 
 
 def walk(node: c_ast.Node, ctx: dict) -> Iterator[tuple[c_ast.Node, c_ast.Node | None, str, dict]]:
-    """(node, parent, field, context) in a fixed order. The context names
-    the function, the copies its code is laid out in, and the ancestors."""
     for name, child in node.children():
         sub = dict(ctx)
         sub["ancestors"] = ctx.get("ancestors", ()) + ((node, name),)
@@ -188,7 +184,6 @@ def _homed_switch(node: c_ast.Switch, ctx: dict) -> bool:
 
 
 def fold(node: c_ast.Node, bump: c_ast.Node | None = None) -> int | None:
-    """A C integer constant expression's value, with the constant bump read as one more."""
     if isinstance(node, c_ast.Constant) and node.type == "int":
         return dialect.c_int(node) + (node is bump)
     if isinstance(node, c_ast.UnaryOp) and node.op == "-":
@@ -200,14 +195,11 @@ def fold(node: c_ast.Node, bump: c_ast.Node | None = None) -> int | None:
     return None
 
 
-def word_of(v: int) -> int:
-    """C's integer to the machine's ones' complement word."""
+def ones_complement(v: int) -> int:
     return v if v >= 0 else (-v) ^ MASK
 
 
 def folded_top(ancestors) -> tuple[c_ast.Node | None, c_ast.Node | None, str]:
-    """The largest constant expression the constant sits in: that node, its
-    parent and the parent's field. None when the constant stands alone."""
     top, i = None, len(ancestors) - 1
     while i >= 0:
         node, _ = ancestors[i]
@@ -221,8 +213,6 @@ def folded_top(ancestors) -> tuple[c_ast.Node | None, c_ast.Node | None, str]:
 
 
 def inline_copies(ast: c_ast.FileAST, unit: ir.Unit) -> dict[str, int]:
-    """Copies of each static inline function's code: its calls, counting the
-    copies of the code each call stands in."""
     inlines = set(unit.inlines or {})
     copies = {name: 0 for name in inlines}
     for _ in range(len(inlines) + 1):
@@ -261,7 +251,6 @@ class Leaves:
                 self.locals[ext.decl.name] = names
 
     def memory_symbol(self, node: c_ast.Node, function: str) -> str | None:
-        """An array's name is its address, not a word in memory."""
         if not isinstance(node, c_ast.ID) or node.name in self.locals.get(function, ()) \
                 or node.name in self.arrays:
             return None
@@ -331,22 +320,22 @@ def sites(ast: c_ast.FileAST, unit: ir.Unit) -> list[Site]:
             if field_arg(parent, ctx, field) is not None or builtin_count(parent, field, ctx):
                 continue
             old, new = fold(top), fold(top, node)
-            if word_of(old) == 0 or abs(new) > MASK >> 1:
+            if ones_complement(old) == 0 or abs(new) > MASK >> 1:
                 continue
-            out.append(replace(const_site(index, node, word_of(old), word_of(new)), copies=copies))
+            out.append(replace(const_site(index, node, ones_complement(old), ones_complement(new)), copies=copies))
             continue
         if (fieldarg := field_arg(parent, ctx, field)) is not None:
             out.append(replace(field_site(index, node, *fieldarg, token), copies=copies))
             continue
         if isinstance(parent, c_ast.BinaryOp) and field == "right" and parent.op in SHIFT:
             if token + 1 <= MAX_SHIFT:
-                out.append(limits(replace(count_site(index, node, SHIFT[parent.op], token),
+                out.append(refuse_lengthening(replace(count_site(index, node, SHIFT[parent.op], token),
                                           copies=copies), unit, fn, ctx))
             continue
         builtin = builtin_count(parent, field, ctx)
         if builtin:
             if token + 1 <= MAX_SHIFT:
-                out.append(limits(replace(count_site(index, node, builtin, token),
+                out.append(refuse_lengthening(replace(count_site(index, node, builtin, token),
                                           copies=copies), unit, fn, ctx))
             continue
         negated = isinstance(parent, c_ast.UnaryOp) and parent.op == "-"
@@ -369,7 +358,6 @@ def field_arg(parent, ctx: dict, field: str) -> tuple[str, bool, int] | None:
 
 
 def field_text(mnemonic: str, shift: bool, n: int) -> tuple[str, str]:
-    """(pattern for the field's text at n, its text at n + 1)."""
     if mnemonic == "szs":
         return rf"\bszs( i)? {n << 3:o}\b", f"szs\\1 {(n + 1) << 3:o}"
     if mnemonic == "dpy":
@@ -397,7 +385,6 @@ def field_site(index: int, node: c_ast.Constant, mnemonic: str, shift: bool, lar
 
 
 def offset_site(index: int, node: c_ast.Constant, sym: str, old: int, new: int) -> Site:
-    """array + n: the address operand naming the array's word n names word n + 1."""
     def text(k: int) -> str:
         return f"{sym}+{k:o}" if k else sym
 
@@ -466,9 +453,7 @@ def const_site(index: int, node: c_ast.Constant, old_v: int, new_v: int) -> Site
                 f"constant {old_v:06o} -> {new_v:06o}", rewrites, edit)
 
 
-def limits(site: Site, unit: ir.Unit, function: str | None, ctx: dict) -> Site:
-    """An XCT function is one word, and a case of Duff's device is a power of
-    two of words: a count edit that lengthens either is refused."""
+def refuse_lengthening(site: Site, unit: ir.Unit, function: str | None, ctx: dict) -> Site:
     if site.kind != "count" or len(chunks(site.n + 1)) <= len(chunks(site.n)):
         return site
     sig = unit.signatures.get(function or "")
@@ -518,7 +503,6 @@ _PREPARED: dict[Path, tuple] = {}
 
 
 def prepared(path: Path) -> tuple[c_ast.FileAST, list[Line], list[Site]]:
-    """The file's AST, its compiled lines and its edit sites, once per process."""
     if path not in _PREPARED:
         ast = front.parse(path)
         old = lines_of(compile_ast(copy.deepcopy(ast), trace=False))
@@ -528,7 +512,6 @@ def prepared(path: Path) -> tuple[c_ast.FileAST, list[Line], list[Site]]:
 
 
 def check_site(path: Path, k: int) -> tuple[str, str | None]:
-    """(edit kind, failure or None) for the file's k-th edit site."""
     ast, old, all_sites = prepared(path)
     site = all_sites[k]
     edited = copy.deepcopy(ast)

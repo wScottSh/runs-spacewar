@@ -28,7 +28,7 @@ LEAVES_ELSEWHERE = {"TAIL-CALL", "TAIL-CALL-INDIRECT", "JSP-FORWARD", "RET-INDIR
 # what each writes. Parts that write different things do not depend on the
 # order the hardware applies them in, so the word means the comma expression.
 OPR_WRITES = {"cla": "AC", "cma": "AC", "cli": "IO", "clf": "a program flag", "stf": "a program flag"}
-DPY_NOWAIT = "dpy-4000"     # plot, and ask for the completion pulse ioh waits for
+DPY_NOWAIT = "dpy-4000"
 
 
 class SelectError(Exception):
@@ -42,13 +42,9 @@ class State:
     io: frozenset[str] = frozenset()
 
     def write_mem(self, key: str) -> State:
-        """A store to the word key: what a register held of it is stale, and
-        so is its address field ("@key", a HOMED pointer's value)."""
         return State(self.ac - {key, "@" + key}, self.io - {key, "@" + key})
 
     def registers_only(self) -> State:
-        """After a store through a pointer: any memory word may have changed,
-        so only facts about register locals and constant addresses survive."""
         keep = ("%", "@&")
         return State(frozenset(k for k in self.ac if k.startswith(keep)),
                      frozenset(k for k in self.io if k.startswith(keep)))
@@ -63,8 +59,6 @@ def meet(a: State | None, b: State | None) -> State | None:
 
 
 def address_key(e: ir.Expr) -> str | None:
-    """The TRACK fact "AC's address bits hold e's address": "@&sym+n" for a
-    constant address, "@home" for a HOMED pointer. A `dap` needs no more."""
     match e:
         case ir.AddrOf(operand=o):
             return f"@&{o.name}+{o.offset}"
@@ -160,10 +154,9 @@ class _Loop:
 
 @dataclass
 class _Instance:
-    """A static inline function being laid out at its call."""
     sig: ir.Signature
-    final: ir.Stmt | None           # its last statement: a return there falls out of the instance
-    after: str                      # label of the word after the instance
+    final: ir.Stmt | None
+    after: str
     exits: list[State] = field(default_factory=list)
 
 
@@ -173,10 +166,10 @@ class FunctionLowerer:
     namer: object                   # dialect.Namer: generated labels continue the unit's numbering
     next_sym: str | None = None     # symbol of the item laid out after this function
     keeps_io: dict[str, bool] = field(default_factory=dict)   # callees laid out earlier
-    inlines: dict[str, ir.Function] = field(default_factory=dict)   # static inline functions
-    home_ops: dict[str, str] = field(default_factory=dict)    # HOMED pointer -> its home's opcode
+    inlines: dict[str, ir.Function] = field(default_factory=dict)
+    home_ops: dict[str, str] = field(default_factory=dict)
     instances: list[_Instance] = field(default_factory=list)
-    strides_prev: dict[str, int] = field(default_factory=dict)  # HOMED switch -> words per case
+    strides_prev: dict[str, int] = field(default_factory=dict)
     strides_out: dict[str, int] = field(default_factory=dict)
     loops: list[_Loop] = field(default_factory=list)
     adopted: ir.Signature | None = None
@@ -318,7 +311,7 @@ class FunctionLowerer:
             case ir.AssignAddr():
                 ak = address_key(s.value)
                 if ak is not None and ak in st.ac:
-                    items = []                  # AC's address bits already hold it
+                    items = []
                 elif isinstance(s.value, ir.Var) and isinstance(s.value.storage, ir.Homed):
                     items, st = self.to_ac(ir.HomeWord(s.value, self.home_op(s.value), False), st)
                 else:
@@ -363,8 +356,6 @@ class FunctionLowerer:
 
     @staticmethod
     def after_idx(t: ir.Var, st: State) -> State:
-        """`idx x` leaves x's new value in AC; for a HOMED pointer that is its
-        home instruction, whose address field is the pointer."""
         ac = {key(t)} | ({"@" + t.storage.sym} if isinstance(t.storage, ir.Homed) else set())
         return State(frozenset(ac), st.io - {key(t)})
 
@@ -374,8 +365,6 @@ class FunctionLowerer:
         return self.home_ops[p.storage.sym]
 
     def opr_combine(self, s: ir.OprCombine, st: State):
-        """a, b, c; with each part one operate-group instruction that writes
-        something no other part writes: one word, `a b c-opr-opr`."""
         words, writes, vias = [], {}, []
         for part in s.parts:
             items, st = self.stmt(part, st)
@@ -394,7 +383,6 @@ class FunctionLowerer:
         return [W(text, "OPR-COMBINE", via=tuple(dict.fromkeys(vias)))], st
 
     def dpy(self, d: ir.Dpy, st: State):
-        """Plot (x, y): x in AC, y a register local in IO. AC and IO are kept."""
         items, st = self.to_ac(d.x, st)
         self.need_io(d.y, st)
         if d.intensity is None:
@@ -404,8 +392,6 @@ class FunctionLowerer:
         return items + [W(text, "EX-DPY", note="plot (AC, IO)")], st
 
     def homed_switch(self, s: ir.HomedSwitch, st: State):
-        """The switch is its index's home, `J, jmp .`, then the cases. Entering
-        case k by the jump, or falling into it from case k-1, meet there."""
         index = key(s.index)
         items: list[ir.Item] = [ir.LabelDef(index),
                                 W("jmp", "SWITCH-HOMED", ir.Here(), note="into the case stored here"),
@@ -425,8 +411,6 @@ class FunctionLowerer:
         return items + last, end
 
     def store_case(self, s: ir.AssignAddr, st: State):
-        """i = e for a HOMED switch index i: the address of case e, stored in
-        the switch's jump. Each case is 2^k words: e, sal ks, add (case 0, dap J."""
         index = key(s.target)
         items, st = self.to_ac(s.value, st)
         stride = self.strides_prev.get(index, 1)
@@ -438,10 +422,6 @@ class FunctionLowerer:
         return items, State(frozenset(), st.io).write_mem(index)
 
     def inline_call(self, c: ir.Call, st: State) -> tuple[list[ir.Item], State]:
-        """A static inline function laid out at its call. Its parameters take
-        the caller's AC and IO; its labels are fresh for this copy; a return
-        before its last statement jumps to the word after the copy. TRACK
-        carries memory facts in and out; register locals are each side's own."""
         fn = self.inlines[c.sig.name]
         items: list[ir.Item] = []
         ac, io = set(), set()
@@ -702,8 +682,6 @@ class FunctionLowerer:
         return items + [W("jmp", "RET", ir.Sym(self.sig.exit_sym))], None
 
     def instance_return(self, s: ir.Return, st: State):
-        """return in a static inline copy: its last statement falls out of the
-        copy; any other jumps to the word after it."""
         inst = self.instances[-1]
         if isinstance(s.value, ir.IndirectCall) or \
                 (isinstance(s.value, ir.Call) and s.value.sig.conv == "block"):
@@ -993,12 +971,10 @@ def hardware_word(name: str) -> ir.Word:
 
 
 def _memory_facts(keys: frozenset[str]) -> frozenset[str]:
-    """Facts that mean the same in a caller and in an inline copy: not register locals."""
     return frozenset(k for k in keys if not k.startswith("%"))
 
 
 def _homed_switches(body) -> dict[str, str]:
-    """HOMED switch index -> label of its case 0. The switch is the index's one home."""
     out: dict[str, str] = {}
     for n in inline.iter_nodes(body):
         if isinstance(n, ir.HomedSwitch):
@@ -1009,7 +985,6 @@ def _homed_switches(body) -> dict[str, str]:
 
 
 def _rename_labels(body: ir.Block, namer) -> ir.Block:
-    """A copy of an inline body with a fresh symbol for each of its labels."""
     names = {n.label for n in inline.iter_nodes(body) if isinstance(n, ir.Labeled)}
     names |= {n.table for n in inline.iter_nodes(body) if isinstance(n, ir.HomedSwitch)}
     fresh = {old: namer.fresh() for old in sorted(names)}
@@ -1034,5 +1009,4 @@ STMT_TYPES = (ir.Block, ir.If, ir.Forever, ir.Unroll, ir.Switch, ir.OprCombine)
 
 
 def home_address(p: ir.Var) -> ir.Operand:
-    """A home instruction's address field as laid out: the pointer's initializer, else `.`."""
     return p.storage.init if p.storage.init is not None else ir.Here()

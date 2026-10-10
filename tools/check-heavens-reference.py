@@ -31,12 +31,12 @@ from pdp1cc.gate.simh import Inputs
 
 LIFT = ["lift/tunables.c", "lift/heavens.c"]
 TABLES = ["first_magnitude", "second_magnitude", "third_magnitude", "fourth_magnitude"]
-SET = 1                     # a call whose AC input is SET first sets the routine's state from IO
+SET = 1
 SEEDS = [0, 0o225241, 0o123456, 0o777777]
-STAR_CALLS = 25000          # central star calls per seed
-SENSE_4 = 0o04              # sense switch 4 turns the heavens off
-WALK_FRAMES = 2 * 16 * 0o20000 + 1000  # the window moves once in 32 frames: once round the sky
-JUMP_FRAMES = 20000         # Planetarium frames from a random right margin each
+STAR_CALLS = 25000
+HEAVENS_OFF = 0o04
+WALK_FRAMES = 2 * 16 * 0o20000 + 1000
+JUMP_FRAMES = 20000
 
 
 def units():
@@ -46,8 +46,6 @@ def units():
 
 
 def native(name: str, call: str, watch: list[str], placed, us, setup: str = "") -> Path:
-    """Build a driver that reads `ac io byname sense` per line, runs call,
-    and prints `0 0 0`, the watched words, `;` and the plotted points."""
     out = ROOT / "build/ref" / name
     src = out.parent / f"{name}-src"
     src.mkdir(parents=True, exist_ok=True)
@@ -104,7 +102,6 @@ def compare(label: str, calls, want, got, names: list[str]) -> int:
 
 
 def catalog(address: dict[str, int], us) -> int:
-    """Every word of the catalog: native table against the oracle image."""
     u = us["lift/heavens.c"]
     words = [(t, k) for t in TABLES for k in range(u.words(t))]
     first = address[u.objects[TABLES[0]].sym]
@@ -142,7 +139,7 @@ def main() -> int:
                   f"        if (ac == {SET}) random_number = word::bits(io);\n")
     for n, seed in enumerate(SEEDS):
         senses = [s & 0o77 for s in seeded(100 + n, STAR_CALLS)]
-        senses[0] &= ~0o01          # switch 6 off: the first call draws, so bjm holds a case
+        senses[0] &= ~0o01
         calls = [Inputs(SET if k == 0 else 0, seed if k == 0 else 0, 0, s) for k, s in enumerate(senses)]
         want = simh.run_jda(ROOT / "build/pdp1", ROOT / "build/oracle.rim", address["blp"], calls,
                             watch=[a for _, a, _ in star_watch], op="jsp", display=display,
@@ -161,7 +158,7 @@ def main() -> int:
                       (f"fyn{m}", address[obj[f"star_y{m}"].sym], home(0o220000, f"star_y{m}", table))]
     sky = native("expensive_planetarium", "expensive_planetarium()", [w for *_, w in sky_watch],
                  placed, us, f"        if (ac == {SET}) right_margin = word::bits(io);\n")
-    walk = [Inputs(0, 0, 0, s & 0o77 & ~SENSE_4) for s in seeded(200, WALK_FRAMES)]
+    walk = [Inputs(0, 0, 0, s & 0o77 & ~HEAVENS_OFF) for s in seeded(200, WALK_FRAMES)]
     jumps = [Inputs(SET, m & 0o17777, 0, s & 0o77)
              for m, s in zip(seeded(300, JUMP_FRAMES), seeded(301, JUMP_FRAMES))]
     for label, calls in (("frames in a row", walk), ("frames from a random right margin", jumps)):

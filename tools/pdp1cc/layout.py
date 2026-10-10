@@ -46,8 +46,6 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Word]:
 
 
 def home_ops(functions: list[ir.Function]) -> dict[str, str]:
-    """HOMED pointer -> the opcode of its home: `lio .` when *home(p) is
-    stored to a register local, else `lac .`."""
     ops: dict[str, str] = {}
     for fn in functions:
         for n in inline.iter_nodes(fn.body):
@@ -66,8 +64,6 @@ def _tag_first_word(items: list[ir.Item], rule: str) -> list[ir.Item]:
 
 
 def attach_labels(items: list[ir.Item]) -> list[ir.Word | ir.Place]:
-    """Labels name the next word, or the next reserved space. Several labels
-    may name one word: each stays a name of it (`a, b, lac .`)."""
     words: list[ir.Word | ir.Place] = []
     pending: list[str] = []
     defined: set[str] = set()

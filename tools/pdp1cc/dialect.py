@@ -18,8 +18,8 @@ ATTR = re.compile(r"pdp1_(\w+)(?:\((.*)\))?$")
 CONVS = {"jda", "block", "xct", "jsp"}
 ATTRIBUTES = CONVS | {"byname", "inline", "sym", "entry_cell", "at", "reserve", "pool", "homed"}
 HARDWARE = {"tyi", "lsm", "ioh"}    # builtins that are one instruction with no operand
-DISPLAY = {"dpy", "dpy_nowait"}     # plot the point (AC, IO)
-MAX_SENSE = 6                       # sense switches 1..6
+DISPLAY = {"dpy", "dpy_nowait"}
+MAX_SENSE = 6
 MAX_INTENSITY = 7
 REGION_BREAK = "pdp1_region_break"
 WORD_TYPES = {"word", "insn"}       # an insn is a word that holds an instruction
@@ -97,8 +97,6 @@ C_INT_OPS = {"+": lambda a, b: a + b, "-": lambda a, b: a - b, "*": lambda a, b:
 
 
 def c_int(node: c_ast.Node) -> int:
-    """A compile-time C integer constant expression: integer constants,
-    unary minus, and + - * << >> between them, as C evaluates them."""
     if isinstance(node, c_ast.Constant) and node.type == "int":
         text = node.value.rstrip("uUlL")
         return int(text, 8 if _is_octal(text) else 0)
@@ -340,7 +338,7 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
         elif isinstance(ext, c_ast.Decl) and not _is_function(ext.type) and not _in_header(ext):
             attrs = _attrs(ext)
             if isinstance(globals_[ext.name], ir.Homed):
-                continue                # its home, an instruction, holds it
+                continue
             if ext.init is None and "reserve" not in attrs:
                 if "at" in attrs:
                     raise _err(ext, f"{ext.name}: AT places a definition, not a declaration")
@@ -363,8 +361,6 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z") -> ir.Unit:
 
 def _home_init(ext: c_ast.Decl, globals_: dict[str, ir.Storage], sigs: dict[str, ir.Signature],
                arrays: set[str]) -> ir.Sym | ir.Num | None:
-    """The address a HOMED pointer's home holds before the first store: its
-    initializer, a null pointer (0) or an address. Without one it is `.`."""
     if ext.init is None:
         return None
     if is_c_int(ext.init) and c_int(ext.init) == 0:
@@ -423,8 +419,6 @@ def _data_value(node: c_ast.Node, globals_: dict[str, ir.Storage],
 
 def _operand_of(node: c_ast.Node, scope: _Scope, sigs: dict[str, ir.Signature],
                 arrays: set[str]) -> ir.Sym:
-    """The address an instruction names: &object, an array, a word of an
-    array (`a + n`, `&a[n]`), or a function."""
     if isinstance(node, c_ast.BinaryOp) and node.op == "+" and is_c_int(node.right):
         base = _operand_of(node.left, scope, sigs, arrays)
         if not (isinstance(node.left, c_ast.ID) and node.left.name in arrays):
@@ -460,7 +454,7 @@ def insn(node: c_ast.Node, scope: _Scope, sigs: dict[str, ir.Signature],
         raise _err(node, f"{name} takes one argument")
     if name in INSN_MEMORY:
         if is_c_int(args[0]) and c_int(args[0]) == 0:
-            return ir.Insn(INSN_MEMORY[name])          # address 0: a null pointer
+            return ir.Insn(INSN_MEMORY[name])
         return ir.Insn(INSN_MEMORY[name], _operand_of(args[0], scope, sigs, arrays))
     n = c_int(args[0])
     if name in INSN_FLAG:
@@ -685,10 +679,6 @@ class _Lowerer:
         return ir.Switch(self.expr(cond.expr), tuple(slots), last)
 
     def homed_switch(self, node: c_ast.Switch, index: ir.Var) -> ir.HomedSwitch:
-        """switch ((int)i) with i a HOMED word: Duff's device. The switch is i's
-        home, the jump into the cases; `i = e` stores the address of case e.
-        Every case before the last falls into the next, and each lowers to the
-        same number of words, a power of two."""
         body = node.stmt.block_items or [] if isinstance(node.stmt, c_ast.Compound) else []
         cases: list[list[c_ast.Node]] = []
         for item in body:
@@ -847,8 +837,6 @@ class _Lowerer:
         raise _err(node, f"expression {type(node).__name__} is not in the implemented dialect yet")
 
     def home_word(self, node: c_ast.FuncCall, op: str) -> ir.HomeWord | None:
-        """I_LIO(p) or I_LIO(++p) for a HOMED pointer p: the word of p's home
-        instruction, which holds p in its address field."""
         args = node.args.exprs if node.args else []
         if len(args) != 1:
             return None

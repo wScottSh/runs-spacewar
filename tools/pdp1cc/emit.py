@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from . import ir
 
-BREAK = "/ region break"     # where one line range of a region ends and the next begins
+BREAK = "/ region break"
 
 
 def operand_text(o: ir.Operand) -> str:

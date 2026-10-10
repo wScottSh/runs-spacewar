@@ -50,7 +50,7 @@ class Outcome:
     io: int
     returned_past: int          # words past call+1 the routine returned to
     watched: tuple[int, ...] = ()
-    plotted: tuple[tuple[int, int, int], ...] = ()     # (display instruction, x, y) in order
+    plotted: tuple[tuple[int, int, int], ...] = ()
 
 
 def run_jda(simh: Path, rim: Path, entry: int, calls: list[Inputs], byname: bool = False,
@@ -62,10 +62,7 @@ def run_jda(simh: Path, rim: Path, entry: int, calls: list[Inputs], byname: bool
     byname: the word after the call is `lac BYNAME_IN`. inline: it is the
     call's by-name input itself, a constant word (an INLINE parameter).
     watch holds addresses, or register names such as PF (the program flags).
-    deposits are words set in core once, after loading: the routine's input data.
-    display maps the address of each display instruction to its word: each
-    one plotted is reported, in order, with AC and IO. each holds words
-    set in core before each call, one dict per call."""
+    deposits are words set in core once, after loading: the routine's input data."""
     words = [f"lio {IO_IN:o}", f"lac {AC_IN:o}", f"{op} {entry:o}"]
     if inline:
         words.append("0")
@@ -99,7 +96,7 @@ def run_jda(simh: Path, rim: Path, entry: int, calls: list[Inputs], byname: bool
     call, at, point = -1, None, []
     for line in out.splitlines():
         if HALT.search(line):
-            call += 1               # a call's examines follow its halt
+            call += 1
         elif m := BREAK.search(line):
             at, point = int(m.group(1), 8), []
         elif m := EXAMINE.match(line):

@@ -32,7 +32,7 @@ JDA word ticks(word arg)
     }
     ioh();
     return x;
-dim:                            /* one dim tick, and the x mirrored */
+dim:
     dpy(x, y, 7);
     x = -x, stf(1);
     return x;
