@@ -483,8 +483,9 @@ class FunctionLowerer:
             out = meet(out, e)
         if out is None:
             raise SelectError(f"{c.sig.name}: never returns")
-        words = [replace(w, via=w.via + ("INLINE-CALL",)) if isinstance(w, ir.Word) else w
-                 for w in words]
+        copy = ir.Copy(f"inline {c.sig.name}", inst.after)
+        words = [replace(w, via=w.via + ("INLINE-CALL",), copies=(copy, *w.copies))
+                 if isinstance(w, ir.Word) else w for w in words]
         if inst.exits:
             words.append(ir.LabelDef(inst.after))
         return items + words, State(_memory_facts(out.ac), _memory_facts(out.io))
@@ -691,11 +692,12 @@ class FunctionLowerer:
 
     def unroll(self, s: ir.Unroll, st: State):
         out: list[ir.Item] = []
-        for _ in range(s.count):
+        for n in range(s.count):
             items, st = self.stmt(s.body, st)
             if any(isinstance(i, ir.LabelDef) for i in items):
                 raise SelectError("an unrolled body cannot hold labels")
-            out += [replace(w, via=w.via + ("LOOP-UNROLL",)) for w in items]
+            copy = ir.Copy(f"unroll {s.at}", str(n))
+            out += [replace(w, via=w.via + ("LOOP-UNROLL",), copies=(copy, *w.copies)) for w in items]
         return out, st
 
     def return_(self, s: ir.Return, st: State):

@@ -1,7 +1,7 @@
 """Domain types. No pycparser type crosses this module's users' boundaries."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Union
 
@@ -315,6 +315,7 @@ class Labeled:
 class Unroll:           # for (int i = 0; i < n; i++) S with i unused: S n times
     count: int
     body: Stmt
+    at: str = ""        # the loop's source position, which names its copies of S
 
 
 @dataclass(frozen=True)
@@ -487,6 +488,14 @@ Operand = Union[Sym, Num, Lit, Here, ShiftCount]
 
 
 @dataclass(frozen=True)
+class Copy:
+    """One copy of replicated C: `inline f` at one call, or `unroll <at>` in one
+    iteration. instance tells copies of the same construct apart."""
+    construct: str
+    instance: str
+
+
+@dataclass(frozen=True)
 class Word:
     """One 18-bit word of output, still symbolic. `op` is a Macro mnemonic
     (or a skip/operate microcode expression); None is a data word."""
@@ -497,6 +506,7 @@ class Word:
     labels: tuple[str, ...] = ()
     note: str = ""      # trace detail, e.g. the skip-table row
     via: tuple[str, ...] = ()   # rules that shaped this word without emitting their own
+    copies: tuple[Copy, ...] = field(default=(), repr=False)    # inline copies and unrolled iterations it is in
 
 
 @dataclass(frozen=True)

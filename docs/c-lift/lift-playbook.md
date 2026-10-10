@@ -34,7 +34,7 @@ Name C functions, variables, types, and fields after the concepts in Norbert Lan
 3. For each construct you need, add the rule. Add corpus programs first (G7): at least two non-Spacewar programs per new rule, run in SIMH against the native reference.
 4. Lift the region's C into `lift/<name>.c` and add it to `lift.toml`. `uv run pdp1cc build lift.toml` must print MATCH.
 5. For pure routines, add a reference check (native g++ build of the lifted C vs SIMH running the oracle `.rim`), over the full domain when it is at most 2^18 inputs, otherwise a seeded random sample of at least 100k plus edge cases.
-6. Run everything: `uv run pdp1cc build lift.toml`, `uv run pdp1cc gate`, `uv run python tools/check-g3.py`, and every `tools/check-*-reference.py`. All green.
+6. Run everything: `uv run pdp1cc build lift.toml`, `uv run pdp1cc gate`, `uv run python tools/check-g3.py`, `uv run python -m unittest discover -s tests`, and every `tools/check-*-reference.py`. All green.
 7. Make a mutation sanity check: change one operator or constant in the newly lifted C, confirm the build reports a mismatch at the expected place, then revert.
 8. Update the design's Implementation reconciliation section with every new rule and every deviation, and why.
 9. Commit in small verified steps. Messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Push the branch and open a PR to `master` with `gh pr create`. The body states what was lifted, the new rules, the check commands and their output, and the lifted-coverage number. It ends with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Do not merge. The orchestrator verifies and merges.

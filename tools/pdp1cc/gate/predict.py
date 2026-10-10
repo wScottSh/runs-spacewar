@@ -33,7 +33,11 @@ array lengths are not values: their edits are not made.
 
 An edit in a static inline function, or in an unrolled loop, lands once in
 each copy: the output must be the original with exactly that many of the
-predicted rewrites applied. A count edit that lengthens a case of Duff's
+predicted rewrites applied, each in a different copy. A rewrite counts for
+a copy when the word it rewrites was laid out in that copy (an inline
+function's body at one call, an unrolled body in one iteration), so a
+compiler that changes one copy twice, or a matching word outside the
+copies, fails. A count edit that lengthens a case of Duff's
 device (a switch on a HOMED word) is predicted to be refused: those cases
 are one power of two of words each.
 
@@ -51,8 +55,8 @@ from typing import Callable, Iterator
 
 from pycparser import c_ast
 
-from .. import dialect, front, ir
-from ..cli import COMPILE_ERRORS, compile_ast
+from .. import dialect, emit, front, ir
+from ..cli import COMPILE_ERRORS, lay_out
 
 MASK = ir.WORD_MASK
 LAW_MAX = 0o7777
@@ -73,6 +77,7 @@ FOLD = {"+": lambda a, b: a + b, "-": lambda a, b: a - b, "*": lambda a, b: a * 
         "<<": lambda a, b: a << b, ">>": lambda a, b: a >> b}
 
 Line = tuple[str, str]          # (label, instruction text)
+Where = dict[str, str]          # the copies a line was laid out in: construct -> instance
 
 
 # ------------------------------------------------------------ rule tables
@@ -125,30 +130,40 @@ class Site:
     describe: str
     rewrites: Callable[[list[Line]], list[Rewrite]]     # where one copy of the edit may land
     edit: Callable[[c_ast.Node], None]
-    copies: int = 1             # an unrolled loop body is emitted this many times
+    copies: int = 1             # the site's C is laid out this many times
+    replicas: tuple[str, ...] = ()  # the constructs that replicate it: `inline f`, `unroll <at>`
     error: str | None = None    # the edit must be refused with this message instead
     n: int = 0                  # a count site's count
 
-    def matches(self, old: list[Line], new: list[Line]) -> bool:
+    def copy_at(self, where: Where) -> tuple[str, ...] | None:
+        """Which copy of the site a line rewritten at `where` is in, or None
+        when it lies outside the copies."""
+        if any(r not in where for r in self.replicas):
+            return None
+        return tuple(where[r] for r in self.replicas)
+
+    def matches(self, old: list[Line], new: list[Line], where: list[Where]) -> bool:
+        """where[i]: the copies old line i was laid out in."""
         at: dict[int, list[tuple[int, list[Line]]]] = {}
         for start, end, words in self.rewrites(old):
             if old[start:end] != words:
                 at.setdefault(start, []).append((end, words))
-        todo, seen = [(0, 0, 0)], set()
+        todo, seen = [(0, 0, frozenset())], set()
         while todo:
             state = todo.pop()
             if state in seen:
                 continue
             seen.add(state)
-            i, j, k = state
-            if i == len(old) and j == len(new) and k == self.copies:
+            i, j, done = state
+            if i == len(old) and j == len(new) and len(done) == self.copies:
                 return True
             if i < len(old) and j < len(new) and old[i] == new[j]:
-                todo.append((i + 1, j + 1, k))
-            if k < self.copies:
-                for end, words in at.get(i, []):
+                todo.append((i + 1, j + 1, done))
+            copy = self.copy_at(where[i]) if i in at and len(done) < self.copies else None
+            if copy is not None and copy not in done:
+                for end, words in at[i]:
                     if new[j:j + len(words)] == words:
-                        todo.append((end, j + len(words), k + 1))
+                        todo.append((end, j + len(words), done | {copy}))
         return False
 
 
@@ -162,6 +177,8 @@ def walk(node: c_ast.Node, ctx: dict) -> Iterator[tuple[c_ast.Node, c_ast.Node |
         if isinstance(node, c_ast.FuncDef):
             sub["function"] = node.decl.name
             sub["copies"] = ctx.get("inline_copies", {}).get(node.decl.name, 1)
+            inline = node.decl.name in ctx.get("inline_copies", {})
+            sub["replicas"] = (f"inline {node.decl.name}",) if inline else ()
         if isinstance(node, c_ast.Switch) and _homed_switch(node, ctx) and \
                 isinstance(child, c_ast.Compound):
             sub["duff_cases"] = child.block_items[:-1] if child.block_items else []
@@ -173,6 +190,7 @@ def walk(node: c_ast.Node, ctx: dict) -> Iterator[tuple[c_ast.Node, c_ast.Node |
             sub["call_node"] = node
         if isinstance(node, c_ast.For) and name == "stmt" and isinstance(node.cond, c_ast.BinaryOp):
             sub["copies"] = ctx.get("copies", 1) * dialect.c_int(node.cond.right)
+            sub["replicas"] = ctx.get("replicas", ()) + (f"unroll {node.coord}",)
         yield child, node, name, sub
         yield from walk(child, sub)
 
@@ -292,11 +310,13 @@ def sites(ast: c_ast.FileAST, unit: ir.Unit) -> list[Site]:
         if not own(node):
             continue
         fn = ctx.get("function")
-        copies = ctx.get("copies", 1)
+
+        def add(site: Site) -> None:
+            out.append(replace(site, copies=ctx.get("copies", 1), replicas=ctx.get("replicas", ())))
         if isinstance(node, c_ast.BinaryOp) and node.op in COMMUTATIVE and fn and fold(node) is None:
             parts = [(leaves.load(x, fn), leaves.operand(x, fn)) for x in (node.left, node.right)]
             if all(load and opnd for load, opnd in parts):
-                out.append(replace(swap_site(index, node, parts), copies=copies))
+                add(swap_site(index, node, parts))
         token = int_token(node)
         if token is None or ctx.get("for_header"):
             continue
@@ -311,8 +331,7 @@ def sites(ast: c_ast.FileAST, unit: ir.Unit) -> list[Site]:
                 isinstance(parent.left, c_ast.ID) and parent.left.name in leaves.arrays:
             expr = top if top is not None else node
             sym = unit.objects[parent.left.name].sym
-            out.append(replace(offset_site(index, node, sym, fold(expr), fold(expr, node)),
-                               copies=copies))
+            add(offset_site(index, node, sym, fold(expr), fold(expr, node)))
             continue
         if top is not None:
             if isinstance(parent, c_ast.BinaryOp) and field == "right" and parent.op in SHIFT:
@@ -322,28 +341,26 @@ def sites(ast: c_ast.FileAST, unit: ir.Unit) -> list[Site]:
             old, new = fold(top), fold(top, node)
             if ones_complement(old) == 0 or abs(new) > MASK >> 1:
                 continue
-            out.append(replace(const_site(index, node, ones_complement(old), ones_complement(new)), copies=copies))
+            add(const_site(index, node, ones_complement(old), ones_complement(new)))
             continue
         if (fieldarg := field_arg(parent, ctx, field)) is not None:
-            out.append(replace(field_site(index, node, *fieldarg, token), copies=copies))
+            add(field_site(index, node, *fieldarg, token))
             continue
         if isinstance(parent, c_ast.BinaryOp) and field == "right" and parent.op in SHIFT:
             if token + 1 <= MAX_SHIFT:
-                out.append(refuse_lengthening(replace(count_site(index, node, SHIFT[parent.op], token),
-                                          copies=copies), unit, fn, ctx))
+                add(refuse_lengthening(count_site(index, node, SHIFT[parent.op], token), unit, fn, ctx))
             continue
         builtin = builtin_count(parent, field, ctx)
         if builtin:
             if token + 1 <= MAX_SHIFT:
-                out.append(refuse_lengthening(replace(count_site(index, node, builtin, token),
-                                          copies=copies), unit, fn, ctx))
+                add(refuse_lengthening(count_site(index, node, builtin, token), unit, fn, ctx))
             continue
         negated = isinstance(parent, c_ast.UnaryOp) and parent.op == "-"
         old = dialect.to_word(-token if negated else token, node)
         if old == 0 or token + 1 > MASK >> 1:
             continue
         new = dialect.to_word(-(token + 1) if negated else token + 1, node)
-        out.append(replace(const_site(index, node, old, new), copies=copies))
+        add(const_site(index, node, old, new))
     return out
 
 
@@ -492,6 +509,15 @@ def lines_of(text: str) -> list[Line]:
     return out
 
 
+def compiled(ast: c_ast.FileAST) -> tuple[list[Line], list[Where]]:
+    """The Macro lines of ast, and the copies each was laid out in."""
+    words = lay_out(ast, "z")
+    where = [{c.construct: c.instance for c in getattr(w, "copies", ())} for w in words]
+    lines = lines_of(emit.emit(words, trace=False))
+    assert len(lines) == len(where), "one line per laid-out item"
+    return lines, where
+
+
 def node_at(ast: c_ast.FileAST, index: int) -> c_ast.Node:
     for i, (node, *_rest) in enumerate(walk(ast, {})):
         if i == index:
@@ -499,40 +525,48 @@ def node_at(ast: c_ast.FileAST, index: int) -> c_ast.Node:
     raise IndexError(index)
 
 
-_PREPARED: dict[Path, tuple] = {}
+@dataclass(frozen=True)
+class Prepared:
+    ast: c_ast.FileAST
+    old: list[Line]
+    where: list[Where]
+    sites: list[Site]
 
 
-def prepared(path: Path) -> tuple[c_ast.FileAST, list[Line], list[Site]]:
+_PREPARED: dict[Path, Prepared] = {}
+
+
+def prepared(path: Path) -> Prepared:
     if path not in _PREPARED:
         ast = front.parse(path)
-        old = lines_of(compile_ast(copy.deepcopy(ast), trace=False))
+        old, where = compiled(copy.deepcopy(ast))
         unit = dialect.lower_unit(copy.deepcopy(ast))
-        _PREPARED[path] = (ast, old, sites(ast, unit))
+        _PREPARED[path] = Prepared(ast, old, where, sites(ast, unit))
     return _PREPARED[path]
 
 
 def check_site(path: Path, k: int) -> tuple[str, str | None]:
-    ast, old, all_sites = prepared(path)
-    site = all_sites[k]
-    edited = copy.deepcopy(ast)
+    p = prepared(path)
+    site = p.sites[k]
+    edited = copy.deepcopy(p.ast)
     site.edit(node_at(edited, site.index))
-    where = f"{path.name}:{site.line}: {site.describe}"
+    at = f"{path.name}:{site.line}: {site.describe}"
     try:
-        new = lines_of(compile_ast(edited, trace=False))
+        new, _ = compiled(edited)
     except COMPILE_ERRORS as e:
         if site.error is None or site.error not in str(e):
-            return site.kind, f"{where}: compile error {e}"
+            return site.kind, f"{at}: compile error {e}"
         return site.kind, None
     if site.error is not None:
-        return site.kind, f"{where}: compiled; predicted the error {site.error!r}"
-    if not site.matches(old, new):
-        return site.kind, f"{where}: output differs from the prediction" + \
-            ("" if new != old else " (output unchanged)")
+        return site.kind, f"{at}: compiled; predicted the error {site.error!r}"
+    if not site.matches(p.old, new, p.where):
+        return site.kind, f"{at}: output differs from the prediction" + \
+            ("" if new != p.old else " (output unchanged)")
     return site.kind, None
 
 
 def check_file(path: Path, pool: ProcessPoolExecutor) -> tuple[Counter, list[str]]:
-    n = len(prepared(path)[2])
+    n = len(prepared(path).sites)
     results = list(pool.map(check_site, [path] * n, range(n), chunksize=8))
     return Counter(kind for kind, _ in results), [f for _, f in results if f]
 

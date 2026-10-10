@@ -697,7 +697,7 @@ class _Lowerer:
             raise _err(node, "a counted loop must be `for (int i = 0; i < N; i++)` (unrolled)")
         if _mentions(node.stmt, init[0].name):
             raise _err(node, f"the unrolled body must not use the counter {init[0].name}")
-        return ir.Unroll(c_int(node.cond.right), self.stmt(node.stmt))
+        return ir.Unroll(c_int(node.cond.right), self.stmt(node.stmt), str(node.coord))
 
     def local(self, node: c_ast.Decl) -> ir.Stmt | None:
         if "static" in node.storage or "extern" in node.storage:
