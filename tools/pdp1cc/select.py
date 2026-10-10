@@ -54,7 +54,15 @@ class PointerBits:
     sym: str
 
 
-Fact = Local | Cell | AddressBits | PointerBits
+@dataclass(frozen=True)
+class Outer:
+    """A caller's local, carried through a static inline body: it lasts
+    while the body leaves that register alone, and no name in the body
+    can match it."""
+    fact: Local
+
+
+Fact = Local | Cell | AddressBits | PointerBits | Outer
 
 
 @dataclass(frozen=True)
@@ -71,11 +79,15 @@ class State:
 
 
 def _lasting(facts: frozenset[Fact]) -> frozenset[Fact]:
-    return frozenset(f for f in facts if isinstance(f, (Local, AddressBits)))
+    return frozenset(f for f in facts if isinstance(f, (Local, AddressBits, Outer)))
 
 
-def _without_locals(facts: frozenset[Fact]) -> frozenset[Fact]:
-    return frozenset(f for f in facts if not isinstance(f, Local))
+def _into_inline(facts: frozenset[Fact]) -> frozenset[Fact]:
+    return frozenset(Outer(f) if isinstance(f, Local) else f for f in facts)
+
+
+def _out_of_inline(facts: frozenset[Fact]) -> frozenset[Fact]:
+    return frozenset(f.fact if isinstance(f, Outer) else f for f in facts if not isinstance(f, Local))
 
 
 def meet(a: State | None, b: State | None) -> State | None:
@@ -511,7 +523,7 @@ class FunctionLowerer:
                     raise SelectError(f"{c.sig.name}: pass a register local for {p.name}")
                 self.need_io(arg, st)
                 io.add(fact(var))
-        entry = State(_without_locals(st.ac) | ac, _without_locals(st.io) | io)
+        entry = State(_into_inline(st.ac) | ac, _into_inline(st.io) | io)
         body = _rename_labels(fn.body, self.namer)
         if not _ends_in_transfer(body):
             if c.sig.returns != "void":
@@ -531,7 +543,7 @@ class FunctionLowerer:
                  if isinstance(w, ir.Word) else w for w in words]
         if inst.exits:
             words.append(ir.LabelDef(inst.after))
-        return items + words, State(_without_locals(out.ac), _without_locals(out.io))
+        return items + words, State(_out_of_inline(out.ac), _out_of_inline(out.io))
 
     def store_next(self, s: ir.StoreNext, st: State):
         """*p++ = e: e from AC (dac i p) or from a register local (dio i p), then idx p."""
