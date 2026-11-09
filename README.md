@@ -17,10 +17,11 @@ Spacewar! 3.1 (MIT, 1962) written in RUNS, verbatim: the exact game over every s
 
 ## Run the checks
 
-You need Linux, `gcc`, `g++`, `git`, and [`uv`](https://docs.astral.sh/uv/). Build the oracle and the SIMH PDP-1 simulator once:
+You need Linux, `gcc`, `g++`, `git`, and [`uv`](https://docs.astral.sh/uv/). Build the oracle, the image from the C lift, and the SIMH PDP-1 simulator once. Some checks read the lift's build listing.
 
 ```sh
 tools/oracle.sh
+uv run pdp1cc build lift.toml
 git clone --depth 1 https://github.com/open-simh/simh.git /tmp/simh
 tools/build-simh.sh /tmp/simh
 ```
