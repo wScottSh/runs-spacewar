@@ -149,7 +149,7 @@ Playbook (figure-it-out), verbatim:
 
 ### Predicate (done)
 
-Every Record of `runs/` has a kind; `tools/check_purity.py` reports 0 (so `runs.check` enforces the kind rules on Spacewar, with no exception left); the Network is in the form settled below; `runsc` prints MATCH 8744e9c9; `tools/check_all.sh` passes; `tools/check_game_alone.py` (to build, phase 0) shows the game with every presentation Processor removed matching SIMH on every game Record in check_frame's and check_game's cases, and the display stream empty.
+Every Record of `runs/` has a kind; `tools/check_purity.py` reports 0 (so `runs.check` enforces the kind rules on Spacewar, with no exception left); the Network is in the form settled below; `runsc` prints MATCH 8744e9c9; `tools/check_all.sh` passes; `tools/check_frame.py N alone` (in check_all) shows the game with every presentation routine and Record removed firing the same as the whole program on every kept Record, while the whole program matches SIMH; the same mode for check_game's cases.
 
 ### Scope (measured 2026-11-09)
 
@@ -169,7 +169,7 @@ The hardest compile sites after it: the outline (logic kept as instructions in a
 
 ### Phases
 
-0. [ ] Scaffold and decide. (a) Build `tools/check_game_alone.py`: the evaluator with every presentation Processor and its runs removed, against SIMH on game Records, display stream empty; prove it with a planted defect. (b) Anchor kinds to observation: a Processor that emits to `display` or runs `jump` is presentation, whatever its Records are labelled; add it to `impurities`. (c) Bring the user a worked proposal for the Network's form: two or three ways to write one real unit (the explosion) as a Petri net, each compiled or shown why not.
+0. [ ] Scaffold and decide. (a) [x] `runs.without_presentation` and `check_frame.py N alone`: proven red on a copy with pen and display typed presentation (exhaust's fuel, the explosion's count and the random draws go with the drawing). [ ] The same mode in check_game. (b) [x] Anchors: a stream is presentation, so its emitters are; instructions in a Record and `jump` are impure in every program. (c) [ ] Bring the user a worked proposal for the Network's form: two or three ways to write one real unit (the explosion) as a Petri net, each compiled or shown why not.
 1. [ ] Spike the outline in the settled form. At least two pure shapes (a walker over the outline codes; a presentation Record of expanded steps that a walker plots); for each, what runsc must emit for oc, the free-core layout and sp5. Bar: a rule a second PDP-1 program would use. Done when one shape compiles to MATCH with check_spaceship and check_frame passing, or the evidence that none can is in front of the user.
 2. [ ] Harden the compiler. Review runsc's rules for ones shaped by a single routine (pdp1/README.md, the open items of rounds 8-11) and fold them into general PDP-1 idioms, gated by check_compiled and MATCH. Done when every rule has a decisions row naming its idiom, or is gone.
 3. [ ] Give every Record a kind, splitting the mixed Records above. Data shape first: Record and field changes, the `reads:`/`writes:` they force, and the binding's lists (`pool`, `registers`, `[share]`); no change to what any Processor computes. Done when the report lists no Record without a kind.

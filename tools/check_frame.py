@@ -130,6 +130,7 @@ def poisoned(sym: dict, at: int, first: int = 2) -> dict[int, int]:
 def main() -> int:
     frames = int(sys.argv[1]) if len(sys.argv) > 1 else 1500
     poison = "poison" in sys.argv[2:] or "poison-all" in sys.argv[2:]
+    alone = "alone" in sys.argv[2:]        # the game alone, every presentation routine removed, must fire the same
     first_poisoned = 0 if "poison-all" in sys.argv[2:] else 2      # poison-all: the control, ships too
     prog = runs.program(runs.source())
     b = pdp1.Binding(prog)
@@ -155,6 +156,9 @@ def main() -> int:
                         deposits=outlines.code | {end: JMP | halt, full: JMP | halt_full}
                         | (poisoned(sym, sym["p"], first_poisoned) if poison else {}), each=each)
     differ, fired, hits, halts = 0, {}, [0], 0
+    game = runs.Machine(runs.without_presentation(prog)) if alone else None
+    if game:                                # what the setup gave the whole program, the outlines included
+        game.state.update({r: copy.deepcopy(m.state[r]) for r in game.state})
     plain_run = m.run
 
     def counted_run(name, args=()):
@@ -175,6 +179,21 @@ def main() -> int:
             halted = True
         halts += halted
         values = dict(zip(watch, w.watched))
+        apart = []
+        if game:
+            game.state.update({r: v for r, v in copy.deepcopy(st).items() if r in game.state})
+            for r in game.prog.records.values():
+                if r.stream:
+                    game.state[r.name] = []
+            try:
+                game.run("frame")
+                apart += ["the game alone halted where the whole program did not"] if halted else []
+            except runs.Stop:
+                apart += [] if halted else ["the game alone halted where the whole program did not"]
+            except runs.RunsError as e:
+                apart.append(f"the game alone fails: {str(e).split(': ', 1)[-1]}")
+            apart += [f"the game alone differs in {r}" for r in game.prog.records
+                      if game.state[r] != m.state[r]]
         simh_records = b.read({p[3]: values[p[3]] for p in places}, RECORDS)
         star = any(name == "star_slope" for name, _ in m.fired)
         shared = []
@@ -204,13 +223,18 @@ def main() -> int:
         points = [pdp1.point(p) for p in w.plotted]
         if points != m.state["display"]:
             bad.append(f"plotted {len(points)} simh, {len(m.state['display'])} runs")
+        bad += apart
         if bad:
             differ += 1
             if differ <= 5:
                 print(f"  frame {k}: " + "; ".join(bad)[:600])
         for name, _ in m.fired:
             fired[name] = fired.get(name, 0) + 1
-    print(f"frame{' (sp5 poisoned past the ships)' if poison else ''}: {len(cases)} frames, {len(cases) - differ} match, {differ} differ; "
+    removed = sorted(set(prog.routines) - set(game.prog.routines)) if game else []
+    if game:
+        print(f"the game alone: {len(removed)} presentation routines removed, "
+              f"{len(game.prog.records)} of {len(prog.records)} Records kept")
+    print(f"frame{' (sp5 poisoned past the ships)' if poison else ''}{' (and the game alone)' if game else ''}: {len(cases)} frames, {len(cases) - differ} match, {differ} differ; "
           f"{sum(len(w.plotted) for w in want)} points, {halts} halted on a full table")
     print(f"  fired: {dict(sorted(fired.items()))}")
     print(f"  collisions that hit: {hits[0]}")

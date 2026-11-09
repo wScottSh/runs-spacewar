@@ -40,6 +40,7 @@ Purity is fixed. When a pure shape will not compile to the original image, the c
 
 ## Evidence
 
+- The game alone: `PYTHONPATH=tools uv run -q python tools/check_frame.py 300 alone` removes every presentation routine and Record and compares what is left with the whole program, frame by frame. A Record that differs is game work still living in a presentation Processor.
 - Verify on the real artifact: the image, SIMH, the evaluator. A new check earns its place when a planted defect turns it red with the disagreement you predicted.
 - The purity report is the progress meter. Every impurity stays on it until it is converted; a flag, marker, or exception that hides one from the report is the shortcut this project exists to refuse.
 - A drawing or report is a transcription of the text: it shows what the files state, in the files' own structure.

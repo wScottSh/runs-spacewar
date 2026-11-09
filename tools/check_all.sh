@@ -18,4 +18,5 @@ PYTHONPATH=tools uv run -q python "$here/check_spaceship.py" 300 moved | head -1
 PYTHONPATH=tools uv run -q python "$here/check_heavens.py" 1000
 PYTHONPATH=tools uv run -q python "$here/check_frame.py" 300 | grep -v fired
 PYTHONPATH=tools uv run -q python "$here/check_frame.py" 300 poison | grep -v fired
+PYTHONPATH=tools uv run -q python "$here/check_frame.py" 300 alone | grep -v fired
 PYTHONPATH=tools uv run -q python "$here/check_game.py" 3000 3000

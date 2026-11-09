@@ -2,11 +2,6 @@
 each, then the count. The conversion is done when the count is 0; from then
 on runs.check refuses every impurity of kind.
 
-A Record of instructions that a Processor runs with `jump` is code kept as
-data. RUNS keeps `jump` for machine glitches, where play runs data as code;
-Spacewar has none (INTENT.md), so in Spacewar it is the original's way of
-drawing and counts as impure here.
-
 With --against REF (a commit, such as HEAD), it also compares with the
 report at REF and fails on any line REF did not have, unless the line names
 a Processor or Network that touches a Record which had no kind at REF and
@@ -27,13 +22,7 @@ import runs
 
 def report(root: Path) -> tuple[runs.Program, list[str]]:
     prog = runs.check(runs.load(sorted(root.glob("*.runs")) + sorted(root.glob("*.runs-prim"))), sides=False)
-    found = runs.impurities(prog)
-    found += [f"{r.name}.{f}: a Record holds data; instructions a Processor runs are logic"
-              for r in prog.records.values() for f, (typ, _) in r.fields.items() if typ == "insn"]
-    found += [f"processor {r.name}: runs instructions from a Record (jump); its logic belongs in its own text"
-              for r in prog.routines.values()
-              if r.kind == "processor" and any(s[0] == "jump" for s in runs.walk_statements(r.body))]
-    return prog, found
+    return prog, runs.impurities(prog)
 
 
 def at(ref: str, root: Path, out: Path) -> Path:

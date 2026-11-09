@@ -1137,6 +1137,13 @@ def impurities(prog: Program) -> list[str]:
     side = {n: r.side for n, r in prog.records.items()}
     out = [f"{n}: say whether it is a game, interface or presentation record"
            for n, s in side.items() if s is None]
+    out += [f"stream {r.name}: a stream leaves to a device, so it is a presentation stream"
+            for r in prog.records.values() if r.stream and r.side not in (None, "presentation")]
+    out += [f"{r.name}.{f}: a Record holds data; instructions a Processor runs are logic"
+            for r in prog.records.values() for f, (typ, _) in r.fields.items() if typ == "insn"]
+    out += [f"processor {r.name}: runs instructions from a Record (jump); its logic belongs in its own text"
+            for r in prog.routines.values()
+            if r.kind == "processor" and any(s[0] == "jump" for s in walk_statements(r.body))]
     of = lambda names, s: sorted(n for n in names if side.get(n) == s)
     for r in prog.routines.values():
         if r.kind != "processor":
@@ -1178,6 +1185,42 @@ def impurities(prog: Program) -> list[str]:
         if r.kind == "network":
             guarded(r.name, r.body)
     return out
+
+
+def without_presentation(prog: Program) -> Program:
+    """The game alone: the program with every presentation routine, every
+    run of one, and every presentation Record removed. A pure program's
+    game Records fire the same in it as in the whole program."""
+    import copy
+    shown = presentation_routines(prog)
+    kept = {n for n, r in prog.records.items() if r.side != "presentation"}
+
+    def strip(stmts: list) -> list:
+        out = []
+        for s in stmts:
+            op = s[0]
+            if op == "run" and s[1] in shown:
+                continue
+            if op == "if":
+                s = (op, [(c, strip(b)) for c, b in s[1]], strip(s[2]), *s[3:])
+            elif op == "loop":
+                s = (op, s[1], strip(s[2]), *s[3:])
+            elif op == "for":
+                s = (op, s[1], s[2], s[3], strip(s[4]), *s[5:])
+            elif op == "match":
+                s = (op, s[1], {m: strip(b) for m, b in s[2].items()}, *s[3:])
+            out.append(s)
+        return out
+
+    game = copy.deepcopy(prog)
+    game.records = {n: r for n, r in game.records.items() if n in kept}
+    game.routines = {n: r for n, r in game.routines.items() if n not in shown}
+    for r in game.routines.values():
+        if r.kind == "network":
+            r.body = strip(r.body)
+            r.reads &= kept
+            r.writes &= kept
+    return game
 
 
 def check_sides(prog: Program) -> None:
