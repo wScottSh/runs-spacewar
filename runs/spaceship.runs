@@ -66,7 +66,8 @@ network accelerate(slot)                                    # bsg
   run spaceship_acceleration
   run push_x
   run inertia_x(slot)                                       # diff \mdx, mx1, (sar 3s
-  run aim_outline(slot)                                     # sp1
+  run aim_nose(slot)                                        # sp1
+  run aim_outline
   run mark_center
   run draw_outline(slot)                                    # sp5, jmp .
   run after_outline(slot)                                   # the outline jumps back to sq6

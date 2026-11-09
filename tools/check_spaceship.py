@@ -70,6 +70,7 @@ class Outlines:
     starts, a place in outline_code; the words must be the same."""
 
     def __init__(self, m: runs.Machine, b: pdp1.Binding):
+        self.b = b
         sym = b.sym
         start, self.code = b.address("outline_code", "insn", 0), {}
         call = m.state["outline_call"]
@@ -129,6 +130,7 @@ def a_state(m: runs.Machine, rng: random.Random, outlines: Outlines) -> tuple[st
         for f, (typ, _) in m.prog.records[rec].fields.items():
             if typ == "word":
                 st[rec][f] = runs.W(rng.randrange(1 << 18))
+    outlines.b.share_one_word(st, RECORDS)
     st["spaceship"]["rocket"] = member("rocket", rng.choice(["off", "firing"]))
     st["launch"]["slot"] = runs.W(rng.randrange(0o30))
     sense = rng.randrange(1 << 6)
@@ -186,6 +188,7 @@ def main() -> int:
         m.state.update(copy.deepcopy(st))
         m.state["display"] = []
         halted = False
+        since = m.writes
         try:
             m.run(routine, [slot])
         except runs.Stop:
@@ -193,9 +196,11 @@ def main() -> int:
         values = dict(zip(watch, w.watched))
         simh_records = b.read({a: values[a] for a in [p[3] for p in places]}, RECORDS)
         get = lambda recs, rec, fld, s: recs[rec][fld] if s is None else recs[rec][fld][s]
+        outlived = b.outlived(m, RECORDS, since)
         bad = [f"{rec}.{fld}{'' if s is None else f'[{s}]'} simh {b.encode(rec, fld, get(simh_records, rec, fld, s)):06o}"
                f" runs {b.encode(rec, fld, get(m.state, rec, fld, s)):06o}"
-               for rec, fld, s, _ in places if get(simh_records, rec, fld, s) != get(m.state, rec, fld, s)]
+               for rec, fld, s, _ in places if (rec, fld) not in outlived
+               and get(simh_records, rec, fld, s) != get(m.state, rec, fld, s)]
         for (rec, fld), a in zip(SCRATCH, scratch):
             if values[a] != m.state[rec][fld].v:
                 bad.append(f"{rec}.{fld} simh {values[a]:06o} runs {m.state[rec][fld].v:06o}")

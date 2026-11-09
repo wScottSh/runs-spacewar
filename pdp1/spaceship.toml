@@ -6,8 +6,19 @@ replaces = "lift/spaceship.c"
 pool = ["spaceship.controls", "spaceship.sine", "spaceship.cosine", "spaceship.gravity_x",
         "spaceship.gravity_y", "spaceship.operand", "spaceship.x_squared", "spaceship.torpedo_x",
         "spaceship.torpedo_y", "spaceship.flame",
+        "spaceship.nose_step_x", "spaceship.nose_step_y", "spaceship.nose_x", "spaceship.nose_y",
+        "spaceship.star_wait",
         "pen.x", "pen.y", "pen.down_x", "pen.down_y", "pen.out_x", "pen.out_y", "pen.out_down_x",
         "pen.out_down_y", "pen.in_down_x", "pen.in_down_y"]
+
+# The nose and its step live in the pen's words (sx1, sy1, ssn, scn), and
+# the star's wait in ssn: the pen starts at the nose.
+[share]
+"pen.x" = "spaceship.nose_x"
+"pen.y" = "spaceship.nose_y"
+"pen.down_x" = "spaceship.nose_step_x"
+"pen.down_y" = "spaceship.nose_step_y"
+"spaceship.star_wait" = "spaceship.nose_step_x"
 
 [flags]
 "spaceship.rocket" = 6

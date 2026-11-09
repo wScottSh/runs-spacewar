@@ -85,6 +85,7 @@ def a_frame(m: runs.Machine, rng: random.Random, outlines) -> tuple[dict, int]:
         for f, (typ, _) in m.prog.records[rec].fields.items():
             if typ == "word":
                 st[rec][f] = runs.W(rng.randrange(1 << 18))
+    outlines.b.share_one_word(st, ["spaceship", "pen"])
     st["launch"]["slot"] = runs.W(rng.randrange(0o30))
     sense = rng.randrange(1 << 6)
     for name, n in pdp1.SWITCHES.items():
@@ -167,6 +168,7 @@ def main() -> int:
         m.state["display"] = []
         m.fired = []
         halted = False
+        since = m.writes
         try:
             m.run("frame")
         except runs.Stop:
@@ -183,9 +185,11 @@ def main() -> int:
                                   f"runs {m.state['central_star'][g].v:06o}")
                 simh_records["spaceship"][f] = m.state["spaceship"][f]
         get = lambda recs, rec, fld, s: recs[rec][fld] if s is None else recs[rec][fld][s]
+        outlived = b.outlived(m, RECORDS, since)
         bad = [f"{rec}.{fld}{'' if s is None else f'[{s}]'} simh {b.encode(rec, fld, get(simh_records, rec, fld, s)):06o}"
                f" runs {b.encode(rec, fld, get(m.state, rec, fld, s)):06o}"
-               for rec, fld, s, _ in places if get(simh_records, rec, fld, s) != get(m.state, rec, fld, s)] + shared
+               for rec, fld, s, _ in places if (rec, fld) not in outlived
+               and get(simh_records, rec, fld, s) != get(m.state, rec, fld, s)] + shared
         rocket = b.read_flags(values["PF"], ("spaceship",))["spaceship"]["rocket"]
         # SIMH's flags carry over from the frame before: compare flag 6 with
         # what last set it, the star's line (left mirrored) or a ship

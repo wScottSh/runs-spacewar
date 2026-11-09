@@ -298,9 +298,14 @@ record spaceship
   operand: word = 0         # t1: a scaled coordinate, then the squared distance, then the
                             #   distance cubed: the word after a call (jda imp / lac \t1)
   x_squared: word = 0       # t2
+  nose_step_x: word = 0     # ssn: a 32nd of the heading, from the center to the nose
+  nose_step_y: word = 0     # scn
+  nose_x: word = 0          # sx1: the ship's nose
+  nose_y: word = 0          # sy1
   torpedo_x: word = 0       # stx: where a torpedo starts, ahead of the ship's tip
   torpedo_y: word = 0       # sty
   flame: word = 0           # src: exhaust dots still to draw, counting up
+  star_wait: word = 0       # ssn: the count a ship in the star waits out
 
 # Where a ship's outline is drawn from, and the steps it is drawn with. The
 # outline is presentation: the spaceship sets these and jumps into its
@@ -311,7 +316,7 @@ record spaceship
 record pen
   x: word = 0               # sx1
   y: word = 0               # sy1
-  down_x: word = 0          # ssn: added to x; also the count a ship in the star waits out
+  down_x: word = 0          # ssn: added to x
   down_y: word = 0          # scn: subtracted from y
   out_x: word = 0           # scm: added to x
   out_y: word = 0           # ssm: added to y

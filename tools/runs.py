@@ -647,6 +647,10 @@ class Machine:
         # The locals each Processor's last firing left, by (name, arguments):
         # a check compares them with the words the original keeps them in.
         self.left: dict[tuple, dict] = {}
+        # When each field was last written, in writes since the Machine began:
+        # a check reads a word the binding shares by the name that wrote it last.
+        self.written: dict[tuple[str, str], int] = {}
+        self.writes = 0
         declared_instructions.clear()
         declared_instructions.update(prog.instructions)
         for rec in prog.records.values():
@@ -805,6 +809,8 @@ class Machine:
             self.state[rec][fld] = value
         else:
             self.state[rec][fld][idx] = value
+        self.writes += 1
+        self.written[(rec, fld)] = self.writes
 
     def place(self, target, scope: "Scope", where: str):
         if target[0] == "field" and target[1][0] == "name" and target[1][1] in self.prog.records:
@@ -911,6 +917,8 @@ class Machine:
                 self.state[at.record][at.field] = value
             else:
                 self.state[at.record][at.field][at.slot] = value
+            self.writes += 1
+            self.written[(at.record, at.field)] = self.writes
 
         for _ in range(bound):
             insn = read(Place(start.record, start.field, pc))

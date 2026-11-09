@@ -52,6 +52,8 @@ FIELDS = {
     ("spaceship", "controls"): "scw", ("spaceship", "sine"): "sn", ("spaceship", "cosine"): "cs",
     ("spaceship", "gravity_x"): "bx", ("spaceship", "gravity_y"): "by",
     ("spaceship", "operand"): "t1", ("spaceship", "x_squared"): "t2",
+    ("spaceship", "nose_step_x"): "ssn", ("spaceship", "nose_step_y"): "scn",
+    ("spaceship", "nose_x"): "sx1", ("spaceship", "nose_y"): "sy1", ("spaceship", "star_wait"): "ssn",
     ("spaceship", "torpedo_x"): "stx", ("spaceship", "torpedo_y"): "sty", ("spaceship", "flame"): "src",
     ("pen", "x"): "sx1", ("pen", "y"): "sy1", ("pen", "down_x"): "ssn", ("pen", "down_y"): "scn",
     ("pen", "out_x"): "scm", ("pen", "out_y"): "ssm", ("pen", "out_down_x"): "ssc",
@@ -209,6 +211,24 @@ class Binding:
                     continue
                 for slot in (range(r.count) if r.count else [None]):
                     yield rec, fld, slot, self.address(rec, fld, slot)
+
+    def share_one_word(self, state: dict, records: list[str]):
+        """Give the names that share a word one value: the first's."""
+        first = {}
+        for rec, fld, slot, at in self.places(records):
+            if slot is None and isinstance(state[rec][fld], runs.W):
+                state[rec][fld] = first.setdefault(at, state[rec][fld])
+
+    def outlived(self, m: runs.Machine, records: list[str], since: int) -> set[tuple[str, str]]:
+        """The names whose word another name wrote after them, since a
+        point in m's writes: the word no longer holds them."""
+        last = lambda rf: max(m.written.get(rf, 0), since)
+        by_word = {}
+        for rec, fld, slot, at in self.places(records):
+            if slot is None:
+                by_word.setdefault(at, []).append((rec, fld))
+        return {rf for names in by_word.values() for rf in names
+                if any(last(other) > last(rf) for other in names)}
 
     def deposits(self, state: dict, records: list[str]) -> dict[int, int]:
         out = {}

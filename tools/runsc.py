@@ -3594,13 +3594,22 @@ class Occupancy:
         return {root: state.get(self.group[next(iter(names))], frozenset()) & names
                 for root, names in self.words.shared.items()} | {PASSED: frozenset(passed)}
 
-    def kill(self, state: dict, routines) -> dict:
-        """What the routines may write no longer holds what it held."""
+    def kill(self, state: dict, routines, keep_own=False) -> dict:
+        """What the routines may write no longer holds what it held. Code
+        the game runs (`jump`) writes a word only through the name its
+        operand gives, a field of a Record the jump declares: a word that
+        held that field still holds it, whether the code wrote it or not."""
         written = set().union(set(), *(self.prog.routines[p].writes for r in routines if r in self.prog.routines
                                        for p in runs.fires(self.prog, r, set())
                                        if self.prog.routines[p].kind == "processor"))
-        return {g: names for g, names in state.items()
-                if not any(x.split(".")[0] in written for x in self.members[g] if "." in x)}
+        out = {}
+        for g, names in state.items():
+            own = {x for x in self.members[g] if "." in x and x.split(".")[0] in written}
+            if not own:
+                out[g] = names
+            elif keep_own and len(own) == 1 and own <= names:
+                out[g] = frozenset(own)
+        return out
 
     def read(self, name: str, state: dict, where: str):
         g = self.group.get(name)
@@ -3725,7 +3734,7 @@ class Occupancy:
             for e in s[2].values():
                 self.reads(e, state, where)
             self.calls.append((s[1], self.export(state, s[2])))
-            state = self.kill(state, [s[1]])
+            state = self.kill(state, [s[1]], keep_own=callee.code)
             if callee.code and callee.back:
                 self.calls.append((callee.back, self.export(state)))
             for f in callee.result:

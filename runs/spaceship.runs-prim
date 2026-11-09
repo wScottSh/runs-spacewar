@@ -155,15 +155,21 @@ processor push_x                                            # cma; szf i 6; cla;
 
 # The outline starts at the tip, a 32nd of the heading ahead, and a torpedo
 # starts as far again.
-processor aim_outline(slot)                                 # sp1 .. sp5
+processor aim_nose(slot)                                    # sp1, sp2
   reads: objects
-  writes: pen, spaceship
-  set pen.down_x = spaceship.sine >> 5
-  set pen.down_y = spaceship.cosine >> 5
-  set pen.x = objects.x[slot] - pen.down_x
-  set spaceship.torpedo_x = pen.x - pen.down_x
-  set pen.y = objects.y[slot] + pen.down_y
-  set spaceship.torpedo_y = pen.y + pen.down_y
+  writes: spaceship
+  set spaceship.nose_step_x = spaceship.sine >> 5
+  set spaceship.nose_step_y = spaceship.cosine >> 5
+  set spaceship.nose_x = objects.x[slot] - spaceship.nose_step_x
+  set spaceship.torpedo_x = spaceship.nose_x - spaceship.nose_step_x
+  set spaceship.nose_y = objects.y[slot] + spaceship.nose_step_y
+  set spaceship.torpedo_y = spaceship.nose_y + spaceship.nose_step_y
+
+processor aim_outline                                       # .. sp5
+  reads: spaceship
+  writes: pen
+  set pen.x = spaceship.nose_x
+  set pen.y = spaceship.nose_y
   set pen.down_x = spaceship.sine >> 9
   set pen.down_y = spaceship.cosine >> 9
   set pen.out_y = pen.down_x
@@ -304,17 +310,17 @@ processor time_hyperspace(slot)                             # dac i ma1; law 3; 
 # pen's first step. A ship's time is positive, so the wait is one step.
 processor spaceship_in_star(slot)                           # pof
   reads: console
-  writes: objects, pen
+  writes: objects, spaceship
   set objects.dx[slot] = 0
   set objects.dy[slot] = 0
   if console.star_kills == off:                             # szs 50
     let corner = 0377777
     set objects.x[slot] = corner
     set objects.y[slot] = corner
-    set pen.down_x = objects.cycles[slot]
+    set spaceship.star_wait = objects.cycles[slot]
     loop at most 0400001:                                   # count \ssn, .
-      set pen.down_x = pen.down_x + 1
-      if pen.down_x >= 0:
+      set spaceship.star_wait = spaceship.star_wait + 1
+      if spaceship.star_wait >= 0:
         break
     return
   set objects.routine[slot] = explosion                     # po1
