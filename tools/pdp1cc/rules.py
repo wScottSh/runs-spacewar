@@ -1,0 +1,108 @@
+"""The rule registry. Every emitted Word names one of these ids."""
+
+RULES: dict[str, str] = {
+    "ST-PLACED": "initialized file-scope word: a data word at its definition",
+    "JDA-ENTRY": "JDA function entry word; it is the first parameter's storage",
+    "JDA-PROLOGUE": "JDA prologue: `dap R` patches the exit cell with the return address",
+    "LAY-EXIT": "exit cell `R, jmp .`, owned by the source-last return",
+    "RET": "`return` that is not the source-last one: `jmp R`",
+    "EX-LOAD": "memory operand into AC: `lac x`",
+    "EX-LOAD-IO": "memory operand into a register (IO) local: `lio x`",
+    "EX-CONST-AC": "constant into AC: 0 -> cla, |c| <= 07777 -> law / law i, else lac (c",
+    "EX-BIN": "l op r: l into AC, then add/sub/and/ior/xor r (constant r -> literal)",
+    "EX-UNARY": "-x / ~x: x into AC, cma",
+    "EX-SHIFT": "x << n / x >> n: sal / sar in 9s chunks; io = io << n / io >> n on a register local: sil / sir",
+    "EX-ROT": "pair op on AC:IO: one instruction per 9s chunk",
+    "EX-STORE": "x = e: e into AC, dac x",
+    "EX-STORE-ZERO": "x = 0 to memory: dzm x",
+    "EX-INC": "++x as statement or value: idx x",
+    "IF-SINGLE": "if (c) S with S one word: skip_when(!c); S",
+    "IF-MULTI": "if (c) S otherwise: skip_when(c); jmp Lelse; S; Lelse:",
+    "FOR-EVER": "for (;;) S: top: S; jmp top",
+    "CONTINUE": "continue: jmp top",
+    "GOTO": "goto L: jmp L; a C label names the first word of its statement",
+    "EX-STEP": "mus(h, l, m) / dis(h, l, m): one multiply or divide step on AC:IO",
+    "EX-MOVE": "value between AC and IO (register local from AC, or into AC): rcr 9s; rcr 9s",
+    "EX-CONST-IO": "constant into a register (IO) local: 0 -> cli, else lio (c",
+    "EX-STORE-IO": "x = register local: dio x",
+    "JDA-CALL": "f(...) for a JDA f: AC argument, jda f",
+    "JDA-BYNAME-ARG": "BYNAME argument: the inline word `lac x` (constant -> literal) after the call",
+    "BYNAME-READ": "read of a BYNAME parameter: the cell R itself (`R, xct`) first, then `xct R`",
+    "RET-INDIRECT": "return from a function with inline parameters: jmp i R",
+    "ARGS": "skip the inline parameters: idx R, placed where AC is dead after the last read",
+    "SKIP-RETURN": "skip_return(): idx R, the call returns one word further",
+    "TAIL-CALL": "return blk(...) for a BLOCK blk: arguments, jmp blk",
+    "LAY-FALLTHROUGH": "a tail call of the BLOCK laid out next emits no jump; tags that block's first word",
+    "LAY-ADOPT": "a function whose returns all tail-call one BLOCK patches that block's exit, which is "
+                 "the exit of the BLOCK it in turn tail-calls when one is defined in the file",
+    "LOOP-UNROLL": "for (int i = 0; i < N; i++) S: S emitted N times (N read as C reads it)",
+    "ST-ENTRY-CELL": "ENTRY_CELL(f) object: f's entry word under another name",
+    "XCT-CALL": "f(...) for an XCT f: arguments in AC and IO, then `xct f`",
+    "XCT-BODY": "an XCT function is the one word its body lowers to: no prologue, no exit",
+    "JSP-CALL": "f(...) for a JSP f: a register argument already in IO, then `jsp f`",
+    "JSP-PROLOGUE": "JSP prologue: `dap R` patches the exit cell with the return address in AC",
+    "JSP-FORWARD": "a JSP function whose body is `return g(...)` for a JSP g: `jmp g`, AC still holds the return address",
+    "LAY-AT": "AT(a) on a definition: the origin `a/` before it",
+    "ST-RESERVE": "RESERVE object: `. n/` sets its n words aside, not punched",
+    "EX-CODE": "a function's name, an array's name or &object as a value: its address, `law x`; "
+               "f | c with c above the address field: `lac (f+c`",
+    "TAIL-CALL-INDIRECT": "return p(...) through a pointer-to-function object p: arguments, `jmp i p`",
+    "EX-HW": "a hardware builtin with no operand (tyi, lsm): its one instruction",
+    "SKIP-IO": "a register (IO) local compared with 0: io < 0 skips on `spi i`, io >= 0 on `spi`",
+    "ST-POOL": "POOL object: a `\\x` variable macro1 allocates at `variables`, named with `\\` everywhere",
+    "EX-INSN": "I_* constructor: an instruction word as a constant, a literal `(lac x` or a data word; "
+               "a shift with count 0 is the bare mnemonic",
+    "EX-POSTINC-STORE": "*p++ = e with p a pointer word: dac i p (dio i p from IO); idx p",
+    "EX-STORE-ADDR": "x.addr = e, or p = e for a HOMED p: e into AC, dap x",
+    "INLINE-READ": "read of an INLINE parameter: lac i R, the constant word after the call",
+    "JDA-INLINE-ARG": "INLINE argument: the constant or address itself, as the word after the call",
+    "SWITCH": "switch ((int)e) over 0..n: add (T; dap J; J, jmp .; T: a jmp per goto case, opr per "
+              "empty case, the last case in its slot",
+    "HOMED-HOME": "*home(p): the instruction that holds HOMED pointer p, under p's label: `lac .` / `lio .`, "
+                  "`add .` in a + *home(p), `dac .` / `dio .` for *home(p) = e, `dap .` for home(p)->addr = e, "
+                  "`jmp .` for (*home(p))(...); xct(*home(p), ...) is `xct .`",
+    "ST-HOMED": "HOMED pointer: stored by dap and advanced by idx at its home",
+    "LAY-PLACE": "PLACE(x, ...): the words of x laid out at the statement, which control cannot reach",
+    "EX-FLAG": "stf(n) / clf(n): set or clear program flag n",
+    "SKIP-FLAG": "flag(n) as a condition: !flag(n) skips on `szf n`, flag(n) on `szf i n`",
+    "SKIP-SENSE": "sense(n) as a condition: !sense(n) skips on `szs n0`, sense(n) on `szs i n0`",
+    "SKIP-SAME": "a == m / a != m with m a word or a constant: a into AC, then skip on `sas m` / `sad m`",
+    "EX-DPY": "dpy(x, y, n) / dpy_nowait(x, y): x in AC, y a register local in IO, `dpy-i+n00` / `dpy-4000`",
+    "OPR-COMBINE": "a, b, c; with each part one operate-group instruction writing a different register "
+                   "or the flags: one word, `a b c-opr-opr`",
+    "INLINE-CALL": "call of a static inline function: its body laid out at the call, labels fresh per copy",
+    "INLINE-RETURN": "return in a static inline copy that is not its last statement: jmp to the word after the copy",
+    "SWITCH-HOMED": "switch ((int)i) for a HOMED word i (Duff's device): `J, jmp .` is i's home; "
+                    "i = e is e, sal ks, add (case 0, dap J, with 2^k words per case",
+    "HOMED-WORD": "I_OP(p) / I_OP(++p) for a HOMED p whose home is `op .`: the home instruction word, "
+                  "`lac home` / `idx home`",
+    "EX-DEREF": "*p for p a pointer in a memory word or a homed address field: the instruction "
+                "names p's cell with the indirect bit (lac i, add i, dac i, dzm i, dio i, lio i, isp i, idx i)",
+    "EX-XCT": "xct(s, a) / xct(s, hi, lo): the argument in AC (and IO), then shift s run: `xct (s` for a "
+              "constructor, `p, xct .` for *home(p), the word itself for a HOMED shift",
+    "CALL-INDIRECT": "p(...) through a pointer word p to a JSP function type: a register argument in IO, "
+                     "then `jsp i p`; the result comes back in AC (and IO)",
+    "SKIP-SLOT": "a call of a SKIPS function: `opr` after its inline words, the word it returns past "
+                 "unless it does not skip; the call means the same either way",
+    "HOMED-VALUE": "a HOMED pointer read in the value a dap stores (p, p + n, n + p): its home word "
+                   "(`lac p`, `add p`), whose address field is the pointer, or nothing when AC's address "
+                   "field already holds it",
+    "ST-HOMED-INSN": "HOMED shift x: the instruction at its home, xct(x, ...), laid out there with its initial "
+               "word; x = e stores the whole word (dac x)",
+    "EX-ELEMENT": "a[k] for a file-scope array a, or an address a + n in one, and a constant k: "
+                  "the memory operand a+n+k",
+    "CALL-COMPUTED": "((f *)e)() for a JSP function type f: e into AC, `dap L`, `L, jsp .`",
+    "SKIPNOT": "SKIPNOT(c) for a sign test of AC: skip when c fails on c's own skip with the i bit "
+               "flipped (`spa i`, not `sma`)",
+    "SWAP": "SWAP(x): x moved between AC and IO by `rcl 9s` twice, the `swap` turn, instead of `rcr`",
+    "LAY-START": "START on a BLOCK function: the program's last line `start f`, which ends the tape "
+                 "with a jump to f",
+    "LAY-POOL": "CONSTANTS() / VARIABLES(): the `constants` / `variables` directive, where macro1 "
+                "lays out the literal and pool words",
+}
+
+
+def check(rule: str) -> str:
+    if rule not in RULES:
+        raise KeyError(f"unregistered rule id {rule!r}")
+    return rule

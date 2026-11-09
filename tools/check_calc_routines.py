@@ -24,7 +24,7 @@ from pdp1cc.gate import corpus, simh
 from pdp1cc.gate.simh import Inputs
 from oracle_check import built_listing
 
-spec = importlib.util.spec_from_file_location("objref", pdp1.SPACEWAR_C / "tools/check-objects-reference.py")
+spec = importlib.util.spec_from_file_location("objref", pdp1.ROOT / "tools/check-objects-reference.py")
 objref = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(objref)
 

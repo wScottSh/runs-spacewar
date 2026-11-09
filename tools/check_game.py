@@ -12,7 +12,7 @@ Two kinds of run, each in one SIMH session:
    scores on the lights, deposits the second test word and continues past
    the halt, as the operator does. The evaluator fires the same Network on
    the same Records, the second test word given at its wait.
-2. spacewar-c's seventeen scripted matches (tools/check-main-loop-frames.py:
+2. the seventeen scripted matches (tools/check-main-loop-frames.py:
    the same scenarios and control policies), played from power-on. At each
    stop (a frame at ml0, or a halt) the evaluator takes SIMH's Records and
    the test word given for the run that follows, and fires the frame up to
@@ -44,7 +44,7 @@ import runs
 from pdp1cc.gate import simh
 from pdp1cc.gate.simh import Inputs
 
-spec = importlib.util.spec_from_file_location("frames", pdp1.SPACEWAR_C / "tools/check-main-loop-frames.py")
+spec = importlib.util.spec_from_file_location("frames", pdp1.ROOT / "tools/check-main-loop-frames.py")
 frames = importlib.util.module_from_spec(spec)
 sys.modules["frames"] = frames
 spec.loader.exec_module(frames)
@@ -99,7 +99,7 @@ class Game:
         self.sym = self.b.sym
         self.places = list(self.b.places(RECORDS))
         self.halt = self.sym["a4"] + 2                      # lac \1sc / lio \2sc / hlt
-        words = frames.read_listing(pdp1.SPACEWAR_C / "build/oracle.lst")
+        words = frames.read_listing(pdp1.ROOT / "build/oracle.lst")
         self.next_game = next(a for a in range(self.sym["a2"], self.sym["mg1"])
                               if words[a].value == JMP | self.sym["ml0"])
 

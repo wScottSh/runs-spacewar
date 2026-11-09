@@ -4,7 +4,7 @@ tape image, compared by sha256 with the original's.
 The RUNS text holds the game. The binding (pdp1/<unit>.toml) holds only how
 the PDP-1 carries it: the order of things on the tape, each routine's
 calling convention, which register or word holds a value, and how a
-routine's code is laid out. pdp1cc, spacewar-c's compiler, is the back end.
+routine's code is laid out. pdp1cc, the lift's compiler, is the back end.
 
 A bound routine is one C function. A Processor's body is its code. A
 Network's Processors are inlined in the order it runs them, under its
@@ -13,8 +13,8 @@ sets of that routine's parameter fields just before the run become the
 call's arguments, and its result fields read after the run are AC, or the
 halves of the returned pair. A macro is a routine laid out at each run.
 
-Every unit of spacewar-c's lift.toml has a binding and is compiled from
-RUNS: the C this writes stands alone, with no file of spacewar-c's lift."""
+Every unit of the lift's lift.toml has a binding and is compiled from
+RUNS: the C this writes stands alone, with no file of lift/."""
 from __future__ import annotations
 
 import contextlib
@@ -27,14 +27,13 @@ from pathlib import Path
 
 import runs
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "spacewar-c"))
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 from tools.pdp1cc import program  # noqa: E402
 
-ROOT = Path(__file__).resolve().parents[1]
-SPACEWAR_C = ROOT.parent / "spacewar-c"
 BINDINGS = ROOT / "pdp1"
 DEVICES = "devices.toml"                   # in BINDINGS: the presentation side of the boundary
-OUT = ROOT / "build"
+OUT = ROOT / "build/runs"
 
 # C precedence, loosest first, for the operators RUNS shares with C.
 C_LEVEL = {"or": 1, "and": 2, "|": 3, "^": 4, "&": 5, "==": 6, "!=": 6,
@@ -262,7 +261,7 @@ def table_cases(s):
 
 
 # The names C and the dialect's header (pdp1.h) already give meaning to.
-C_WORDS = set(re.findall(r"[A-Za-z_]\w*", (SPACEWAR_C / "tools/pdp1cc/include/pdp1.h").read_text())) | {
+C_WORDS = set(re.findall(r"[A-Za-z_]\w*", (ROOT / "tools/pdp1cc/include/pdp1.h").read_text())) | {
     "auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum", "extern",
     "float", "for", "goto", "if", "inline", "int", "long", "register", "return", "short", "signed", "sizeof",
     "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while"}
@@ -3744,9 +3743,9 @@ class Occupancy:
 
 
 def write_tree(prog: runs.Program, out: Path) -> Path:
-    """spacewar-c's lift.toml under out, each unit compiled from RUNS: out's
+    """lift.toml under out, each unit compiled from RUNS: out's
     lift/ holds the generated C and nothing else. Returns the toml."""
-    lift = tomllib.loads((SPACEWAR_C / "lift.toml").read_text())
+    lift = tomllib.loads((ROOT / "lift.toml").read_text())
     paths = sorted(BINDINGS.glob("*.toml"))
     binds = Bindings(prog, paths)
     bound = {spec["replaces"]: p for p, spec in binds.specs.items()}
@@ -3766,7 +3765,7 @@ def write_tree(prog: runs.Program, out: Path) -> Path:
         raise BindError(f"bindings replace no lift unit: {sorted(bound)}")
     SharedWords(binds, binds.compiled).check()
     toml = out / "lift.toml"
-    head = "".join(f'{k} = "{SPACEWAR_C / v if k in ("macro1", "macro1_src", "oracle_listing") else v}"\n'
+    head = "".join(f'{k} = "{ROOT / v if k in ("macro1", "macro1_src", "oracle_listing") else v}"\n'
                    for k, v in lift.items() if k != "unit")
     toml.write_text(head + "\n" + "\n".join(units))
     return toml

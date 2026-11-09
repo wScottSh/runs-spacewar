@@ -1,0 +1,59 @@
+# The lifted program. `pdp1cc build` compiles the files in this order into
+# one Macro program, assembles it with macro1 and compares the .rim sha256
+# with the oracle. The order is the order of the words on the tape.
+macro1 = "build/macro1"
+macro1_src = "tools/macro1.c"
+oracle_sha256 = "8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf"
+oracle_listing = "build/oracle.lst"
+
+[[unit]]
+c = "lift/tunables.c"
+prefix = "zt"
+
+[[unit]]
+c = "lift/sincos.c"
+prefix = "zc"
+
+[[unit]]
+c = "lift/multiply.c"
+prefix = "zm"
+
+[[unit]]
+c = "lift/square_root.c"
+prefix = "zs"
+
+[[unit]]
+c = "lift/divide.c"
+prefix = "zd"
+
+[[unit]]
+c = "lift/outline_compiler.c"
+prefix = "zo"
+
+[[unit]]
+c = "lift/heavens.c"
+prefix = "zh"
+
+[[unit]]
+c = "lift/main_loop.c"
+prefix = "zg"
+
+[[unit]]
+c = "lift/objects.c"
+prefix = "zx"
+
+[[unit]]
+c = "lift/spaceship.c"
+prefix = "zp"
+
+[[unit]]
+c = "lift/outlines.c"
+prefix = "zl"
+
+[[unit]]
+c = "lift/core_layout.c"
+prefix = "zb"
+
+[[unit]]
+c = "lift/star_catalog.c"
+prefix = "zk"

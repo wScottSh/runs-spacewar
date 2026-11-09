@@ -52,8 +52,8 @@ stops the mutant at its bound.
 Usage: [--sample N] [--only TEXT] [--kinds a,b] (build N mutants drawn by
 a seeded shuffle, not all; only those whose label holds TEXT; only those
 kinds).
-Run under spacewar-c's environment:
-  uv run --project ../spacewar-c python tools/check_compiled.py"""
+Run from the repository root:
+  uv run python tools/check_compiled.py"""
 from __future__ import annotations
 
 import dataclasses

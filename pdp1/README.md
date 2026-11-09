@@ -1,6 +1,6 @@
 # The PDP-1 binding
 
-`tools/runsc.py` compiles the RUNS text in `runs/` to the original Spacewar! 3.1 tape image. Each file here binds one unit of spacewar-c's `lift.toml`: it says how the PDP-1 carries the RUNS routines and fields of that unit. `runsc` emits spacewar-c's C dialect from the RUNS text and the binding, and spacewar-c's `pdp1cc` compiles that to the image. Every unit has a binding: the generated C stands alone, and no file of spacewar-c's `lift/` takes part in the build (`build/lift` holds only the thirteen generated files).
+`tools/runsc.py` compiles the RUNS text in `runs/` to the original Spacewar! 3.1 tape image. Each file here binds one unit of `lift.toml`: it says how the PDP-1 carries the RUNS routines and fields of that unit. `runsc` emits the lift's C dialect from the RUNS text and the binding, and `tools/pdp1cc` compiles that to the image. Every unit has a binding: the generated C stands alone, and no file of `lift/` takes part in the build (`build/runs/lift` holds only the thirteen generated files).
 
 ## What a binding may say
 
@@ -16,7 +16,7 @@ A binding holds only choices that play cannot observe:
 
 A `[[place]]` with `fields` lays out those Record fields as data words, with their RUNS initial values. A `[[place]]` with `routine` compiles a Processor or a Network to one C function:
 
-- `convention`: `JDA`, `JSP`, `XCT`, as spacewar-c's dialect spells it (`tools/pdp1cc/include/pdp1.h`). An `[[inline]]` entry takes the same keys and binds a macro: the routine is laid out at each run, as a `static inline` function of each unit that runs it, whichever binding binds it.
+- `convention`: `JDA`, `JSP`, `XCT`, as the lift's dialect spells it (`tools/pdp1cc/include/pdp1.h`). An `[[inline]]` entry takes the same keys and binds a macro: the routine is laid out at each run, as a `static inline` function of each unit that runs it, whichever binding binds it.
 - `entry`: the field that is the JDA entry word, where the call leaves AC.
 - `ac_param`: the field that arrives in AC, for a routine with no entry word (`XCT`).
 - `byname`: the field that is the word after the call, executed each time it is read.
@@ -120,7 +120,7 @@ The keys that hold for a whole unit:
 
 A `[[place]]` may instead lay out words that the PDP-1 and its operator need and that no game rule reads. `runsc` knows each kind as the PDP-1 back end, the way it knows `jda`:
 
-- `machine = "sequence break"`: words 0-2, where a sequence break saves AC, PC and IO (not punched), and word 3, a jump to the flush. `machine = "sequence break flush"`: the flush, which resumes the interrupted program. Play never raises a sequence break (spacewar-c's README: the frame check never runs these words).
+- `machine = "sequence break"`: words 0-2, where a sequence break saves AC, PC and IO (not punched), and word 3, a jump to the flush. `machine = "sequence break flush"`: the flush, which resumes the interrupted program. Play never raises a sequence break (`docs/c-lift/README.md`: the frame check never runs these words).
 - `machine = "start vectors"`: a jump to each top Network at its start address, from `pdp1/devices.toml`.
 - `jsp_slot`: a JSP routine the operator may rewrite in place, laid out `at` an address. By default it jumps to `jump` and returns what that returns (`returns`: `ac` or `io`); `reserve` words of room follow it.
 - `machine = "constants"` and `machine = "variables"`: where the assembler lays out its literal constants and its pool words. `machine = "patch space"`: `reserve` words of room for the operator's patches (`p, . 200/`). No rule reads any of them as a place: a constant is a number of the RUNS text, and a pool word is a field.
@@ -151,7 +151,7 @@ Where play observes the layout, the RUNS text states the layout, and the binding
 
 A unit counts as ported when all of these pass:
 
-1. `uv run --project ../spacewar-c python tools/runsc.py` prints `MATCH`.
-2. `uv run --project ../spacewar-c python tools/check_compiled.py` passes.
+1. `uv run python tools/runsc.py` prints `MATCH`.
+2. `uv run python tools/check_compiled.py` passes.
 3. Each RUNS routine of the unit matches SIMH running the original, through the evaluator, over every input or a seeded random sample with the edge cases (`tools/check_*.py`).
 4. The checks of earlier units still pass (`tools/check_all.sh`).

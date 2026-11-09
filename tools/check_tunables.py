@@ -5,15 +5,15 @@ Each tunable the original executes with xct is a Processor over handoff.
 SIMH executes the word at its address with `xct`, AC and IO set; the
 evaluator sets the Processor's input fields to the same AC and IO, fires
 it, and its result fields must be AC (and IO) after the xct. Domains, as
-spacewar-c's check-tunables-reference.py: a scaler of AC over every word;
+check-tunables-reference.py: a scaler of AC over every word;
 a constant over 1000 seeded AC:IO pairs, since it reads neither; a scaler
 of the AC:IO pair over every pair of edge words and 100,000 seeded pairs.
 
 The tunables kept as numbers are the Record's initial values: each must be
 the word at its address in the oracle image.
 
-Run under spacewar-c's environment:
-  uv run --project ../spacewar-c python tools/check_tunables.py [N]"""
+Run from the repository root:
+  uv run python tools/check_tunables.py [N]"""
 from __future__ import annotations
 
 import sys

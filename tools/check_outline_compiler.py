@@ -2,7 +2,7 @@
 image's oc, word for word.
 
 1. One outline at a time: the needle and the wedge from the tape, and
-   synthetic outlines (after spacewar-c's check-outline-reference.py) that
+   synthetic outlines (after check-outline-reference.py) that
    use every direction code in every position of a word, reach the 7 code
    first, in the middle and last in a word, and after a store and after a
    restore. SIMH runs `jda oc` with the code space's start in AC and the
