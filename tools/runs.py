@@ -450,6 +450,7 @@ class Record:
     count: int | None
     fields: dict[str, tuple[str, object]]          # name: (type, initial expr)
     stream: bool = False
+    side: str | None = None                        # game, interface or presentation
 
 
 @dataclass
@@ -520,6 +521,9 @@ def initial(c: Line, count: int | None):
     return ("slots", [whole(v.toks, v.where) for v in c.children])
 
 
+SIDES = ("game", "interface", "presentation")
+
+
 def load(paths: list[Path]) -> Program:
     prog = Program()
     files = [lines(path) for path in paths]
@@ -527,6 +531,9 @@ def load(paths: list[Path]) -> Program:
     for path, file in zip(paths, files):
         for line in file:
             t, where = line.toks, line.where
+            side = None
+            if t[0] in SIDES and t[1:2] in (["record"], ["stream"]):
+                side, t = t[0], t[1:]
             kind = t[0]
             if kind == "type":
                 continue
@@ -535,7 +542,7 @@ def load(paths: list[Path]) -> Program:
             elif kind in ("record", "stream"):
                 count = as_count(int(t[3], 8) if t[3].startswith("0") else int(t[3])) if len(t) > 2 else None
                 fields = {c.toks[0]: (c.toks[2], initial(c, count)) for c in line.children}
-                prog.records[t[1]] = Record(t[1], count, fields, kind == "stream")
+                prog.records[t[1]] = Record(t[1], count, fields, kind == "stream", side)
             elif kind in ("processor", "network"):
                 r = Routine(kind, t[1], params_of(t), [])
                 body = []
@@ -1105,6 +1112,73 @@ def check_inputs(prog: Program, n: Routine, inside: set[str]) -> None:
         for rec in sorted(reads_of(r.body, unknown) - n.reads):
             raise RunsError(f"network {n.name}: {rec} comes in from outside the game ({r.name} reads it "
                             f"and it has fields with no initial value); declare reads: {rec}")
+
+
+def presentation_routines(prog: Program) -> set[str]:
+    """The presentation's routines: each Processor that touches a
+    presentation Record, and each Network that runs only those."""
+    side = {n: r.side for n, r in prog.records.items()}
+    out = {n for n, r in prog.routines.items()
+           if r.kind == "processor" and any(side.get(x) == "presentation" for x in r.reads | r.writes)}
+    while True:
+        more = {n for n, r in prog.routines.items()
+                if r.kind == "network" and n not in out and runs_of(r.body) and runs_of(r.body) <= out}
+        if not more:
+            return out
+        out |= more
+
+
+def check_sides(prog: Program) -> None:
+    """Each Record is the game's, the interface's, or the presentation's.
+    The presentation reads the interface and nothing of the game's, and
+    writes only its own Records. So the game's Records are the same with
+    the presentation removed, and a platform replaces it whole."""
+    side = {n: r.side for n, r in prog.records.items()}
+    if not any(side.values()):
+        return
+    missing = sorted(n for n, s in side.items() if s is None)
+    if missing:
+        raise RunsError(f"{missing[0]}: say whether it is a game, interface or presentation record")
+    of = lambda names, s: sorted(n for n in names if side.get(n) == s)
+    for r in prog.routines.values():
+        if r.kind != "processor":
+            continue
+        shown = of(r.reads | r.writes, "presentation")
+        if not shown:
+            continue
+        if game := of(r.reads | r.writes, "game"):
+            raise RunsError(f"processor {r.name}: touches the presentation's {shown[0]} and the game's {game[0]}; "
+                            f"split it, or give the game's value to an interface record")
+        if written := of(r.writes, "interface"):
+            raise RunsError(f"processor {r.name}: the presentation writes the interface record {written[0]}; "
+                            f"only the game and the world write it")
+    shown = presentation_routines(prog)
+    presentation = {n for n, s in side.items() if s == "presentation"}
+
+    def guarded(name: str, stmts: list):
+        for s in stmts:
+            op = s[0]
+            if op == "if":
+                guards, bodies = [c for c, _ in s[1]], [b for _, b in s[1]] + [s[2]]
+            elif op == "loop":
+                guards, bodies = [s[1]], [s[2]]
+            elif op == "for":
+                guards, bodies = [s[2], s[3]], [s[4]]
+            elif op == "match":
+                guards, bodies = [s[1]], list(s[2].values())
+            else:
+                continue
+            read = mentions(guards, presentation)
+            game = sorted(runs_of(bodies) - shown)
+            if read and game:
+                raise RunsError(f"network {name}: a guard reads the presentation's {sorted(read)[0]}, "
+                                f"and the game's {game[0]} runs under it")
+            for b in bodies:
+                guarded(name, b)
+
+    for r in prog.routines.values():
+        if r.kind == "network":
+            guarded(r.name, r.body)
 
 
 def check_contracts(prog: Program) -> None:
@@ -1696,6 +1770,7 @@ def check(prog: Program) -> Program:
             raise RunsError(f"{r.name} fires itself: a recursion is a stack Record and a bounded Network loop")
     check_types(prog)
     check_contracts(prog)
+    check_sides(prog)
     for rec in prog.records.values():
         for fld, (_, init) in rec.fields.items():
             if init is not None and init[0] == "slots" and len(init[1]) != rec.count:
