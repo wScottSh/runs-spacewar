@@ -42,6 +42,8 @@ MAX_INSN_SHIFT = 9                  # one shift instruction moves 0..9 places
 SHIFT_COUNT_FIELD = 0o777
 # A shift object's declarator: a shift, a pointer to one, an array of them, a function returning one.
 SHIFT, SHIFT_POINTER, SHIFT_ARRAY, SHIFT_FUNCTION = "shift", "shift*", "shift[]", "shift()"
+# A dword whose hi half is a shift, and a function that returns one.
+SHIFT_PAIR, SHIFT_PAIR_FUNCTION = "shift_pair", "shift_pair()"
 MACRO_SYMBOL = re.compile(r"[a-z][a-z0-9]{0,%d}" % (MACRO_SYMBOL_LEN - 1))
 
 
@@ -95,6 +97,8 @@ def _base_type(t: c_ast.Node) -> str | None:
 
 def _shift_declarator(t: c_ast.Node) -> str | None:
     """SHIFT, SHIFT_POINTER, SHIFT_ARRAY or SHIFT_FUNCTION for a declarator of a shift, else None."""
+    if _is_function(t) and _base_type(t.type) == SHIFT_PAIR:
+        return SHIFT_PAIR_FUNCTION
     kind = SHIFT_FUNCTION if _is_function(t) else \
         {c_ast.PtrDecl: SHIFT_POINTER, c_ast.ArrayDecl: SHIFT_ARRAY}.get(type(t))
     if kind is not None:
@@ -114,7 +118,17 @@ def _shifts(ast: c_ast.FileAST) -> dict[str, str]:
 
 
 def _is_shift_value(node: c_ast.Node, shifts: dict[str, str], sigs: dict[str, ir.Signature]) -> bool:
-    """A shift constructor, SHIFT_UNSET, a shift, or a call of a function returning one."""
+    """A shift constructor, SHIFT_UNSET, a shift, a call of a function
+    returning one, the shift a pointer to one points to (*p, *home(p)), or
+    the hi half of a shift_pair local."""
+    if isinstance(node, c_ast.StructRef) and node.field.name == "hi" and isinstance(node.name, c_ast.ID):
+        return shifts.get(node.name.name) == SHIFT_PAIR
+    if isinstance(node, c_ast.UnaryOp) and node.op == "*":
+        p = node.expr
+        if isinstance(p, c_ast.FuncCall) and isinstance(p.name, c_ast.ID) and p.name.name == "home" \
+                and p.args and len(p.args.exprs) == 1:
+            p = p.args.exprs[0]
+        return isinstance(p, c_ast.ID) and shifts.get(p.name) == SHIFT_POINTER
     if isinstance(node, c_ast.ID):
         return (node.name == SHIFT_UNSET and _builtin(node.name, sigs)) or shifts.get(node.name) == SHIFT
     if isinstance(node, c_ast.FuncCall) and isinstance(node.name, c_ast.ID):
@@ -125,9 +139,10 @@ def _is_shift_value(node: c_ast.Node, shifts: dict[str, str], sigs: dict[str, ir
 
 
 def _is_shift_storage(node: c_ast.Node, shifts: dict[str, str]) -> bool:
-    """A shift array, a pointer to a shift, or an address in a shift array."""
+    """A shift array, a pointer to a shift, or an address in a shift array
+    (`p + n` or `n + p`: the instruction order of the sum is free)."""
     if isinstance(node, c_ast.BinaryOp) and node.op == "+":
-        node = node.left
+        return _is_shift_storage(node.left, shifts) or _is_shift_storage(node.right, shifts)
     if isinstance(node, c_ast.UnaryOp) and node.op == "&" and isinstance(node.expr, c_ast.ArrayRef):
         node = node.expr.name
     return isinstance(node, c_ast.ID) and shifts.get(node.name) in (SHIFT_ARRAY, SHIFT_POINTER)
@@ -137,6 +152,12 @@ def _check_shift_store(target: str, kind: str | None, value: c_ast.Node, shifts:
                        sigs: dict[str, ir.Signature]) -> None:
     """Only a shift is stored where a shift is executed, and a pointer to a
     shift points into shifts."""
+    if kind in (SHIFT_PAIR, SHIFT_PAIR_FUNCTION):
+        call = value.name.name if isinstance(value, c_ast.FuncCall) and isinstance(value.name, c_ast.ID) else None
+        hi = value.init.exprs[0] if isinstance(value, c_ast.CompoundLiteral) and value.init.exprs else value
+        if not (shifts.get(call) == SHIFT_PAIR_FUNCTION or _is_shift_value(hi, shifts, sigs)):
+            raise _err(value, f"{target} is a shift_pair: its hi is a shift")
+        return
     if kind in (SHIFT, SHIFT_ARRAY, SHIFT_FUNCTION) and not _is_shift_value(value, shifts, sigs):
         raise _err(value, f"{target} holds a shift: store I_SCL(n), I_SCL_BITS(w & m), "
                           f"SHIFT_UNSET or another shift")
@@ -315,7 +336,8 @@ def _signature(decl: c_ast.Decl, namer: Namer, symbol: bool = True) -> ir.Signat
     if ir.ParamKind.AC in kinds and conv is ir.Conv.JSP:
         raise _err(decl, f"{decl.name}: a JSP function receives its return address in AC; "
                          "pass a register parameter")
-    returns = "word" if _base_type(ftype.type) == SHIFT else _word_type(ftype.type) or _base_type(ftype.type)
+    returns = "word" if _base_type(ftype.type) == SHIFT else \
+        "dword" if _base_type(ftype.type) == SHIFT_PAIR else _word_type(ftype.type) or _base_type(ftype.type)
     returns = "io" if returns == "io_word" else returns
     if returns not in ("word", "word*", "dword", "io", "void"):
         raise _err(decl, f"{decl.name}: returns word, a pointer to word, dword, io_word or void")
@@ -527,8 +549,8 @@ def _datum(ext: c_ast.Decl, sym: str, globals_: dict[str, ir.Storage],
     if _word_type(t) == "word*":
         value = _operand_of(ext.init, _Scope(globals_), sigs, arrays)
         return ir.Datum(sym, (value,), ext.name, _origin(ext))
-    if _base_type(t) != "word":
-        raise _err(ext, f"{ext.name}: only `word` objects, pointers and word arrays can be placed")
+    if _base_type(t) not in ("word", SHIFT):
+        raise _err(ext, f"{ext.name}: only `word` and `shift` objects, pointers and arrays can be placed")
     return ir.Datum(sym, (_data_value(ext.init, globals_, sigs, arrays),), ext.name, _origin(ext))
 
 
@@ -860,6 +882,12 @@ class _Lowerer:
         if "static" in node.storage or "extern" in node.storage:
             raise _err(node, f"{node.name}: static locals are not implemented yet")
         kind = _base_type(node.type)
+        if kind == SHIFT_PAIR:
+            # a pair whose hi is a shift: only a call of a function that returns one sets it
+            self.shifts = {**self.shifts, node.name: SHIFT_PAIR}
+            if node.init is not None:
+                _check_shift_store(node.name, SHIFT_PAIR, node.init, self.shifts, self.sigs)
+            kind = "dword"
         if kind == "dword":
             frame = self.scope.frames[-1]
             frame[node.name + ".hi"] = ir.Acc(node.name + ".hi")
@@ -883,6 +911,9 @@ class _Lowerer:
         target, through = node.lvalue, False
         while isinstance(target, c_ast.UnaryOp) and target.op in ("*", "p++"):
             target, through = target.expr, through or target.op == "*"
+        if isinstance(target, c_ast.ID) and self.shifts.get(target.name) == SHIFT_PAIR:
+            _check_shift_store(target.name, SHIFT_PAIR, node.rvalue, self.shifts, self.sigs)
+            return
         if not isinstance(target, c_ast.ID) or self._is_local(target.name):
             return
         kind = self.shifts.get(target.name)
@@ -1097,15 +1128,18 @@ class _Lowerer:
     def xct(self, node: c_ast.FuncCall, args: list[c_ast.Node]) -> ir.Xct:
         """xct(w, a) runs instruction word w on AC; xct(w, hi, lo) on AC:IO.
         w is an instruction constant, *home(p) for a HOMED pointer p (the
-        `xct .` that holds p), or a HOMED shift (the word itself, run in place)."""
+        `xct .` that holds p), a HOMED shift (the word itself, run in place),
+        or a shift placed as a data word (`xct x`)."""
         if len(args) not in (2, 3):
             raise _err(node, "xct(w, a) or xct(w, hi, lo)")
         w = self.expr(args[0])
         if not (isinstance(w, ir.Insn)
                 or (isinstance(w, ir.HomeLoad) and self.shifts.get(w.pointer.name) == SHIFT_POINTER)
-                or (isinstance(w, ir.Var) and isinstance(w.storage, ir.HomedInsn))):
+                or (isinstance(w, ir.Var) and isinstance(w.storage, ir.HomedInsn))
+                or (isinstance(w, ir.Var) and isinstance(w.storage, ir.Placed | ir.Extern)
+                    and self.shifts.get(w.name) == SHIFT)):
             raise _err(node, "xct runs a shift constructor, *home(p) for a pointer p to a shift, "
-                             "or a HOMED shift")
+                             "a HOMED shift, or a shift data word")
         lo = self.lvalue(args[2]) if len(args) == 3 else None
         if lo is not None and not (isinstance(lo, ir.Var) and isinstance(lo.storage, ir.Io)):
             raise _err(node, "xct(w, hi, lo): lo is a register local")

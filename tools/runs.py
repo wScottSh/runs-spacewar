@@ -1044,10 +1044,18 @@ class Scope:
             raise RunsError(f"{r.name} does not declare {'writes' if write else 'reads'}: {record}")
 
 
-def source() -> Path:
-    """The RUNS source to run: runs/, or RUNS_SOURCE when a check runs a variant."""
+def program_dir() -> Path:
+    """The program's directory: the repo's root (Spacewar), or RUNS_PROGRAM,
+    relative to the root, for another program (programs/minskytron)."""
     import os
-    return Path(os.environ.get("RUNS_SOURCE", Path(__file__).resolve().parents[1] / "runs"))
+    root = Path(__file__).resolve().parents[1]
+    return (root / os.environ.get("RUNS_PROGRAM", ".")).resolve()
+
+
+def source() -> Path:
+    """The RUNS source to run: the program's runs/, or RUNS_SOURCE when a check runs a variant."""
+    import os
+    return Path(os.environ.get("RUNS_SOURCE", program_dir() / "runs"))
 
 
 def mentions(tree, names: set[str]) -> set[str]:

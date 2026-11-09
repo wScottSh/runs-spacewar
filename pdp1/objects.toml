@@ -9,7 +9,7 @@ pool = ["explosion_cloud.particles"]
 # shift itself, built at run time where it runs (mi1).
 [homes]
 "explosion_cloud.spread" = "table"
-"explosion_cloud.scatter" = "built"
+"explosion_cloud.scatter" = "instruction"
 
 # The routine word: the calc routine's address, with the sign bit when the
 # object does not collide. The torpedo's is taken from a constant word

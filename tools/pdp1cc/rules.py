@@ -79,7 +79,8 @@ RULES: dict[str, str] = {
     "EX-DEREF": "*p for p a pointer in a memory word or a homed address field: the instruction "
                 "names p's cell with the indirect bit (lac i, add i, dac i, dzm i, dio i, lio i, isp i, idx i)",
     "EX-XCT": "xct(s, a) / xct(s, hi, lo): the argument in AC (and IO), then shift s run: `xct (s` for a "
-              "constructor, `p, xct .` for *home(p), the word itself for a HOMED shift",
+              "constructor, `p, xct .` for *home(p), the word itself for a HOMED shift, `xct x` for a "
+              "shift x placed as a data word",
     "CALL-INDIRECT": "p(...) through a pointer word p to a JSP function type: a register argument in IO, "
                      "then `jsp i p`; the result comes back in AC (and IO)",
     "SKIP-SLOT": "a call of a SKIPS function: `opr` after its inline words, the word it returns past "

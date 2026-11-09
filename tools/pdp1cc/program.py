@@ -133,8 +133,10 @@ def diagnose(got_lst: Path, want_lst: Path) -> list[str]:
     got, got_vars = listing(got_lst)
     want, want_vars = listing(want_lst)
     out = []
-    if got_vars != want_vars:
-        out.append(f"variables base MOVED: {want_vars:05o} -> {got_vars:05o} "
+    if want_vars is None and got_vars is None:
+        out.append("no variables (the program has no pool words)")
+    elif got_vars != want_vars:
+        out.append(f"variables base MOVED: {want_vars or 0:05o} -> {got_vars or 0:05o} "
                    "(literal occurrence count changed)")
     else:
         out.append(f"variables base unchanged ({want_vars:05o})")

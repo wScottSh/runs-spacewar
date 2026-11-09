@@ -93,7 +93,10 @@
  * pointer p to a shift (`p, xct .`), or a HOMED shift. A HOMED shift is
  * the instruction at its home, which is its xct: it runs where it stands,
  * `x = e` stores the whole word there, and its initializer is the word it
- * holds first. Only a shift is stored in a shift.
+ * holds first. A shift placed as a data word runs where xct names it
+ * (`xct x`). Only a shift is stored in a shift. A `shift_pair` is a dword
+ * whose hi half (AC) is a shift: a function that returns a shift in AC and
+ * a word in IO returns one, and its hi is a shift.
  * `switch ((int)w)` over cases 0..n is a jump table indexed by w; a value
  * outside 0..n is undefined, as on the machine. When w is a HOMED word the
  * switch is Duff's device: the switch is w's home, the jump into the cases,
@@ -116,6 +119,7 @@ typedef int word;
 typedef word insn;
 typedef word shift;
 typedef struct dword { word hi, lo; } dword;
+typedef struct shift_pair { word hi, lo; } shift_pair;
 #define JDA __attribute__((pdp1_jda))
 #define BLOCK __attribute__((pdp1_block))
 #define BYNAME __attribute__((pdp1_byname))
@@ -422,6 +426,8 @@ typedef word io_word;
 
 /* The AC:IO pair: hi is AC, lo is IO. */
 struct dword { word hi, lo; };
+/* An AC:IO pair whose AC half is a shift. */
+struct shift_pair { shift hi; word lo; };
 
 /* Single-register rotates: ral/rar on AC, ril/rir on IO. */
 static inline word ral(word a, int n) {

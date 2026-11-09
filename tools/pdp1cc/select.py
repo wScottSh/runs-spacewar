@@ -515,6 +515,8 @@ class FunctionLowerer:
                 items += [ir.LabelDef(sym),
                           W(None, "ST-HOMED-INSN", init, via=("EX-XCT",) + _via_operand(init),
                             note="run in place")]
+            case ir.Var() as v:
+                items.append(W("xct", "EX-XCT", mem(v), via=_via(v)))
         keeps_io = isinstance(x.insn, ir.Insn) and x.insn.op in AC_SHIFTS
         return items, State(frozenset(), st.io if keeps_io else frozenset())
 
