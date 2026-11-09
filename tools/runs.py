@@ -1754,7 +1754,7 @@ def name_of(typ) -> str:
     return {NUMBER: "a number", BOOL: "a condition", INSN: "an instruction"}[typ]
 
 
-def check(prog: Program) -> Program:
+def check(prog: Program, sides: bool = True) -> Program:
     """Everything the evaluator checks before anything runs: what each kind
     may say, the names each routine uses, the types of what it computes, and
     the contracts."""
@@ -1770,7 +1770,8 @@ def check(prog: Program) -> Program:
             raise RunsError(f"{r.name} fires itself: a recursion is a stack Record and a bounded Network loop")
     check_types(prog)
     check_contracts(prog)
-    check_sides(prog)
+    if sides:
+        check_sides(prog)
     for rec in prog.records.values():
         for fld, (_, init) in rec.fields.items():
             if init is not None and init[0] == "slots" and len(init[1]) != rec.count:

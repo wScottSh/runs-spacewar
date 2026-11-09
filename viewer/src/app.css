@@ -1,0 +1,57 @@
+.fields {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 8.6px;
+  text-anchor: middle;
+  fill: #3b4048;
+  pointer-events: none;
+}
+.runs-app {
+  display: grid;
+  grid-template-rows: 48px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-areas:
+    'top top'
+    'stage side';
+  height: 100%;
+}
+.runs-app .stage {
+  grid-area: stage;
+  position: relative;
+  min-height: 0;
+}
+.runs-side {
+  grid-area: side;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  padding: 14px 16px;
+  overflow: auto;
+  font-size: 13px;
+}
+.runs-side h2 {
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+.runs-side .kind {
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+.runs-side ul {
+  margin: 4px 0 12px;
+  padding-left: 18px;
+}
+.runs-side code {
+  font-size: 12px;
+}
+.runs-key li {
+  list-style: none;
+  margin-left: -18px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.runs-key .swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  display: inline-block;
+}
