@@ -72,6 +72,7 @@ network breakout(slot)                                      # hp3
     run hyperfield_recharge_time                            # hp7
     run recharge_hyperfield(slot)
     run next_random
-    if (random.number | 0400000) + ships.uncertainty[slot] >= 0:   # spa; jmp hp5
+    run weigh_breakout(slot)
+    if breakout_check.margin >= 0:                          # spa; jmp hp5
       run lost_in_hyperspace(slot)
       run show_breakout(slot)

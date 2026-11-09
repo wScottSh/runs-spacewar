@@ -327,6 +327,11 @@ record pen
   saved_x: word = 0         # ssa: where a 6 code stores the pen, and the next restores it
   saved_y: word = 0         # ssi
 
+# Whether a ship breaking out of hyperspace survives: the margin by which a
+# random number outweighs its uncertainty.
+game record breakout_check
+  margin: word = 0          # AC at hp5's spa
+
 # A new torpedo's slot: the first free one of the object table.
 record launch
   slot: word = 0            # sr1: kept in the search's cursor
