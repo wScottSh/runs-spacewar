@@ -9,12 +9,11 @@ processor read_test_word
 # A pick (gsh): the next three bits of the test word choose a count of the
 # table, 1 for 000 up to 8 for 111.
 processor pick_shift
-  reads: shift_start, shift_table
+  reads: shift_table
   writes: shift_pick
   let high = 0                                              # cla
   set (high, shift_pick.bits) = rcl(high, shift_pick.bits, 3)
-  let at = high + shift_start.place                         # add gsc; dap .+1
-  set shift_pick.count = shift_table.count[at]              # lac .
+  set shift_pick.count = shift_table.count[high]            # add gsc; dap .+1; lac .
 
 processor keep_ya
   reads: shift_pick

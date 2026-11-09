@@ -16,10 +16,6 @@ moves = "swap"
 "shifts.yc" = "instruction"
 "shifts.xc" = "instruction"
 
-# The picks start at the table's first count: gsc holds its address.
-[into]
-"shift_start.place" = "shift_table.count"
-
 [streams]
 display = "dpy"
 
@@ -36,11 +32,12 @@ routine = "pick_shift"
 convention = "JSP"
 io_param = "shift_pick.bits"
 result = ["shift_pick.count", "shift_pick.bits"]
-homes = { at = "pointer" }
-into = { at = "shift_table.count" }
+# The pick adds its index to gsc and reads the count through the sum.
+homes = { high = "pointer" }
 
+# gsc: the table's address.
 [[place]]
-fields = ["shift_start.place"]
+base = "shift_table.count"
 
 [[place]]
 slots = "shift_table.count"

@@ -117,8 +117,8 @@ The keys that hold for a whole unit:
 - A plain loop that ends the routine leaves it through its breaks: each is a return.
 - An initial value may be an expression of numbers (`8192 - 1537`, `371 << 8`); the word is its value.
 - A place just past a collection's last slot has an address too (`lio Q+2`).
-- A field the binding lays out as a data word that holds a place in a collection (`[into]`) holds that place's address on the tape (`gsc, gst`).
 - A local of a routine laid out once that is held in the address field of the instruction that reads through it (`homes`) is one word of the unit (`dap .+1 / lac .`).
+- A read of a collection by a slot index held in such a local (`homes`, no `[into]`) adds the index to the word of the collection's address and reads through the sum (`add gsc / dap .+1 / lac .`). A `[[place]]` with `base` lays that word out (`gsc, gst`). It is layout: the text holds the index, never the address.
 
 A `[[place]]` may instead lay out words that the PDP-1 and its operator need and that no game rule reads. `runsc` knows each kind as the PDP-1 back end, the way it knows `jda`:
 

@@ -1,3 +1,6 @@
 build/
 __pycache__/
 .venv/
+# macro1 output of the whole dpys5.mac, assembled only to compare words
+programs/minskytron/source/dpys5.lst
+programs/minskytron/source/dpys5.rim

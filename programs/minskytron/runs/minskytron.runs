@@ -24,10 +24,6 @@ game record shift_table[9]
     8
     9
 
-# Where the picks start: the place of the table's first count (gsc).
-game record shift_start
-  place: word = 0
-
 # What a pick carries from one to the next: the test word's bits not yet
 # picked, and the count just picked.
 game record shift_pick

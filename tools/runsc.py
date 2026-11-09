@@ -425,6 +425,7 @@ SCHEMA = {
     "exit": {"exit": _name},
     "table place": {"table": _TRUE},
     "shifts": {"shifts": _field},
+    "base": {"base": _field},
 }
 # The keys each must hold.
 REQUIRED = {"unit": {"replaces", "place"}, "routine": {"convention"}, "inline": {"routine"}, "code": {"routine"},
@@ -457,7 +458,7 @@ def check_schema(path: Path, spec: dict):
         for p in spec.get(section, []):
             kind = section if section != "place" else next(
                 (k for k in ("routine", "fields", "slots", "machine", "jsp_slot", "exit") if k in p),
-                "table place" if "table" in p else "shifts" if "shifts" in p else None)
+                "table place" if "table" in p else "shifts" if "shifts" in p else "base" if "base" in p else None)
             if kind is None:
                 raise BindError(f"{path.name}: a place is a routine, fields, slots or a machine word: {p}")
             check_keys(path, p, kind, f"[[{section}]] {p.get(kind if kind in p else 'routine', '')}")
@@ -509,6 +510,7 @@ class Bindings:
         self.carried: set[str] = set()          # code routines whose jump's word a walk carries
         self.into: dict[str, str] = {}          # field -> the collection's field it holds a place in
         self.pieces: dict[str, list] = {}       # collection field -> (first slot, last slot, C name) laid out
+        self.bases: dict[str, Path] = {}        # collection field -> the unit laying out a word of its address
         self.shared: dict[str, str] = {}        # field -> the field whose word it lives in
         self.compiled: list[tuple] = []         # (Function, its statements as run) of every routine compiled
         self.insns = {f"{r}.{f}" for r, rec in prog.records.items() for f, (typ, _) in rec.fields.items()
@@ -572,6 +574,9 @@ class Bindings:
                         raise BindError(f"{path.name}: slots {p['slots']} {p['range']}: slots of a collection")
                     self.pieces.setdefault(p["slots"], []).append((lo, hi, f"{self.c_name(p['slots'])}_{octal(lo)}"))
                     self.placed[p["slots"]] = path
+                if "base" in p:
+                    self.check_field(path, p["base"])
+                    self.bases[p["base"]] = path
         self.check_names()
 
     def device_file(self, path: Path | None):
@@ -1533,13 +1538,13 @@ class Unit:
                 for f in p["fields"]:
                     if self.binds.homes.get(f) == "instruction":
                         body.append(f"shift {self.binds.c_name(f)} = {self.shift_initial(f)};")
-                    elif f in self.binds.into and (e := self.initial_of(f)) is not None and e[0] == "num":
-                        into = self.binds.into[f]
-                        body.append(f"{self.word_type(into)} *{self.binds.c_name(f)} = {self.address(into, e[1])};")
                     else:
                         body.append(f"word {self.binds.c_name(f)} = {self.initial(f)};")
             elif "slots" in p:
                 body += self.slots(p)
+            elif "base" in p:
+                d = p["base"]
+                body.append(f"{self.word_type(d)} *{self.binds.c_name(d)}_base = {self.address(d, 0)};")
             elif "exit" in p:
                 head.append(f"BLOCK void {p['exit']}(void);")
                 body += [f"BLOCK void {p['exit']}(void)", "{", "}"]
@@ -1773,6 +1778,17 @@ class Function:
         holds its home), and through it everywhere else."""
         d, slot, may_home = dotted_of(e[1]), e[2], len(e) == 4
         cursors = None
+        if slot[0] == "name" and self.base(slot[1]) in self.b.homes and self.base(slot[1]) not in self.b.into:
+            # a slot by index, added to the word of the collection's address into
+            # the address field of the instruction that reads through it
+            if d not in self.binds.bases:
+                raise BindError(f"{self.b.name}: {slot[1]} indexes {d}: a place base = {d!r} lays out its address")
+            at = f"{slot[1]}_at"
+            if self.binds.bases[d] != self.unit.path:
+                raise BindError(f"{self.b.name}: the word of {d}'s address is laid out in another unit")
+            self.unit.homed_locals[at] = d
+            self.emit(self.depth, f"{at} = {slot[1]} + {self.binds.c_name(d)}_base;")
+            return f"*home({at})"
         if slot[0] == "name" and self.base(slot[1]) in self.b.homes:
             # a local held in the address field of the instruction that reads through it
             if self.b.into.get(self.base(slot[1])) != d:
