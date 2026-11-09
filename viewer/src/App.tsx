@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Canvas } from './canvas/Canvas'
 import type { Selection } from './canvas/edit'
 import type { Net } from './canvas/model'
-import { fieldLine, processorId, recordId, toCanvas, type RunsNet } from './layout'
+import { countLabel, fieldLine, processorId, recordId, toCanvas, type RunsNet } from './layout'
+import { PHONE_QUERY, PhoneLayout, useMediaQuery } from './Phone'
 
 const SOURCE = new URLSearchParams(location.search).get('net') ?? 'spacewar.json'
 
@@ -20,53 +21,79 @@ export function App() {
   const [selection, setSelection] = useState<Selection>(null)
   const [error, setError] = useState<string | null>(null)
   const [fitKey, setFitKey] = useState(0)
+  const phone = useMediaQuery(PHONE_QUERY)
   const loaded = net !== null
   useEffect(() => {
     if (loaded) requestAnimationFrame(() => setFitKey((k) => k + 1))
-  }, [loaded])
+  }, [loaded, phone])
 
   useEffect(() => {
     fetch(SOURCE)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${SOURCE}: ${r.status}`))))
-      .then((data: RunsNet) => {
-        setRuns(data)
-        setNet(toCanvas(data))
-      })
+      .then((data: RunsNet) => setRuns(data))
       .catch((e: Error) => setError(e.message))
   }, [])
+
+  useEffect(() => {
+    if (runs) setNet(toCanvas(runs, phone))
+  }, [runs, phone])
 
   const keep = (next: Net) => setNet((now) => (now && sameStructure(now, next) ? next : now))
 
   if (error) return <p style={{ padding: 20 }}>Could not load {error}. Run <code>npm run net</code> first.</p>
   if (!runs || !net) return null
+  const counts = `${runs.records.length} Records, ${runs.processors.length} Processors`
+  const canvas = (
+    <Canvas
+      net={net}
+      mode="edit"
+      selection={selection}
+      onSelect={setSelection}
+      onCommit={keep}
+      onCheckpoint={() => {}}
+      onLive={keep}
+      play={undefined}
+      fitKey={fitKey}
+      touch={phone}
+    />
+  )
+  if (phone) {
+    const id = selection && 'id' in selection ? selection.id : null
+    const [kind, name] = id ? id.split(':') : ['RUNS Network', runs.title]
+    return (
+      <PhoneLayout title={runs.title} counts={counts} canvas={canvas} eyebrow={kind} heading={name} reveal={id}>
+        <Side runs={runs} selection={selection} onSelect={setSelection} />
+      </PhoneLayout>
+    )
+  }
   return (
     <div className="runs-app">
       <header className="topbar">
         <strong>RUNS Network</strong>
         <span>{runs.title}</span>
-        <span className="muted">
-          {runs.records.length} Records, {runs.processors.length} Processors
-        </span>
+        <span className="muted">{counts}</span>
       </header>
-      <main className="stage">
-        <Canvas
-          net={net}
-          mode="edit"
-          selection={selection}
-          onSelect={setSelection}
-          onCommit={keep}
-          onCheckpoint={() => {}}
-          onLive={keep}
-          play={undefined}
-          fitKey={fitKey}
-        />
-      </main>
-      <Side runs={runs} selection={selection} />
+      <main className="stage">{canvas}</main>
+      <Side runs={runs} selection={selection} onSelect={setSelection} />
     </div>
   )
 }
 
-function Side({ runs, selection }: { runs: RunsNet; selection: Selection }) {
+function Side({ runs, selection, onSelect }: { runs: RunsNet; selection: Selection; onSelect: (s: Selection) => void }) {
+  const toRecord = (name: string) => (
+    <li key={name}>
+      <button className="runs-link" onClick={() => onSelect({ kind: 'state', id: recordId(name) })}>
+        {name}
+      </button>
+    </li>
+  )
+  const toProcessor = (name: string) => (
+    <li key={name}>
+      <button className="runs-link" onClick={() => onSelect({ kind: 'verb', id: processorId(name) })}>
+        {name}
+      </button>
+    </li>
+  )
   const byId = useMemo(
     () => ({
       records: new Map(runs.records.map((r) => [recordId(r.name), r])),
@@ -85,7 +112,7 @@ function Side({ runs, selection }: { runs: RunsNet; selection: Selection }) {
       <aside className="runs-side">
         <h2>
           {record.stream ? 'stream' : 'record'} {record.name}
-          {record.count ? `[${record.count}]` : ''}
+          {countLabel(record.count)}
         </h2>
         <p className="kind">{record.kind ? `${record.kind} record` : 'no kind yet'}</p>
         <strong>Fields</strong>
@@ -97,9 +124,9 @@ function Side({ runs, selection }: { runs: RunsNet; selection: Selection }) {
           ))}
         </ul>
         <strong>Written by</strong>
-        <ul>{users.filter((p) => p.writes.includes(record.name)).map((p) => <li key={p.name}>{p.name}</li>)}</ul>
+        <ul>{users.filter((p) => p.writes.includes(record.name)).map((p) => toProcessor(p.name))}</ul>
         <strong>Read by</strong>
-        <ul>{users.filter((p) => !p.writes.includes(record.name)).map((p) => <li key={p.name}>{p.name}</li>)}</ul>
+        <ul>{users.filter((p) => !p.writes.includes(record.name)).map((p) => toProcessor(p.name))}</ul>
       </aside>
     )
   }
@@ -112,9 +139,9 @@ function Side({ runs, selection }: { runs: RunsNet; selection: Selection }) {
           {processor.file ? ` · ${processor.file}.runs-prim` : ''}
         </p>
         <strong>Reads</strong>
-        <ul>{processor.reads.map((r) => <li key={r}>{r}</li>)}</ul>
+        <ul>{processor.reads.map(toRecord)}</ul>
         <strong>Writes</strong>
-        <ul>{processor.writes.map((r) => <li key={r}>{r}</li>)}</ul>
+        <ul>{processor.writes.map(toRecord)}</ul>
       </aside>
     )
   }

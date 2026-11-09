@@ -55,3 +55,32 @@
   border-radius: 3px;
   display: inline-block;
 }
+.phone-counts {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.phone-app .runs-side {
+  border-left: none;
+  padding: 4px 16px 24px;
+  font-size: 15px;
+}
+.phone-app .runs-side code {
+  font-size: 13px;
+}
+.phone-app .runs-side li {
+  padding: 3px 0;
+}
+.runs-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-align: left;
+}
+.phone-app .runs-link {
+  min-height: 32px;
+}

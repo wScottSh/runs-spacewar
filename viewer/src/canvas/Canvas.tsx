@@ -136,10 +136,29 @@ export function Canvas(props: Props) {
     const { width, height } = el.getBoundingClientRect()
     if (!box) return setView({ x: width / 2, y: height / 2, k: 1 })
     const b = inflate(box, 48)
+    // On a phone a tall net fits its width and starts at the top; the reader scrolls down it.
+    if (props.touch) {
+      const k = Math.min(width / (b.x1 - b.x0), 1.6)
+      return setView({ k, x: (width - (b.x1 - b.x0) * k) / 2 - b.x0 * k, y: -b.y0 * k })
+    }
     const k = Math.min(width / (b.x1 - b.x0), height / (b.y1 - b.y0), 1.6)
     setView({ k, x: (width - (b.x1 - b.x0) * k) / 2 - b.x0 * k, y: (height - (b.y1 - b.y0) * k) / 2 - b.y0 * k })
   }
   useLayoutEffect(fit, [props.fitKey])
+
+  // A node chosen from outside the canvas, such as a name in the details, is brought into view.
+  const chosen = selection && 'id' in selection ? selection.id : null
+  useEffect(() => {
+    const sh = chosen ? shapes.get(chosen) : undefined
+    const el = wrap.current
+    if (!sh || !el) return
+    const { width, height } = el.getBoundingClientRect()
+    const v = latest.current.view
+    const sx = sh.x * v.k + v.x
+    const sy = sh.y * v.k + v.y
+    if (sx > 40 && sx < width - 40 && sy > 40 && sy < height - 40) return
+    setView({ k: v.k, x: width / 2 - sh.x * v.k, y: height / 3 - sh.y * v.k })
+  }, [chosen])
 
   useEffect(() => {
     const el = svg.current!
