@@ -169,7 +169,7 @@ The hardest compile sites after it: the outline (logic kept as instructions in a
 
 ### Phases
 
-0. [ ] Scaffold and decide. (a) [x] `runs.without_presentation` and `check_frame.py N alone`: proven red on a copy with pen and display typed presentation (exhaust's fuel, the explosion's count and the random draws go with the drawing). [ ] The same mode in check_game. (b) [x] Anchors: a stream is presentation, so its emitters are; instructions in a Record and `jump` are impure in every program. (c) [ ] Bring the user a worked proposal for the Network's form: two or three ways to write one real unit (the explosion) as a Petri net, each compiled or shown why not.
+0. [ ] Scaffold and decide. (a) [x] `runs.without_presentation` and `check_frame.py N alone`: proven red on a copy with pen and display typed presentation (exhaust's fuel, the explosion's count and the random draws go with the drawing). [ ] The same mode in check_game. (b) [x] Anchors: a stream is presentation, so its emitters are; instructions in a Record and `jump` are impure in every program. (c) [x] The Network's form: settled. The order is stated in the text (each line break is a place passing the turn), guards only test, `run` passes only the slot. Derived order is impossible for an exact conversion (collision and calc both write objects; 294/300). breakout's guard converted, MATCH with runsc unchanged.
 1. [ ] Spike the outline in the settled form. At least two pure shapes (a walker over the outline codes; a presentation Record of expanded steps that a walker plots); for each, what runsc must emit for oc, the free-core layout and sp5. Bar: a rule a second PDP-1 program would use. Done when one shape compiles to MATCH with check_spaceship and check_frame passing, or the evidence that none can is in front of the user.
 2. [ ] Harden the compiler. Review runsc's rules for ones shaped by a single routine (pdp1/README.md, the open items of rounds 8-11) and fold them into general PDP-1 idioms, gated by check_compiled and MATCH. Done when every rule has a decisions row naming its idiom, or is gone.
 3. [ ] Give every Record a kind, splitting the mixed Records above. Data shape first: Record and field changes, the `reads:`/`writes:` they force, and the binding's lists (`pool`, `registers`, `[share]`); no change to what any Processor computes. Done when the report lists no Record without a kind.
@@ -178,6 +178,6 @@ The hardest compile sites after it: the outline (logic kept as instructions in a
 
 ### Decisions for the user
 
-- [ ] The Network's form (phase 0c brings the proposal).
-- [ ] `jump`: RUNS keeps it for machine glitches (play runs data as code). Spacewar has none, so its jump is impure here; confirm RUNS keeps `jump` for other games.
+- [x] The Network's form: settled (runs-spec README "The order is in the text"); the only form the constraints allow.
+- [x] `jump`: impure in every program; a general compiler emits code-as-data from pure RUNS.
 - [ ] The viewer lays the net out with its own grouping; it becomes a transcription once the Network's form is settled.

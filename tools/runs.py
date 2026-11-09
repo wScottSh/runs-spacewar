@@ -1184,7 +1184,68 @@ def impurities(prog: Program) -> list[str]:
     for r in prog.routines.values():
         if r.kind == "network":
             guarded(r.name, r.body)
+            for s in walk_statements(r.body):
+                guards = [c for c, _ in s[1]] if s[0] == "if" else [s[1]] if s[0] == "match" else []
+                if any(computes(g) for g in guards):
+                    out.append(f"network {r.name}: a guard computes ({s[-1].rsplit('/', 1)[-1]}); "
+                               f"a Processor computes the value into a Record and the guard tests it")
+                if s[0] == "run" and s[1] in prog.routines:
+                    for arg, param in zip(s[2], prog.routines[s[1]].params):
+                        if not label_only(prog, s[1], param, set()):
+                            out.append(f"network {r.name}: run {s[1]} passes {param} as a value "
+                                       f"({s[-1].rsplit('/', 1)[-1]}); a value goes through a Record")
     return out
+
+
+COMPARE = {"==", "!=", "<", "<=", ">", ">=", "and", "or"}
+
+
+def computes(e) -> bool:
+    """Whether a guard computes on a Record's value. Comparisons, and, or
+    and not only test; arithmetic inside a slot (which object) is a label."""
+    if not isinstance(e, tuple) or not e:
+        return False
+    op = e[0]
+    if op in ("name", "num", "field"):
+        return False
+    if op == "index":
+        return computes(e[1])
+    if op == "not":
+        return computes(e[1])
+    if op == "bin":
+        return e[1] not in COMPARE or computes(e[2]) or computes(e[3])
+    return True
+
+
+def label_only(prog: Program, routine: str, param: str, seen: set) -> bool:
+    """Whether a routine uses a parameter only to say which slot: inside a
+    collection's index, a requires:, a loop's bounds, or passed on to a
+    routine that uses it the same way."""
+    if (routine, param) in seen:
+        return True
+    seen.add((routine, param))
+    r = prog.routines[routine]
+
+    def uses(tree, as_label: bool) -> bool:
+        if isinstance(tree, tuple) and tree:
+            if tree == ("name", param):
+                return as_label
+            if tree[0] == "index":
+                return uses(tree[1], as_label) and uses(tree[2], True)
+            if tree[0] == "run" and tree[1] in prog.routines:
+                callee = prog.routines[tree[1]].params
+                return all(not mentions(a, {param}) or label_only(prog, tree[1], p, seen)
+                           for a, p in zip(tree[2], callee))
+            if tree[0] == "for":
+                return uses(tree[2], True) and uses(tree[3], True) and uses(tree[4], as_label)
+            return all(uses(x, as_label) for x in tree[1:])
+        if isinstance(tree, list):
+            return all(uses(x, as_label) for x in tree)
+        if isinstance(tree, dict):
+            return all(uses(x, as_label) for x in tree.values())
+        return True
+
+    return uses(r.body, False)
 
 
 def without_presentation(prog: Program) -> Program:

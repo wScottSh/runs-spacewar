@@ -18,7 +18,7 @@ Five requirements follow from that purpose:
 
 - **A Record** is anything the game remembers. Examples are the object table, the random number, the frame's time budget, and the tunables. There is no separate category for global data. A Record holds one value or a fixed-size collection.
 - **A Processor** is one rule. It declares the Records it reads and the Records it writes. Inside its body it may compute freely, including updating those Records in place. Purity holds at the boundary: what the Processor does is a function of what it declares.
-- **A Network** is the game's skeleton. It fires Processors and sub-Networks in order, chooses with guards, and iterates with bounds. It writes nothing. A guard is any expression over Records that writes nothing, arithmetic included, in the Records' own types. Each value the Network moves between Processors goes through a Record.
+- **A Network** is the game's skeleton. It fires Processors and sub-Networks in order, chooses with guards, and iterates with bounds. It writes nothing. A guard only tests values that Records hold and computes nothing on them; a condition that needs arithmetic is a Processor writing a Record, which the guard tests. A `run` passes only which slot. The Network states the original's order, because the Records cannot: `collision` and the calc routines all write the object table, and their order changes 294 of 300 frames. Each value the Network moves between Processors goes through a Record.
 
 Every Record is one of three kinds: the game's, the interface's, or the presentation's. A Processor touches the game and the interface, or the presentation and the interface, never the game and the presentation. [Game, interface, and presentation](#game-interface-and-presentation) says why.
 

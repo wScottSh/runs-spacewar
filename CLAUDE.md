@@ -7,7 +7,7 @@ This repo converts Spacewar! 3.1 into **pure** RUNS. The conversion is a reorgan
 - A **Record** holds data and nothing else: named fields with values. A Record that holds instructions the game runs (`insn`, `jump`) holds logic and is impure.
 - A **Processor** holds no state. It takes values from the Records it declares and gives values to the Records it declares.
 - Every Record is a `game`, `interface`, or `presentation` Record. A Processor touches game and interface Records, or presentation and interface Records. Removing every presentation Processor leaves the game's Records the same at every step.
-- The **Network** is one net: the game's Petri net, Records as places and Processors as transitions. Its form in the text is not settled yet (`todo.md`, Round 12); until it is, write order the way the current network blocks do.
+- The **Network** is one net: the game's Petri net, Records as places and Processors as transitions. It states the original's order, one line after another, and each line break is a place that passes the turn. A guard only tests values Records hold; a value it needs is computed by a Processor into a Record first. A `run` passes only which slot. (`../runs-spec/README.md`, "The order is in the text".)
 
 `INTENT.md` holds the model and the reasons; read its first two sections before you design anything.
 
