@@ -1128,17 +1128,15 @@ def presentation_routines(prog: Program) -> set[str]:
         out |= more
 
 
-def check_sides(prog: Program) -> None:
-    """Each Record is the game's, the interface's, or the presentation's.
-    The presentation reads the interface and nothing of the game's, and
-    writes only its own Records. So the game's Records are the same with
-    the presentation removed, and a platform replaces it whole."""
+def impurities(prog: Program) -> list[str]:
+    """Every place the text is not yet pure. Each Record is the game's, the
+    interface's, or the presentation's. The presentation reads the interface
+    and nothing of the game's, and writes only its own Records, so the game's
+    Records are the same with the presentation removed and a platform
+    replaces it whole."""
     side = {n: r.side for n, r in prog.records.items()}
-    if not any(side.values()):
-        return
-    missing = sorted(n for n, s in side.items() if s is None)
-    if missing:
-        raise RunsError(f"{missing[0]}: say whether it is a game, interface or presentation record")
+    out = [f"{n}: say whether it is a game, interface or presentation record"
+           for n, s in side.items() if s is None]
     of = lambda names, s: sorted(n for n in names if side.get(n) == s)
     for r in prog.routines.values():
         if r.kind != "processor":
@@ -1147,11 +1145,11 @@ def check_sides(prog: Program) -> None:
         if not shown:
             continue
         if game := of(r.reads | r.writes, "game"):
-            raise RunsError(f"processor {r.name}: touches the presentation's {shown[0]} and the game's {game[0]}; "
-                            f"split it, or give the game's value to an interface record")
+            out.append(f"processor {r.name}: touches the presentation's {shown[0]} and the game's {game[0]}; "
+                       f"split it, or give the game's value to an interface record")
         if written := of(r.writes, "interface"):
-            raise RunsError(f"processor {r.name}: the presentation writes the interface record {written[0]}; "
-                            f"only the game and the world write it")
+            out.append(f"processor {r.name}: the presentation writes the interface record {written[0]}; "
+                       f"only the game and the world write it")
     shown = presentation_routines(prog)
     presentation = {n for n, s in side.items() if s == "presentation"}
 
@@ -1171,14 +1169,24 @@ def check_sides(prog: Program) -> None:
             read = mentions(guards, presentation)
             game = sorted(runs_of(bodies) - shown)
             if read and game:
-                raise RunsError(f"network {name}: a guard reads the presentation's {sorted(read)[0]}, "
-                                f"and the game's {game[0]} runs under it")
+                out.append(f"network {name}: a guard reads the presentation's {sorted(read)[0]}, "
+                           f"and the game's {game[0]} runs under it")
             for b in bodies:
                 guarded(name, b)
 
     for r in prog.routines.values():
         if r.kind == "network":
             guarded(r.name, r.body)
+    return out
+
+
+def check_sides(prog: Program) -> None:
+    """A program whose Records all have kinds is pure, or it is an error.
+    The Spacewar conversion gives its Records kinds as it purifies them;
+    tools/check_purity.py reports what is left until every one has a kind."""
+    if all(r.side for r in prog.records.values()):
+        if found := impurities(prog):
+            raise RunsError(found[0])
 
 
 def check_contracts(prog: Program) -> None:

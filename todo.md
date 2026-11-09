@@ -134,3 +134,50 @@ Predicate: runsc MATCH 8744e9c9; reviewer C's harnesses (hC_gen, hC_gen2, hC_dec
 - [x] Evaluator: a bound that fails to evaluate stops the firing at the bound
 - [ ] Open: runs-spec's check_examples fails two examples under the stricter checks (DIGS #8 now rejected for its ordering compare; NETWORK_TOPOLOGY's size_cloud never reads its slot); runs-spec is outside this round
 - [ ] Open: audit's latent miscompiles (with_operand vs rotated_operand; held guards) have no MATCH mutant; no rule makes them sound by construction
+
+## Round 12 (figure-it-out): convert Spacewar into pure RUNS
+
+Standing orders: `CLAUDE.md`. Decision trail: `docs/decisions.tsv`, phase `pure-*`.
+
+Playbook (figure-it-out), verbatim:
+- [x] Read the Principles section of the poteto-mode skill.
+- [x] Phase A: Frame. Definition of done as a falsifiable predicate; scope quantified; rigor level.
+- [x] Phase B: Design the workflow. Atomic units, riskiest unknown first, verification harness before the work.
+- [ ] Phase C: Run the loop. Each unit an experiment: hypothesis, smallest change, measure against the predicate, keep or revert.
+- [ ] Phase D: Keep the audit trail (show-me-your-work): a decisions.tsv row as each step lands.
+- [ ] Phase E: Verify and hand back against the predicate, on the real product.
+
+### Predicate (done)
+
+Every Record of `runs/` has a kind; `tools/check_purity.py` reports 0 (so `runs.check` enforces the kind rules on Spacewar, with no exception left); the Network is in the form settled below; `runsc` prints MATCH 8744e9c9; `tools/check_all.sh` passes; `tools/check_game_alone.py` (to build, phase 0) shows the game with every presentation Processor removed matching SIMH on every game Record in check_frame's and check_game's cases, and the display stream empty.
+
+### Scope (measured 2026-11-09)
+
+31 Records, 133 Processors, 30 network blocks. Purity report at the start: 37 = 31 Records with no kind + 6 items of code kept as data (outline_code.insn, outline_compiler.start_over and .to_other_side, handoff.swap and .pending, draw_outline's jump). Giving the Records kinds will reveal the Processors that touch game and presentation Records; `--against` allows exactly those new lines.
+
+Mixed Records to split before they can take one kind: `ships` (outline is presentation), `frame` (spare_time is pacing), `tunables` (separate_outlines is the outline's), `handoff` (26 register carries of every concern, bound as one register Record in main_loop.toml), `spaceship` (game values and the flame count beside each other).
+
+### Rigor: high
+
+Every commit keeps MATCH and check_all; `check_purity.py --against HEAD` passes; a compiler change is a rule a second PDP-1 program would use, with a row naming the idiom; a new check is proven by a planted defect.
+
+### The riskiest part: the Network's form
+
+What the Network is in the text decides the shape of every unit and what the compiler compiles. The EGS overview says a Network wires Records to Processors and that execution order "follows from" the declared data flow ("derived, not authored"). Today's text authors the order in 30 imperative network blocks whose guards compute (`breakout`'s `(random.number | 0400000) + ships.uncertainty[slot] >= 0`) and whose runs pass values as arguments (`run collision(slot, other)`, `run lay_out(stf(5))`), so some logic and some values sit outside Records and Processors. Spacewar's order is a rule of the game (294 of 300 frames change without it), so a Petri form must carry that order in places and tokens and still compile to the original code. Converting units before this is settled means converting them twice. It is the user's call (a spec decision), so phase 0 brings a worked proposal; until the answer lands, only work that survives either answer proceeds (the game-alone check, the compiler audit).
+
+The hardest compile sites after it: the outline (logic kept as instructions in a Record; the image holds the outline compiler and the jump into its output, so a pure walker must compile to "compile at each new game, jump each frame" under a rule a second PDP-1 program would use), and `handoff` (splitting its carries by kind means several Records sharing one register, which touches every unit).
+
+### Phases
+
+0. [ ] Scaffold and decide. (a) Build `tools/check_game_alone.py`: the evaluator with every presentation Processor and its runs removed, against SIMH on game Records, display stream empty; prove it with a planted defect. (b) Anchor kinds to observation: a Processor that emits to `display` or runs `jump` is presentation, whatever its Records are labelled; add it to `impurities`. (c) Bring the user a worked proposal for the Network's form: two or three ways to write one real unit (the explosion) as a Petri net, each compiled or shown why not.
+1. [ ] Spike the outline in the settled form. At least two pure shapes (a walker over the outline codes; a presentation Record of expanded steps that a walker plots); for each, what runsc must emit for oc, the free-core layout and sp5. Bar: a rule a second PDP-1 program would use. Done when one shape compiles to MATCH with check_spaceship and check_frame passing, or the evidence that none can is in front of the user.
+2. [ ] Harden the compiler. Review runsc's rules for ones shaped by a single routine (pdp1/README.md, the open items of rounds 8-11) and fold them into general PDP-1 idioms, gated by check_compiled and MATCH. Done when every rule has a decisions row naming its idiom, or is gone.
+3. [ ] Give every Record a kind, splitting the mixed Records above. Data shape first: Record and field changes, the `reads:`/`writes:` they force, and the binding's lists (`pool`, `registers`, `[share]`); no change to what any Processor computes. Done when the report lists no Record without a kind.
+4. [ ] Convert interaction by interaction, from the report: exhaust, explosion dots, central star, spaceship outline aim, planetarium, spare-time pacing, the handoff carries, the scores and lights. Each per CLAUDE.md's steps. Done when the report reads 0.
+5. [ ] Close: check_game_alone in check_all; spec and INTENT match what was done; the viewer redrawn as a transcription of the pure text; independent review.
+
+### Decisions for the user
+
+- [ ] The Network's form (phase 0c brings the proposal).
+- [ ] `jump`: RUNS keeps it for machine glitches (play runs data as code). Spacewar has none, so its jump is impure here; confirm RUNS keeps `jump` for other games.
+- [ ] The viewer lays the net out with its own grouping; it becomes a transcription once the Network's form is settled.
