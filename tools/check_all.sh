@@ -20,3 +20,6 @@ PYTHONPATH=tools uv run -q python "$here/check_frame.py" 300 | grep -v fired
 PYTHONPATH=tools uv run -q python "$here/check_frame.py" 300 poison | grep -v fired
 PYTHONPATH=tools uv run -q python "$here/check_frame.py" 300 alone | grep -v fired
 PYTHONPATH=tools uv run -q python "$here/check_game.py" 3000 3000
+# The second program: the same compiler builds Minskytron's image, and its RUNS plots the original's points.
+RUNS_PROGRAM=programs/minskytron uv run -q python "$here/runsc.py" | tail -1
+PYTHONPATH=tools uv run -q python "$here/check_minskytron.py" | tail -1
