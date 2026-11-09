@@ -1,6 +1,6 @@
 """Where play reaches the machine, as the oracle shows it.
 
-SIMH runs the oracle image through spacewar-c's scripted matches (the
+SIMH runs the oracle image through the lift's scripted matches (the
 scenarios of check-main-loop-frames.py: real play from the start address,
 a control policy on the test word, every sense switch setting, the full
 object table). CPU history records each instruction with its effective
@@ -38,7 +38,7 @@ the AC that SIMH shows after the instruction.
 The report is a list of candidates. Which of them the game's behavior
 depends on, the RUNS port and its checks decide.
 
-Usage, from spacewar-c: uv run python ../RUNS-Spacewar/tools/reach_oracle.py [--stops N]"""
+Usage: uv run python tools/reach_oracle.py [--stops N]"""
 from __future__ import annotations
 
 import argparse
@@ -54,7 +54,7 @@ from dataclasses import dataclass, field
 import pdp1
 import runs
 
-spec = importlib.util.spec_from_file_location("frames", pdp1.SPACEWAR_C / "tools/check-main-loop-frames.py")
+spec = importlib.util.spec_from_file_location("frames", pdp1.ROOT / "tools/check-main-loop-frames.py")
 frames = importlib.util.module_from_spec(spec)
 sys.modules["frames"] = frames
 spec.loader.exec_module(frames)
@@ -110,7 +110,7 @@ class Places:
 
     def __init__(self, oracle):
         sym = oracle.symbols
-        text = (pdp1.SPACEWAR_C / "build/oracle.lst").read_text(errors="replace")
+        text = (pdp1.ROOT / "build/oracle.lst").read_text(errors="replace")
         variables = {sym[v]: v for v in set(VARIABLE.findall(text)) if v in sym}
         labels = {a: frames.LABEL.match(w.text).group(1).split(",")[0].strip()
                   for a, w in oracle.words.items() if not w.literal and frames.LABEL.match(w.text)}

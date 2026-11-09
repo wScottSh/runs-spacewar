@@ -2,14 +2,14 @@
 against SIMH running dvd and idv in the oracle image.
 
 Inputs: every (high dividend, divisor) pair of edge values (0, -0, +-max,
-+-1, +-powers of two) with five low dividends, the inputs of RUNS-Spacewar's
++-1, +-powers of two) with five low dividends, the inputs of the
 observed dvd and idv vectors, and N seeded random triples (N defaults to
 100000), about half of them overflowing. Compared per call: AC, IO, the
 routine's own words (dvd, idv), and where it returned: past the divisor, or
 one word further when the quotient fits.
 
-Run under spacewar-c's environment:
-  uv run --project ../spacewar-c python tools/check_divide.py [N]"""
+Run from the repository root:
+  uv run python tools/check_divide.py [N]"""
 from __future__ import annotations
 
 import json

@@ -1,5 +1,5 @@
 """The square_root Processor of arithmetic.runs-prim against every input the
-original routine was run on in SIMH (RUNS-Spacewar's observed sqt vectors:
+original routine was run on in SIMH (the observed sqt vectors:
 all 65,536 inputs). Each input goes into the routine's entry word, and the
 result is read from sq2."""
 import json

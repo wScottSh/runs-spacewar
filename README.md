@@ -9,14 +9,23 @@ Spacewar! 3.1 (MIT, 1962) written in RUNS, verbatim: the exact game over every s
 - `runs/` is the game. Records and Networks are in `*.runs`, Processors in `*.runs-prim`.
 - `pdp1/` is the PDP-1 binding: how the PDP-1 carries the RUNS text. It holds only choices that play cannot observe. `pdp1/README.md` states the contract.
 - `tools/runs.py` is the reference evaluator. It parses RUNS, checks it, and runs it.
-- `tools/runsc.py` compiles the RUNS text and the binding back to the original tape image, byte for byte. It emits the C dialect of [spacewar-c](https://github.com/wScottSh/spacewar-c), and spacewar-c's `pdp1cc` compiles that.
+- `tools/runsc.py` compiles the RUNS text and the binding back to the original tape image, byte for byte. It emits the lift's C dialect, and `tools/pdp1cc` compiles that.
 - `tools/check_*.py` compare each RUNS routine, run by the evaluator, with the original running in the SIMH PDP-1 simulator.
 - `tools/check_compiled.py` changes the RUNS text and the binding one edit at a time. Each edit must change the image, be refused, or be shown to leave the game the same.
+- `lift/` is the C lift: Spacewar hand-lifted into a C dialect that `tools/pdp1cc` compiles to the original image. RUNS now generates every unit of it, so `lift/` is the reference the checks and notes cite. `docs/c-lift/README.md` describes it, and `tools/check-*-reference.py`, `tests/` and `ref/` are its checks.
 - `oracle/` holds input and output vectors recorded from the original, which some checks read. `source/` is the original listing and Norbert Landsteiner's "Inside Spacewar!" notes.
 
 ## Run the checks
 
-Put spacewar-c beside this repository and build its oracle and SIMH as its README says. Then run:
+You need Linux, `gcc`, `g++`, `git`, and [`uv`](https://docs.astral.sh/uv/). Build the oracle and the SIMH PDP-1 simulator once:
+
+```sh
+tools/oracle.sh
+git clone --depth 1 https://github.com/open-simh/simh.git /tmp/simh
+tools/build-simh.sh /tmp/simh
+```
+
+Then run:
 
 ```sh
 tools/check_all.sh

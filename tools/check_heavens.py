@@ -1,6 +1,6 @@
 """The heavens of heavens.runs against SIMH running the oracle image: the
 Networks central_star (blp) and expensive_planetarium (bck), called as the
-main loop calls them (jsp), after spacewar-c's check-heavens-reference.py.
+main loop calls them (jsp), after check-heavens-reference.py.
 
 - The central star: calls from random numbers in a row and from a random
   number set first, with the sense switches varied. After each call: the

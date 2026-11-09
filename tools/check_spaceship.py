@@ -41,7 +41,7 @@ from pdp1cc.gate import corpus, simh
 from pdp1cc.gate.simh import Inputs, STUB, CALL
 from oracle_check import built_listing
 
-spec = importlib.util.spec_from_file_location("shipref", pdp1.SPACEWAR_C / "tools/check-spaceship-reference.py")
+spec = importlib.util.spec_from_file_location("shipref", pdp1.ROOT / "tools/check-spaceship-reference.py")
 shipref = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(shipref)
 

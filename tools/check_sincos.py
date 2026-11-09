@@ -4,11 +4,11 @@ the documented -2 pi .. 2 pi), or a seeded sample of N words with the edges
 (0, -0, +-max, +-1, +-powers of two, +-pi/2, +-2 pi).
 
 Compared per call: AC, the routine's own words (sin, cos) and multiply's
-(mpy, mp2), and where it returned. AC is also compared with RUNS-Spacewar's
+(mpy, mp2), and where it returned. AC is also compared with the
 observed sin and cos vectors, which cover every word.
 
-Run under spacewar-c's environment:
-  uv run --project ../spacewar-c python tools/check_sincos.py [N]"""
+Run from the repository root:
+  uv run python tools/check_sincos.py [N]"""
 from __future__ import annotations
 
 import json

@@ -10,5 +10,5 @@ cp -r "$here/runs/." "$tmp/"
 sed -i "$expr" "$tmp/$file"
 if cmp -s "$here/runs/$file" "$tmp/$file"; then echo "mutation did not apply"; exit 2; fi
 diff "$here/runs/$file" "$tmp/$file" || true
-cd "$here/../spacewar-c"
+cd "$here"
 RUNS_SOURCE="$tmp" uv run python "$here/tools/$check" "$@"

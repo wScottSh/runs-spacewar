@@ -18,13 +18,12 @@ from pathlib import Path
 import runs
 
 ROOT = Path(__file__).resolve().parents[1]
-SPACEWAR_C = ROOT.parent / "spacewar-c"
-sys.path.insert(0, str(SPACEWAR_C / "tools"))
+sys.path.insert(0, str(ROOT / "tools"))
 
 from oracle_check import oracle_symbols  # noqa: E402
 
-SIMH = SPACEWAR_C / "build/pdp1"
-ORACLE = SPACEWAR_C / "build/oracle.rim"
+SIMH = ROOT / "build/pdp1"
+ORACLE = ROOT / "build/oracle.rim"
 
 # Record field: the Macro symbol of its first word (a collection's array).
 FIELDS = {

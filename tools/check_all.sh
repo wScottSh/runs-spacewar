@@ -3,7 +3,7 @@
 # and each RUNS routine against SIMH running the original. Run from anywhere.
 set -eo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-cd "$here/../../spacewar-c"
+cd "$here/.."
 uv run -q python "$here/runsc.py" | tail -1
 uv run -q python "$here/check_compiled.py" --sample 8000 | tail -1     # the full gate (about 20 minutes) runs by hand
 PYTHONPATH=tools uv run -q python "$here/check_square_root.py"

@@ -2,13 +2,13 @@
 arithmetic.runs-prim against SIMH running mpy and imp in the oracle image.
 
 Inputs: every pair of edge values (0, -0, +-max, +-1, +-powers of two), the
-nine pairs of RUNS-Spacewar's observed mpy and imp vectors, and N seeded
+nine pairs of the observed mpy and imp vectors, and N seeded
 random pairs (N defaults to 100000), with random IO on entry. Compared per
 call: the result registers, the routine's own words (mpy, mp2, imp), and
 where the routine returned (one word past the call, past the second factor).
 
-Run under spacewar-c's environment:
-  uv run --project ../spacewar-c python tools/check_multiply.py [N]"""
+Run from the repository root:
+  uv run python tools/check_multiply.py [N]"""
 from __future__ import annotations
 
 import json

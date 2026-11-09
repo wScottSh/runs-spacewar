@@ -1,4 +1,6 @@
-# spacewar-c
+# The C lift
+
+This was the spacewar-c repository, merged here with its history. Its paths are the repository root's: run every command below from the root.
 
 Spacewar! 3.1 (MIT, 1962), lifted from PDP-1 assembly into readable C that compiles back to the original binary, byte for byte.
 
@@ -23,7 +25,7 @@ That is the integer square root routine (`lift/square_root.c`, the source's `sqt
 
 The lift is complete. `pdp1cc build` compiles the C in `lift/` into the whole image: all 2514 words come from compiled C, and no line of the original assembly takes part. The original source stays in the repository only as the input of the oracle build.
 
-Milestones are listed in [the lift playbook](docs/lift-playbook.md). Decisions and their evidence are logged in [`docs/decisions.tsv`](docs/decisions.tsv). The design, and every place the code departs from it, is in the [rationale](docs/design/candidate-3/rationale.md) under "Implementation reconciliation".
+Milestones are listed in [the lift playbook](lift-playbook.md). Decisions and their evidence are logged in [`docs/c-lift/decisions.tsv`](decisions.tsv). The design, and every place the code departs from it, is in the [rationale](design/candidate-3/rationale.md) under "Implementation reconciliation".
 
 ## How the lift works
 
@@ -117,7 +119,7 @@ You need Linux, `gcc`, `g++`, `git`, and [`uv`](https://docs.astral.sh/uv/).
 - `tests/corpus/` has the non-Spacewar test programs.
 - `tools/` also has the oracle build, the SIMH build, and the check scripts. `tools/macro1.c` is the assembler source.
 - `ref/` has the SIMH PDP-1 CPU source, the reference for instruction semantics.
-- `docs/` has the design: [grounding](docs/grounding.md), [synthesis](docs/design/synthesis.md), the three design candidates, and the [lift playbook](docs/lift-playbook.md).
+- `docs/c-lift/` has the design: [grounding](grounding.md), [synthesis](design/synthesis.md), the three design candidates, and the [lift playbook](lift-playbook.md).
 
 ## Sources and credits
 

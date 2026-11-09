@@ -83,7 +83,7 @@ The reference implementation of RUNS. It checks the RUNS text statically, then r
 _Avoid_: interpreter, emulator
 
 **Compiler**:
-`runsc`. It turns the RUNS text and the Binding into the Compiled image, by way of spacewar-c's C dialect.
+`runsc`. It turns the RUNS text and the Binding into the Compiled image, by way of the lift's C dialect (`docs/c-lift/README.md`).
 _Avoid_: assembler, transpiler
 
 **Binding**:
