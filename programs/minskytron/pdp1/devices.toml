@@ -1,0 +1,9 @@
+# The PDP-1's devices for the Minskytron: lat reads the test word switches
+# into AC, and the operator starts the machine at 500.
+[console]
+"console.test_word" = "lat"
+
+[[start]]
+at = 0o500
+network = "minskytron"
+tape = true

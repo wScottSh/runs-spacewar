@@ -1,0 +1,93 @@
+# The Processors the Minskytron's Networks fire.
+
+# The test word's bits, to be picked three at a time from the left.
+processor read_test_word
+  reads: console
+  writes: shift_pick
+  set shift_pick.bits = console.test_word
+
+# A pick (gsh): the next three bits of the test word choose a count of the
+# table, 1 for 000 up to 8 for 111.
+processor pick_shift
+  reads: shift_start, shift_table
+  writes: shift_pick
+  let high = 0                                              # cla
+  set (high, shift_pick.bits) = rcl(high, shift_pick.bits, 3)
+  let at = high + shift_start.place                         # add gsc; dap .+1
+  set shift_pick.count = shift_table.count[at]              # lac .
+
+processor keep_ya
+  reads: shift_pick
+  writes: shifts
+  set shifts.ya = shift_pick.count
+
+processor keep_xa
+  reads: shift_pick
+  writes: shifts
+  set shifts.xa = shift_pick.count
+
+processor keep_yb
+  reads: shift_pick
+  writes: shifts
+  set shifts.yb = shift_pick.count
+
+processor keep_xb
+  reads: shift_pick
+  writes: shifts
+  set shifts.xb = shift_pick.count
+
+processor keep_yc
+  reads: shift_pick
+  writes: shifts
+  set shifts.yc = shift_pick.count
+
+processor keep_xc
+  reads: shift_pick
+  writes: shifts
+  set shifts.xc = shift_pick.count
+
+processor start_points                                      # m2
+  reads: start
+  writes: points
+  set points.xa = start.xa
+  set points.xb = start.xb
+  set points.xc = start.xc
+  set points.ya = start.ya
+  set points.yb = start.yb
+  set points.yc = start.yc
+
+# Each step is one turn of Minsky's circle algorithm for one point, driven
+# by its neighbor: y moves by the sum or difference of the x's, shifted, and
+# then x moves back by the difference of the new y's, shifted.
+processor step_a                                            # m3a
+  reads: shifts
+  writes: points
+  set points.ya = ((points.xa + points.xb) >> shifts.ya) + points.ya
+  set points.xa = -((points.ya - points.yb) >> shifts.xa) + points.xa
+
+processor step_b                                            # m3b
+  reads: shifts
+  writes: points
+  set points.yb = ((points.xb - points.xc) >> shifts.yb) + points.yb
+  set points.xb = -((points.yb - points.yc) >> shifts.xb) + points.xb
+
+processor step_c                                            # m3c
+  reads: shifts
+  writes: points
+  set points.yc = ((points.xc - points.xa) >> shifts.yc) + points.yc
+  set points.xc = -((points.yc - points.ya) >> shifts.xc) + points.xc
+
+processor plot_a
+  reads: points
+  writes: display
+  emit display: points.xa, points.ya, 0
+
+processor plot_b
+  reads: points
+  writes: display
+  emit display: points.xb, points.yb, 0
+
+processor plot_c
+  reads: points
+  writes: display
+  emit display: points.xc, points.yc, 0

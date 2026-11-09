@@ -1,0 +1,10 @@
+# Minskytron: one unit, compiled from RUNS by tools/runsc.py
+# (RUNS_PROGRAM=programs/minskytron). Paths are from the repo's root.
+macro1 = "build/macro1"
+macro1_src = "tools/macro1.c"
+oracle_sha256 = "3181d84bb8f363bd166398fc18f2ccefb82c8bce36d06a636314673dc2fbcc62"
+oracle_listing = "programs/minskytron/source/minskytron.lst"
+
+[[unit]]
+c = "lift/minskytron.c"
+prefix = "za"

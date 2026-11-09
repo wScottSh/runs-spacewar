@@ -1,0 +1,98 @@
+# Minskytron (dpys5.mac, start at 500): three points that each move on a
+# circle of the others, as Minsky's circle algorithm moves one, plotted
+# point after point, forever. The test word picks how far each step shifts.
+
+type word
+  bits: 18
+  complement: ones          # -0 exists; add and subtract are the PDP-1's (end-around carry, never yield -0)
+  compare: sign             # word < 0 tests the sign bit; == compares all 18 bits
+
+interface record console
+  test_word: word           # the test word switches: six counts of 3 bits, read at start
+
+# The counts a 3-bit pick of the test word chooses from, in the order of the
+# pick (gst). The last one no pick reaches.
+game record shift_table[9]
+  count: word =
+    1
+    2
+    3
+    4
+    5
+    6
+    7
+    8
+    9
+
+# Where the picks start: the place of the table's first count (gsc).
+game record shift_start
+  place: word = 0
+
+# What a pick carries from one to the next: the test word's bits not yet
+# picked, and the count just picked.
+game record shift_pick
+  bits: word = 0            # IO
+  count: word = 0           # AC
+
+# The count each step shifts by (sh0-sh5), named for the coordinate the step
+# moves. The test word sets them at start.
+game record shifts
+  ya: word
+  xa: word
+  yb: word
+  xb: word
+  yc: word
+  xc: word
+
+# The three points' start (xa0-yc0).
+game record start
+  xa: word = -020000
+  xb: word = 0
+  xc: word = 020000
+  ya: word = 0
+  yb: word = 040000
+  yc: word = 0
+
+# The three points, which the display shows.
+interface record points
+  xa: word = 0
+  xb: word = 0
+  xc: word = 0
+  ya: word = 0
+  yb: word = 0
+  yc: word = 0
+
+presentation stream display
+  x: word
+  y: word
+  intensity: word
+
+network minskytron                                          # started at 500
+  reads: console
+  run read_test_word                                        # lat; rcl 9s; rcl 9s
+  run pick_shift                                            # m1: jsp gsh
+  run keep_ya                                               # dac sh0
+  run pick_shift
+  run keep_xa                                               # dac sh1
+  run pick_shift
+  run keep_yb                                               # dac sh2
+  run pick_shift
+  run keep_xb                                               # dac sh3
+  run pick_shift
+  run keep_yc                                               # dac sh4
+  run pick_shift
+  run keep_xc                                               # dac sh5
+  run start_points                                          # m2
+
+# One pass: each point steps, and is plotted. The machine runs it again
+# when it ends (jmp m3a). The shifts are the start's: a firing of the start
+# sets them before the first pass.
+network circles                                             # m3a
+  reads: shifts
+  writes: display
+  run step_a
+  run plot_a
+  run step_b                                                # m3b
+  run plot_b
+  run step_c                                                # m3c
+  run plot_c

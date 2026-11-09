@@ -1,0 +1,56 @@
+# The Minskytron (dpys5.mac lines 257-364): the start at 500, which picks
+# the shifts from the test word, then the pass the machine runs forever.
+replaces = "lift/minskytron.c"
+registers = ["shift_pick"]
+repeat = "circles"
+# A value moves from AC to IO by the swap macro (rcl 9s, rcl 9s).
+moves = "swap"
+
+# Fields held in a shift instruction: the word is the shift by the count.
+[homes]
+"shift_table.count" = "instruction"
+"shifts.ya" = "instruction"
+"shifts.xa" = "instruction"
+"shifts.yb" = "instruction"
+"shifts.xb" = "instruction"
+"shifts.yc" = "instruction"
+"shifts.xc" = "instruction"
+
+# The picks start at the table's first count: gsc holds its address.
+[into]
+"shift_start.place" = "shift_table.count"
+
+[streams]
+display = "dpy"
+
+[[place]]
+routine = "minskytron"
+convention = "BLOCK"
+
+[[place]]
+routine = "circles"
+convention = "BLOCK"
+
+[[place]]
+routine = "pick_shift"
+convention = "JSP"
+io_param = "shift_pick.bits"
+result = ["shift_pick.count", "shift_pick.bits"]
+homes = { at = "pointer" }
+into = { at = "shift_table.count" }
+
+[[place]]
+fields = ["shift_start.place"]
+
+[[place]]
+slots = "shift_table.count"
+range = [0, 8]
+
+[[place]]
+fields = ["start.xa", "start.xb", "start.xc", "start.ya", "start.yb", "start.yc"]
+
+[[place]]
+fields = ["points.xa", "points.xb", "points.xc", "points.ya", "points.yb", "points.yc"]
+
+[[place]]
+fields = ["shifts.ya", "shifts.xa", "shifts.yb", "shifts.xb", "shifts.yc", "shifts.xc"]
