@@ -41,3 +41,39 @@ An occurrence fits when all five hold and its differences are binding keys from 
 ## What it is not
 
 Patching one instruction's address field (`dap`, `dip`) to step a cursor or set a return is a different idiom. The PDP-1 does it everywhere, and `runsc` already compiles it from slots and parameters. The census counts a program as generating code only when it writes several instruction words into a buffer and then jumps into that buffer.
+
+## Census, 2026-11-09: the rule as written fails
+
+The rule above was committed (f797c28) before any other program was read. The census then ran every PDP-1 program it could get.
+
+**The corpus.**
+- 265 tapes from the Computer History Museum restoration archive (`bitsavers.org/bits/DEC/pdp1/papertapeImages`), the music score tapes left out.
+- Sources from the same tree (`from_peter_samson/`: `dpys5.mac`, `lives2.mac`, `pdp1m16.mac`, `hc1d.mac`, `sw41f.mac`; `ddt/raphael/`) and from masswerk.at (Spacewar 2b and 4.4).
+
+**The lever.** `tools/census_generated_code.py TAPE` boots a tape as the machine does, attached to the reader in read-in mode, so a tape's own loader reads its blocks. It starts counting at the first instruction below the loader. It follows core through SIMH's CPU history and reports every run of words that the program writes whole and then executes. Its core model is compared with SIMH's core at the end of every run.
+
+**Calibration.** On Spacewar 3.1, both the oracle built here and the archive's own tape, it reports one run and nothing else: `03772-05245: 684 words`, written by `oc`, leaving to `sq6`. That is the outline buffer.
+
+**Coverage, and its limit.**
+- Of 273 runs, 64 booted and reached a program.
+- 198 tapes use a loader format that SIMH's read-in rejects (`Format error`).
+- 218 runs executed fewer than 100 instructions, most of them programs that wait for typed input or are parts of the timesharing system.
+
+A path that runs only on input the census did not give is not seen. The static pass below covers the sources.
+
+**What it found.** Every hit, classified by reading the code:
+
+| Program | Hit | Idiom |
+|---|---|---|
+| Spacewar 3.1, 4.1f, 4.2a (and the tape labelled `newSpacewar_4-30-60`, which is 3.1) | a 684-word buffer from `oc`, entered each frame | **the rule's idiom**; one program family |
+| Minskytron (`dpys5.mac`, start 500) | `sh0`–`sh5`: at start, `gsh` takes 3 bits of the test word, picks a shift instruction from a table, and stores it; the display loop runs each with `xct`, every pass | an instruction chosen from data at one stage and run at a later one, at fixed single sites |
+| Music player (`pdp1m16.mac`, static) | `lio (skp` / `(skp i` into `mps`, `dvs` by whether multiply and divide work; `(clf 2` / `(stf 2` into fixed sites by switch 5 | the same, at fixed single sites |
+| Expensive Typewriter | `dio 501`: an instruction stored into the input-wait loop | the same, at a fixed single site |
+| Expensive Desk Calculator | 2751, 2766 set from constants at start; 101 decremented as a whole word | fixed-site selection; the cursor idiom done with `add` |
+| Macro assembler (monitor) | 112: an `add` whose address the program steps with `dac i` | the cursor idiom |
+| DDT (static) | `lio (jda tr`, `dio i bk1`: a breakpoint written into the user's program | a debugger patching another program |
+| `possible`, multi-segment tapes | words written by a loader in the program | loading, not generation |
+
+**Verdict: NOT VERIFIED.** No program outside Spacewar's lineage builds a buffer of code from a command list. A compiler rule for it would be used by one program, which the standing orders forbid.
+
+**What the census found instead.** At least four programs outside Spacewar choose an instruction from data at one stage and run it at a later stage: Minskytron, the music player, Expensive Typewriter and the Desk Calculator. Spacewar's outline compiler is the sequence form of the same thing: it chooses one instruction run per command and lays the runs one after another. That idiom is general enough to test. The next test is to state it as a rule and compile Minskytron from pure RUNS with it, to its original words.
