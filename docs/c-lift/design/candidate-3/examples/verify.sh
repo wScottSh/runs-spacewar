@@ -6,7 +6,7 @@
 # Usage: verify.sh [file.lower.mac ...]   (default: all in this dir, together and singly)
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$HERE/../../../.." && pwd)"
+ROOT="$(cd "$HERE/../../../../.." && pwd)"
 SRC="$ROOT/source/spacewar3.1_complete.txt"
 SHA=8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf
 M1="$ROOT/build/macro1"

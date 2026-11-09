@@ -14,7 +14,7 @@ usage: check_trace.py [--fill] FILE...     (--fill rewrites ?????? words)
 """
 import re, sys, os
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../.."))
 LST = os.path.join(ROOT, "build/oracle.lst")
 
 def load_lst():

@@ -1,6 +1,6 @@
 # The PDP-1 binding
 
-`tools/runsc.py` compiles the RUNS text in `runs/` to the original Spacewar! 3.1 tape image. Each file here binds one unit of `lift.toml`: it says how the PDP-1 carries the RUNS routines and fields of that unit. `runsc` emits spacewar-c's C dialect from the RUNS text and the binding, and spacewar-c's `pdp1cc` compiles that to the image. Every unit has a binding: the generated C stands alone, and no file of `lift/` takes part in the build (`build/runs/lift` holds only the thirteen generated files).
+`tools/runsc.py` compiles the RUNS text in `runs/` to the original Spacewar! 3.1 tape image. Each file here binds one unit of `lift.toml`: it says how the PDP-1 carries the RUNS routines and fields of that unit. `runsc` emits the lift's C dialect from the RUNS text and the binding, and `tools/pdp1cc` compiles that to the image. Every unit has a binding: the generated C stands alone, and no file of `lift/` takes part in the build (`build/runs/lift` holds only the thirteen generated files).
 
 ## What a binding may say
 

@@ -48,7 +48,7 @@ Names in the C follow Norbert Landsteiner's "Inside Spacewar!" series. Local cop
 
 ### The hash proves the binary
 
-`pdp1cc build` compares the sha256 of the built `.rim` with the oracle. A match means every word at every address is identical: code, constants, and tables. Every pull request in this repository was merged only after the hash matched on its branch. There is no CI; the checks are run by hand. On a mismatch, the build reports:
+`pdp1cc build` compares the sha256 of the built `.rim` with the oracle. A match means every word at every address is identical: code, constants, and tables. Every pull request of the lift was merged only after the hash matched on its branch. There is no CI; the checks are run by hand. On a mismatch, the build reports:
 
 - whether the variable block moved, which happens when the count of literal constants changes
 - the first address that differs, with the expected word and the actual word
