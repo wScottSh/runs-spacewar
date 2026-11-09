@@ -111,27 +111,14 @@ const placeOf = (r: RunsRecord, group: string, x: number, y: number, rad: number
   lines,
 })
 
-/** A region's places in rows no wider than its Processors' grid, then the
- * grid; or, for a region of places alone in the wide layout, one column. */
-const block = (region: Region, opts: { vertical: boolean; maxCols: number }): Block => {
+const block = (region: Region, vertical: boolean): Block => {
   const records = region.records.map((r) => ({ r, lines: r.fields.map(fieldLine) })).map((x) => ({ ...x, rad: radius(x.lines) }))
   const n = region.processors.length
-  const cols = opts.vertical ? 1 : Math.max(1, Math.min(opts.maxCols, Math.ceil(Math.sqrt(n * 1.6))))
+  const cols = vertical ? 1 : Math.max(1, Math.ceil(Math.sqrt(n * 1.6)))
   const rows = Math.ceil(n / cols)
+  const placesW = vertical ? Math.max(0, ...records.map((x) => 2 * x.rad)) : records.reduce((s, x) => s + 2 * x.rad + PLACE_GAP, 0)
+  const placesH = vertical ? records.reduce((s, x) => s + 2 * x.rad + PLACE_GAP, 0) : Math.max(0, ...records.map((x) => 2 * x.rad)) + (records.length ? PLACE_GAP : 0)
   const verbsW = n ? cols * CELL_W : 0
-  const rowW = Math.max(verbsW, opts.maxCols * CELL_W, ...records.map((x) => 2 * x.rad))
-  const placeRows: { items: typeof records; w: number; h: number }[] = []
-  for (const x of records) {
-    const d = 2 * x.rad
-    const last = placeRows[placeRows.length - 1]
-    if (!opts.vertical && last && last.w + PLACE_GAP + d <= rowW) {
-      last.items.push(x)
-      last.w += PLACE_GAP + d
-      last.h = Math.max(last.h, d)
-    } else placeRows.push({ items: [x], w: d, h: d })
-  }
-  const placesW = Math.max(0, ...placeRows.map((r) => r.w))
-  const placesH = placeRows.reduce((s, r) => s + r.h + PLACE_GAP, 0)
   const w = Math.max(placesW, verbsW, 1)
   const h = placesH + rows * CELL_H
   return {
@@ -140,14 +127,16 @@ const block = (region: Region, opts: { vertical: boolean; maxCols: number }): Bl
     h,
     place: (x0, y0) => {
       const states: State[] = []
+      let cx = x0 + (w - placesW) / 2
       let cy = y0
-      for (const row of placeRows) {
-        let cx = x0 + (w - row.w) / 2
-        for (const x of row.items) {
-          states.push(placeOf(x.r, region.id, cx + x.rad, cy + row.h / 2, x.rad, x.lines))
+      for (const x of records) {
+        if (vertical) {
+          states.push(placeOf(x.r, region.id, x0 + w / 2, cy + x.rad, x.rad, x.lines))
+          cy += 2 * x.rad + PLACE_GAP
+        } else {
+          states.push(placeOf(x.r, region.id, cx + x.rad, y0 + placesH / 2 - PLACE_GAP / 2, x.rad, x.lines))
           cx += 2 * x.rad + PLACE_GAP
         }
-        cy += row.h + PLACE_GAP
       }
       const vy = y0 + placesH
       const vx = x0 + (w - verbsW) / 2
@@ -169,25 +158,14 @@ const block = (region: Region, opts: { vertical: boolean; maxCols: number }): Bl
 /** The RUNS Network as the canvas draws it: Records as places, Processors
  * as transitions, a dotted line for each Record a Processor reads and an
  * arrow for each it writes. */
-export function toCanvas(net: RunsNet, narrow = false): Net {
+export function toCanvas(net: RunsNet): Net {
   const rs = regions(net).filter((r) => r.records.length || r.processors.length)
+  const center = rs.filter((r) => r.side === 'center').map((r) => block(r, r.processors.length === 0))
+  const others = rs.filter((r) => r.side !== 'center').map((r) => block(r, false))
+  const centerW = Math.max(0, ...center.map((b) => b.w))
   const states: State[] = []
   const verbs: Verb[] = []
   let y = 0
-  if (narrow) {
-    // One column, two Processors wide, for a phone held upright.
-    for (const r of rs) {
-      const b = block(r, { vertical: false, maxCols: 2 })
-      const got = b.place(-b.w / 2, y)
-      states.push(...got.states)
-      verbs.push(...got.verbs)
-      y += b.h + BLOCK_GAP
-    }
-    return finish(net, rs, states, verbs)
-  }
-  const center = rs.filter((r) => r.side === 'center').map((r) => block(r, { vertical: r.processors.length === 0, maxCols: 99 }))
-  const others = rs.filter((r) => r.side !== 'center').map((r) => block(r, { vertical: false, maxCols: 99 }))
-  const centerW = Math.max(0, ...center.map((b) => b.w))
   for (const b of center) {
     const got = b.place(-b.w / 2, y)
     states.push(...got.states)
@@ -205,10 +183,6 @@ export function toCanvas(net: RunsNet, narrow = false): Net {
     verbs.push(...got.verbs)
     col.y += b.h + BLOCK_GAP
   }
-  return finish(net, rs, states, verbs)
-}
-
-const finish = (net: RunsNet, rs: Region[], states: State[], verbs: Verb[]): Net => {
   const arcs: Arc[] = net.processors.flatMap((p) => [
     ...p.reads.map((r): Arc => ({ kind: 'need', state: recordId(r), verb: processorId(p.name), count: 1 })),
     ...p.writes.map((r): Arc => ({ kind: 'give', state: recordId(r), verb: processorId(p.name), count: 1 })),

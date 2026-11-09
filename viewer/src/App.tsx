@@ -35,8 +35,8 @@ export function App() {
   }, [])
 
   useEffect(() => {
-    if (runs) setNet(toCanvas(runs, phone))
-  }, [runs, phone])
+    if (runs) setNet(toCanvas(runs))
+  }, [runs])
 
   const keep = (next: Net) => setNet((now) => (now && sameStructure(now, next) ? next : now))
 
