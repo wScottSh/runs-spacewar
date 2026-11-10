@@ -29,7 +29,7 @@ import runs
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from tools.pdp1cc import program  # noqa: E402
+from tools.pdp1cc import dialect, front, program, select  # noqa: E402
 
 # The program to compile: a directory with its RUNS text (runs/), its binding
 # (pdp1/) and its lift.toml. RUNS_PROGRAM names another (programs/minskytron);
@@ -345,9 +345,13 @@ class Walk:
         found = {dotted_of(e) for s in self.arms.values() for e in walk_expr(s) if e[0] == "field"}
         return sorted(f for f in found if f and f.split(".")[0] in binds.registers)
 
-    def branches(self) -> bool:
-        """Some arm has an if: its code may jump within itself."""
-        return any(s[0] == "if" for a in self.arms.values() for s in walk(a))
+
+@dataclass(frozen=True)
+class RunCode:
+    """What pdp1cc's words for the members of a collection held as a run of
+    code say about storing them (pdp1cc dialect.template_words)."""
+    jumps: bool         # a member's code jumps within itself: the jump is built in a data word
+    stored: int         # how many times one call of the store routine stores IO; 0: no store routine here
 
 
 @dataclass
@@ -491,7 +495,7 @@ SCHEMA = {
                 "tails": _one_of("shared")},
     "inline": {"routine": _name, "ac_param": _field, "result": _list(_field), "shifts": _one_of("xct")},
     "code": {"routine": _name, "pulse": _BOOL, "io": _list(_LOCAL)},
-    "store": {"store": _field, "times": _int, "loaded": _name},
+    "store": {"store": _field, "loaded": _name},
     "fields": {"fields": _list(_field)},
     "slots": {"slots": _field, "range": _list(_int, 2), "reserve": _int},
     "machine": {"machine": _one_of("constants", "variables", "patch space", "sequence break",
@@ -505,7 +509,7 @@ SCHEMA = {
 # The keys each must hold.
 REQUIRED = {"unit": {"replaces", "place"}, "routine": {"convention"}, "inline": {"routine"}, "code": {"routine"},
             "slots": {"range"}, "jsp_slot": {"at", "returns", "jump"}, "table": {"at", "records"},
-            "store": {"times", "loaded"},
+            "store": {"loaded"},
             "stray": {"after", "cursor"}, "start": {"at", "network"}}
 
 
@@ -970,10 +974,11 @@ class Bindings:
 class Unit:
     """One binding: the RUNS routines and fields it places, in tape order."""
 
-    def __init__(self, binds: Bindings, path: Path):
+    def __init__(self, binds: Bindings, path: Path, code: dict[str, RunCode] | None = None):
         self.binds = binds
         self.prog = binds.prog
         self.path = path
+        self.code = code or {}                  # collection held as a run of code laid out here -> its RunCode
         self.spec = binds.specs[path]
         self.externs: set[str] = set()
         self.cells_used: set[str] = set()
@@ -1104,26 +1109,46 @@ class Unit:
         """The store routine of a collection held as a run of code, and the
         register local that holds the word it stores, when the binding lays one out here."""
         st = self.binds.stores.get(f)
-        if st is None or st["unit"] != self.path:
+        if st is None or st["unit"] != self.path or f not in self.code or not self.code[f].stored:
             return None
         name = self.binds.c_name(f)
         return f"{name}_lay_io", f"{name}_io"
 
     def jump_words(self, f: str | None = None) -> list[str]:
         """The data word a jump within a member's code is built in, for each
-        collection laid out here whose arms branch."""
-        fields = [f] if f else sorted(self.binds.walks)
-        return [f"{self.binds.c_name(g)}_jump" for g in fields
-                if self.binds.walks[g].branches() and self.writes_run(g)]
+        collection laid out here whose members' code, as pdp1cc compiles
+        it, jumps within itself."""
+        fields = [f] if f else sorted(self.code)
+        return [f"{self.binds.c_name(g)}_jump" for g in fields if g in self.code and self.code[g].jumps]
 
-    def writes_run(self, f: str) -> bool:
-        return any(s[0] == "set" and s[1][0] == "index" and held_field(s[1]) == f
-                   for p in self.spec["place"] if "routine" in p
-                   for s in walk(self.flat_routine(self.prog.routines[p["routine"]])))
+    def run_code(self, c: Path) -> dict[str, RunCode]:
+        """pdp1cc's words for the members of each collection this unit lays
+        out as a run of code, read from the unit's C (c): whether a member
+        jumps within itself, and for the store routine the binding chooses,
+        how many times in a row the members hold the word it stores."""
+        try:
+            words = dialect.template_words(front.parse(c))
+        except (dialect.DialectError, select.SelectError) as e:
+            raise BindError(f"{self.path.name}: the members' code: {e}") from e
+        out = {}
+        for f in sorted(self.run_fields):
+            members = [words[self.template_name(f, m)] for m in self.binds.walks[f].arms]
+            stored = 0
+            if self.binds.stores.get(f, {}).get("unit") == self.path:
+                try:
+                    stored = dialect.repeated_run(members)[1]
+                except dialect.DialectError as e:
+                    raise BindError(f"{self.path.name}: store {f}: {e}") from e
+            out[f] = RunCode(any(select.jumps_within(t) for t in members), stored)
+        return out
+
+    def template_name(self, f: str, member: str) -> str:
+        return f"{self.binds.c_name(f)}_{member}"
 
     def store_routine(self, p: dict) -> list[str]:
         """A JSP routine that stores IO through the cursor into a collection
-        held as code, `times` words, and steps it."""
+        held as code, as many times as its members hold that word in a row,
+        stepping it each time."""
         f = p["store"]
         cursors = [g for g, into in self.binds.into.items() if into == f and g in self.binds.cell_of]
         if len(cursors) != 1:
@@ -1132,7 +1157,7 @@ class Unit:
         cursor = self.binds.c_name(cursors[0])
         name, _ = self.store_of(f)
         return [f"JSP void {name}(register insn w)", "{",
-                *[f"    *{cursor}++ = w;" for _ in range(p["times"])], "    return;", "}"]
+                *[f"    *{cursor}++ = w;" for _ in range(self.code[f].stored)], "    return;", "}"]
 
     def run_templates(self, f: str) -> list[str]:
         """Each member's code: its arm of the walk, compiled by the
@@ -1153,7 +1178,7 @@ class Unit:
             fn = Function(self, tb, own, typed(self.prog, stmts, routine_locals(self.prog.routines[w.routine]),
                                                w.routine))
             fn.pulsed = wb.pulse                # a walk that waits for a pulse is entered with one pending
-            out += [f"static TEMPLATE void {self.binds.c_name(f)}_{member}({params})", "{", *fn.compile(), "}"]
+            out += [f"static TEMPLATE void {self.template_name(f, member)}({params})", "{", *fn.compile(), "}"]
         return out
 
     def shift_initial(self, f: str, e=False) -> str:
@@ -1728,8 +1753,9 @@ class Unit:
             elif "slots" in p:
                 body += self.slots(p)
             elif "store" in p:
-                head.append(f"JSP void {self.store_of(p['store'])[0]}(register insn w);")
-                body += self.store_routine(p)
+                if self.store_of(p["store"]):
+                    head.append(f"JSP void {self.store_of(p['store'])[0]}(register insn w);")
+                    body += self.store_routine(p)
             elif "base" in p:
                 d = p["base"]
                 body.append(f"{self.word_type(d)} *{self.binds.c_name(d)}_base = {self.address(d, 0)};")
@@ -2630,9 +2656,9 @@ class Function:
             self.emit(depth, "ARGS_DONE();")
             return 1
         if op == "load_io":
-            store = self.unit.store_of(s[1])
-            self.declare_top(f"register insn {store[1]};")
-            self.emit(depth, f"{store[1]} = REPEATED({store[0]});")
+            if store := self.unit.store_of(s[1]):
+                self.declare_top(f"register insn {store[1]};")
+                self.emit(depth, f"{store[1]} = REPEATED({store[0]});")
             return 1
         if op == "leave":
             # out of the walk: to the routine the Network runs after it
@@ -4122,7 +4148,14 @@ def write_tree(prog: runs.Program, out: Path) -> Path:
     for u in lift["unit"]:
         if u["c"] not in bound:
             raise BindError(f"no binding replaces {u['c']}: every unit comes from RUNS")
-        (out / u["c"]).write_text(Unit(binds, bound.pop(u["c"])).compile())
+        path, c, mark = bound.pop(u["c"]), out / u["c"], len(binds.compiled)
+        unit = Unit(binds, path)
+        c.write_text(unit.compile())
+        if unit.run_fields:
+            # what the members' words need comes from pdp1cc's words for them: compile again with it
+            code = unit.run_code(c)
+            del binds.compiled[mark:]
+            c.write_text(Unit(binds, path, code).compile())
         units.append(f'[[unit]]\nc = "{u["c"]}"\nprefix = "{u["prefix"]}"\n')
     if bound:
         raise BindError(f"bindings replace no lift unit: {sorted(bound)}")

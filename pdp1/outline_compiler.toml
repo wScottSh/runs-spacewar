@@ -31,11 +31,11 @@ restore = 1
 "outline_call.table" = "outlines.codes"
 "outline_compiler.table" = "outlines.codes"
 
-# ocs: lays out IO twice through oc's entry word. IO takes the word it
-# lays out (rcl 9s, half a swap) as each code is taken.
+# ocs: lays out IO through oc's entry word, and steps it, as many times as
+# the strokes' code holds that word in a row (rcl 9s, half a swap, twice).
+# IO takes the word as each code is taken.
 [[place]]
 store = "outline_code.stroke"
-times = 2
 loaded = "take_code"
 
 # The code goes through oc's entry word. The routine steps past the word

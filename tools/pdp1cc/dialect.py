@@ -545,31 +545,33 @@ class _Templates:
 
     def store_run(self, store: str, node: c_ast.Node) -> tuple[int, ir.Insn]:
         """A store routine's run: how many times its body stores IO through
-        the pointer (`*p++ = w`), and the word it stores, which the
-        templates it lays out hold that many times in a row, and no other."""
+        the pointer (`*p++ = w`), and the word it stores. Both come from
+        the templates it lays out (repeated_run); the body agrees."""
         body = next((e for e in self.ast.ext if isinstance(e, c_ast.FuncDef) and e.decl.name == store), None)
         if body is None:
             raise _err(node, f"{store}: a store routine is defined in this unit")
         run = sum(isinstance(s, c_ast.Assignment) and isinstance(s.lvalue, c_ast.UnaryOp) and s.lvalue.op == "*"
                   and isinstance(s.lvalue.expr, c_ast.UnaryOp) and s.lvalue.expr.op == "p++"
                   for s in body.body.block_items or [])
-        found: set[tuple] = set()
+        templates: list[list[ir.Item]] = []
 
         def visit(n: c_ast.Node):
             if isinstance(n, c_ast.FuncCall) and isinstance(n.name, c_ast.ID) and n.name.name == "LAY_OUT" \
                     and len(n.args.exprs) > 2 and isinstance(n.args.exprs[2], c_ast.ID) \
                     and n.args.exprs[2].name == store:
-                words = [(w.op, w.operand, w.i) for w in self.items(n.args.exprs[1].name, (), n)
-                         if isinstance(w, ir.Word)]
-                found.update(words[k] for k in range(len(words) - run + 1) if len(set(words[k:k + run])) == 1)
+                templates.append(self.items(n.args.exprs[1].name, (), n))
             for _, c in n.children():
                 visit(c)
         visit(self.ast)
-        if run < 1 or len(found) != 1:
+        try:
+            word, length = repeated_run(templates)
+        except DialectError as e:
+            raise _err(node, f"{store}: {e}") from e
+        if run != length:
+            from .emit import insn_text
             raise _err(node, f"{store} stores IO {run} times: the templates it lays out hold "
-                             f"{len(found)} words that many times in a row, not one")
-        op, operand, i = found.pop()
-        return run, ir.Insn(op, operand, i)
+                             f"`{insn_text(word)}` {length} times in a row")
+        return run, word
 
     def one_word(self, node: c_ast.FuncCall, values: tuple[int, ...]) -> ir.Word:
         args = node.args.exprs if node.args else []
@@ -608,6 +610,41 @@ class _Templates:
         from .select import AC_SHIFTS, PAIR_OR_IO_SHIFTS
         values = tuple(1 if _is_popcount(v) else c_int(v) for v in self._counts(node))
         return self.one_word(node, values).op in AC_SHIFTS | PAIR_OR_IO_SHIFTS | {"sal"}
+
+
+def repeated_run(templates: list[list[ir.Item]]) -> tuple[ir.Insn, int]:
+    """The word a store routine stores through the cursor, and how many
+    times one call stores it: the one word the templates hold in runs, every
+    run of one length. A held field's word and a jump within a template are
+    built where they are stored, so neither is that word."""
+    from .emit import insn_text
+    from .select import template_labels
+    key = lambda w: (w.op, w.operand, w.i)
+    found: set[tuple] = set()
+    for items in templates:
+        own = template_labels(items)
+        words = [w for w in items if isinstance(w, ir.Word)]
+        k = 0
+        while k < len(words):
+            w = words[k]
+            n = next((j for j in range(k + 1, len(words)) if key(words[j]) != key(w)), len(words)) - k
+            if n > 1 and w.rule != "HELD" and not (isinstance(w.operand, ir.Sym) and w.operand.name in own):
+                found.add((*key(w), n))
+            k += n
+    if len(found) != 1:
+        runs = ", ".join(sorted(f"`{insn_text(ir.Insn(op, o, i))}` {n} times" for op, o, i, n in found))
+        raise DialectError(f"a store routine stores one word, as many times in a row as the templates hold it; "
+                           f"they hold {len(found)} word(s) in a row" + (f": {runs}" if runs else ""))
+    op, operand, i, n = found.pop()
+    return ir.Insn(op, operand, i), n
+
+
+def template_words(ast: c_ast.FileAST) -> dict[str, list[ir.Item]]:
+    """Each TEMPLATE function of a unit that takes no VALUE: its words and
+    labels, as LAY_OUT stores them."""
+    lower_unit(ast)
+    return {name: _TEMPLATES.items(name, (), fn) for name, (fn, sig) in _TEMPLATES.defs.items()
+            if not any(p.kind is ir.ParamKind.VALUE for p in sig.params)}
 
 
 def _is_popcount(node: c_ast.Node) -> bool:

@@ -34,6 +34,25 @@ class SelectError(Exception):
     pass
 
 
+def template_labels(items: list[ir.Item]) -> dict[str, int]:
+    """Each label among a template's words: how many words lie before it."""
+    at, n = {}, 0
+    for i in items:
+        if isinstance(i, ir.LabelDef):
+            at[i.name] = n
+        elif isinstance(i, ir.Word):
+            n += 1
+    return at
+
+
+def jumps_within(items: list[ir.Item]) -> bool:
+    """A word of the template names one of its own labels: stored at an
+    address known only at run time, that jump is built where it is stored,
+    in the data word LAY_OUT is given."""
+    at = template_labels(items)
+    return any(isinstance(w, ir.Word) and isinstance(w.operand, ir.Sym) and w.operand.name in at for w in items)
+
+
 @dataclass(frozen=True)
 class Local:
     name: str
@@ -656,10 +675,7 @@ class FunctionLowerer:
         the word IO holds, `j.addr = p + k; *p++ = j` for a jump k words on
         within the template, and `*p++ = h` for a held field's word."""
         words = [i for i in s.items if isinstance(i, ir.Word)]
-        at: dict[str, int] = {}
-        for n, i in enumerate(s.items):
-            if isinstance(i, ir.LabelDef):
-                at[i.name] = sum(isinstance(j, ir.Word) for j in s.items[:n])
+        at = template_labels(s.items)
         holes = list(s.holes)
         key = lambda w: (w.op, w.operand, w.i)
         stmts: list[ir.Stmt] = []
