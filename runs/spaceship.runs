@@ -89,10 +89,12 @@ network after_outline(slot)                                 # sq6
   if ships.recharge[slot] >= 0:
     run recharged(slot)
     # Both rotate buttons newly pressed, with jumps left.
-    if ships.jumps_left[slot] != 0 and (-spaceship.controls | ships.previous_control[slot]) & 0600000 == 0:
-      run enter_hyperspace(slot)
-      run time_before_breakout                              # xct hd1
-      run time_hyperspace(slot)
+    if ships.jumps_left[slot] != 0:
+      run hyperspace_buttons(slot)
+      if handoff.hyperspace_buttons == 0:
+        run enter_hyperspace(slot)
+        run time_before_breakout                            # xct hd1
+        run time_hyperspace(slot)
 
 # The exhaust flame: while the rocket fires, a random number of dots behind
 # the tail, each burning a unit of fuel until the tank is empty. The count

@@ -368,6 +368,13 @@ processor recharged(slot)                                   # dzm i \mh3
   writes: ships
   set ships.recharge[slot] = 0
 
+# The rotate buttons not newly pressed: 0 when both are pressed now and
+# neither was last frame.
+processor hyperspace_buttons(slot)                          # lac \scw; cma; ior i mco; and (600000
+  reads: spaceship, ships
+  writes: handoff
+  set handoff.hyperspace_buttons = (-spaceship.controls | ships.previous_control[slot]) & 0600000
+
 processor enter_hyperspace(slot)                            # sr5
   writes: ships, objects
   set ships.saved_routine[slot] = objects.routine[slot]
