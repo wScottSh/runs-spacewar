@@ -639,10 +639,11 @@ def repeated_run(templates: list[list[ir.Item]]) -> tuple[ir.Insn, int]:
     return ir.Insn(op, operand, i), n
 
 
-def template_words(ast: c_ast.FileAST) -> dict[str, list[ir.Item]]:
+def template_words(ast: c_ast.FileAST, prefix: str = "z",
+                   linked: dict[str, str] | None = None) -> dict[str, list[ir.Item]]:
     """Each TEMPLATE function of a unit that takes no VALUE: its words and
-    labels, as LAY_OUT stores them."""
-    lower_unit(ast)
+    labels, as LAY_OUT stores them (lower_unit's prefix and linked)."""
+    lower_unit(ast, prefix, linked)
     return {name: _TEMPLATES.items(name, (), fn) for name, (fn, sig) in _TEMPLATES.defs.items()
             if not any(p.kind is ir.ParamKind.VALUE for p in sig.params)}
 

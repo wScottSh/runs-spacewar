@@ -124,7 +124,7 @@ class Game:
         state: dict = {}
         for rec, fld, slot, at in self.places:
             try:
-                v = CodeWord(values[at]) if pdp1.INTO.get((rec, fld)) == pdp1.CODE \
+                v = CodeWord(values[at]) if pdp1.INTO.get((rec, fld)) == self.b.code \
                     else self.b.decode(rec, fld, values[at])
             except ValueError:
                 v = runs.UNKNOWN

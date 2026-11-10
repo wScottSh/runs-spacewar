@@ -11,8 +11,11 @@ The addresses come from the oracle listing's symbol table, never from a
 hard-coded number."""
 from __future__ import annotations
 
+import subprocess
 import sys
+import tempfile
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 
 import runs
@@ -77,17 +80,7 @@ INTO = {("ships", "outline"): ("outline_code", "stroke"), ("outline_call", "code
         ("magnitudes", "cursor"): ("star_catalog", "words"),
         ("outline_call", "table"): ("outlines", "codes"), ("outline_compiler", "table"): ("outlines", "codes")}
 
-# The collection held as code (docs/rules/held-as-code.md): each slot is its
-# member's words, laid out end to end. Fields held as a jump to one of its places.
-CODE = ("outline_code", "stroke")
-CODE_JUMPS = {("outline_compiler", "start_over"), ("outline_code", "back")}
-JMP = 0o600000
-
-# The PDP-1's words for the instructions of the code: memory reference
-# instructions are an operation and an address, the rest whole words.
-MEMORY = {"lac": 0o20, "lio": 0o22, "dac": 0o24, "dio": 0o32, "add": 0o40, "sub": 0o42, "jmp": 0o60}
-# The routines code jumps to: the label of each.
-ROUTINES = {"after_outline": "sq6"}
+JMP = 0o600000              # a place held as code is the jump to it
 
 # Fields the original keeps inside an instruction, not in a word of their
 # own: the value is the shift count of the instruction at that label, which
@@ -136,56 +129,77 @@ DPY = 0o720007              # dpy, intensity in bits 6-8
 DPY_NOWAIT = 0o724007
 
 
-def template_members(prog: runs.Program) -> dict[str, list[tuple]]:
-    """Each member of the collection held as code, as the words of its
-    TEMPLATE, which runsc wrote and pdp1cc compiles, from the last build
-    (build/runs): ("word", w), ("label", name), ("past", opcode, label)
-    for a jump within it, ("hole", field) for a held field's word."""
-    from pdp1cc import dialect, front
-    from pdp1cc import program as cc
-    _, files = cc.load(BUILD / "lift.toml")
-    asts = [front.parse(f.c) for f in files]
-    linked = dialect.external_symbols(asts)
+@dataclass(frozen=True)
+class HeldCode:
+    """The collection held as a run of code (docs/rules/held-as-code.md), as
+    runsc's binding states it and its last build (build/runs) compiled it."""
+    field: tuple[str, str]              # each slot is its member's words, laid out end to end
+    jumps: frozenset                    # fields held as a jump to one of its places
+    members: dict[str, list[tuple]]     # member -> ("word", w), ("label", name),
+    #                                     ("past", w, label) a jump within it, ("hole", field) a held word
+
+
+def held_code(prog: runs.Program) -> HeldCode:
+    """The binding's collection held as a run of code, and each member's
+    words: its TEMPLATE as pdp1cc compiles it from the last build's C,
+    emitted as pdp1cc emits a word and assembled by macro1 with the last
+    build's symbols."""
+    import runsc
+    from tools.pdp1cc import emit, ir, select
+    from tools.pdp1cc import program as cc
+    binds = runsc.Bindings(prog, sorted(runsc.BINDINGS.glob("*.toml")))
+    (code, walk), = binds.walks.items()
+    held = {binds.c_name(f): tuple(f.split(".")) for f in binds.held}
+    names = {f"{binds.c_name(code)}_{m}": m for m in walk.arms}
+    cfg, files = cc.load(BUILD / "lift.toml")
+    asts = [runsc.front.parse(f.c) for f in files]
+    linked = runsc.dialect.external_symbols(asts)
+    f, ast = next((f, a) for f, a in zip(files, asts)
+                  if any(getattr(e, "decl", None) is not None and e.decl.name in names for e in a.ext))
+    templates = runsc.dialect.template_words(ast, f.prefix, linked)
     sym = cc.symbols((BUILD / "build/lift/program.lst").read_text(errors="replace"))
-    prefix = "_".join(CODE) + "_"
-    for f, ast in zip(files, asts):
-        names = [e.decl.name for e in ast.ext if hasattr(e, "decl") and e.decl.name.startswith(prefix)]
-        if names:
-            dialect.lower_unit(ast, f.prefix, linked)
-            break
-    fields = {f"{r}_{n}": (r, n) for r, n in CODE_JUMPS}
-    out = {}
-    for name in sorted(set(names) & dialect._TEMPLATES.defs.keys()):
-        items = []
-        compiled = dialect._TEMPLATES.items(name, (), None)
-        labels = {w.name for w in compiled if not hasattr(w, "op")}
-        for w in compiled:
-            if not hasattr(w, "op"):
-                items.append(("label", w.name))
-            elif w.rule == "HELD":
-                items.append(("hole", fields[w.operand.name][1]))
-            elif w.op == "jmp" and w.operand.name in labels:
-                items.append(("past", JMP, w.operand.name))
+    origin, lines, used = 0o100, [], set()
+    for name in names:
+        own, label = select.template_labels(templates[name]), ""
+        for i in templates[name]:
+            if isinstance(i, ir.LabelDef):
+                label = f"{i.name},"
+                continue
+            if isinstance(i.operand, ir.Lit):
+                raise SystemExit(f"{name}: a template word with a literal has no word of its own: {emit.word_text(i)}")
+            if isinstance(i.operand, ir.Sym) and i.operand.name not in own and i.rule != "HELD":
+                used.add(i.operand.name)
+            lines.append(f"{label}\t{'0' if i.rule == 'HELD' else emit.word_text(i)}")
+            label = ""
+        if label:
+            lines.append(label)
+    text = "held code\n" + "".join(f"{s}={sym[s]:o}\n" for s in sorted(used)) + f"{origin:o}/\n" + \
+        "".join(line + "\n" for line in lines) + f"\tstart {origin:o}\n"
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "held.mac").write_text(text)
+        subprocess.run([cfg["macro1"], "-d", "held.mac"], cwd=tmp, capture_output=True, check=True)
+        lst = Path(tmp) / "held.lst"
+        if "No errors detected" not in lst.read_text(errors="replace"):
+            raise SystemExit(f"macro1 refuses the templates' words:\n{text}")
+        words, _ = cc.listing(lst)
+    members, at = {}, origin
+    for name, member in names.items():
+        own, out = select.template_labels(templates[name]), []
+        for i in templates[name]:
+            if isinstance(i, ir.LabelDef):
+                out.append(("label", i.name))
+                continue
+            w = int(words[at][0], 8)
+            if i.rule == "HELD":
+                out.append(("hole", held[i.operand.name][1]))
+            elif isinstance(i.operand, ir.Sym) and i.operand.name in own:
+                out.append(("past", w & ~0o7777, i.operand.name))
             else:
-                items.append(("word", word_value(w, sym)))
-        out[name[len(prefix):]] = items
-    return out
-
-
-def word_value(w, sym: dict[str, int]) -> int:
-    """The PDP-1 word of an instruction word pdp1cc selected."""
-    o = w.operand
-    if w.op in MEMORY:
-        return MEMORY[w.op] << 12 | (0o10000 if w.i else 0) | sym[o.name] + o.offset
-    if w.op == "iot" and w.i and o is None:
-        return 0o730000                                     # ioh
-    n = getattr(o, "n", getattr(o, "value", None))
-    op, *rest = w.op.split()
-    if rest:                                                # a skip spelled whole: `szf 5`
-        n = int(rest[-1], 8)
-    return {"stf": lambda: 0o760010 | n, "clf": lambda: 0o760000 | n, "szf": lambda: 0o640000 | n,
-            "rcl": lambda: 0o663000 | (1 << n) - 1, "cma": lambda: 0o761000,
-            "dpy-4000": lambda: DPY_NOWAIT}[op]()
+                out.append(("word", w))
+            at += 1
+        members[member] = out
+    return HeldCode(tuple(code.split(".")), frozenset(f for f in held.values() if binds.held_place(".".join(f))),
+                    members)
 
 
 class Binding:
@@ -200,7 +214,9 @@ class Binding:
         self.routine_word = self.enum_word["calc_routine"]
         self.moved: dict[tuple[str, str], int] = {}     # a field a check lays out elsewhere: its address
         self.slot_at: dict[tuple[str, str, int], int] = {}  # a slot laid out on its own: its address
-        self.members = template_members(prog)
+        self.held = held_code(prog)
+        self.code = self.held.field                     # the collection held as a run of code
+        self.members = self.held.members
         self.code_slots: list[int] = []                 # the code laid out: each slot's address, then its end
 
     def address(self, record: str, fld: str, slot: int | None = None) -> int:
@@ -216,9 +232,9 @@ class Binding:
     def encode(self, record: str, fld: str, value) -> int:
         if isinstance(value, runs.Member):
             return self.enum_word[value.enum][value.name]
-        if (record, fld) in CODE_JUMPS:
+        if (record, fld) in self.held.jumps:
             return JMP | self.code_address(value.v)
-        if (record, fld) in INTO and INTO[(record, fld)] == CODE:
+        if (record, fld) in INTO and INTO[(record, fld)] == self.code:
             return self.code_address(value.v)
         if (record, fld) in INTO and INTO[(record, fld)] in PIECES:
             return self.address(*INTO[(record, fld)], value.v)
@@ -229,13 +245,13 @@ class Binding:
     def code_address(self, slot: int) -> int:
         """Where a slot of the code lies: in the code laid out, at its
         member's words; past it, a word a slot."""
-        slots = self.code_slots or [self.address(*CODE, 0)]
+        slots = self.code_slots or [self.address(*self.code, 0)]
         if slot < len(slots):
             return slots[slot]
         return (slots[-1] + slot - (len(slots) - 1)) & runs.MASK
 
     def code_slot(self, address: int) -> int:
-        slots = self.code_slots or [self.address(*CODE, 0)]
+        slots = self.code_slots or [self.address(*self.code, 0)]
         if address in slots:
             return slots.index(address)
         if slots[0] <= address < slots[-1]:
@@ -249,8 +265,8 @@ class Binding:
         """The code's words for its slots before end, each its member's
         words (their templates), from the collection's address. Sets where
         each slot lies, for encode and decode."""
-        fld = CODE[1]
-        at = self.address(*CODE, 0)
+        fld = self.code[1]
+        at = self.address(*self.code, 0)
         self.code_slots = []
         for k in range(end):
             self.code_slots.append(at)
@@ -266,7 +282,7 @@ class Binding:
         """SIMH's code read back as slots: from the collection's address, the
         member whose words lie there, one after another, while one does.
         Sets where each slot lies; returns the count of slots."""
-        at = self.address(*CODE, 0)
+        at = self.address(*self.code, 0)
         self.code_slots = [at]
         while True:
             for m in self.members:
@@ -305,9 +321,9 @@ class Binding:
 
     def decode(self, record: str, fld: str, word: int):
         typ = self.prog.records[record].fields[fld][0]
-        if (record, fld) in CODE_JUMPS:
+        if (record, fld) in self.held.jumps:
             return runs.W(self.code_slot(word & 0o7777))
-        if (record, fld) in INTO and INTO[(record, fld)] == CODE:
+        if (record, fld) in INTO and INTO[(record, fld)] == self.code:
             return runs.W(self.code_slot(word))
         if (record, fld) in INTO:
             if INTO[(record, fld)] in PIECES:
