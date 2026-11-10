@@ -178,11 +178,11 @@ def planetarium(m: runs.Machine, b: pdp1.Binding, sym: dict, display: dict, word
             if got[sym[s]] != p[f].v:
                 bad.append(f"{f} simh {got[sym[s]]:06o} runs {p[f].v:06o}")
         last = None
-        for n, (wd, (first, past, intensity)) in enumerate(zip(words, MAGNITUDES)):
+        for n, wd in enumerate(words):
             cursor = m.state["magnitudes"]["cursor"][n]
             if got[wd["cursor"]] != b.encode("magnitudes", "cursor", cursor):
                 bad.append(f"cursor {n} simh {got[wd['cursor']]:06o} runs {cursor.v:o}")
-            left = m.left.get(("show_magnitude", tuple(runs.word_of(x) for x in (n, first, past, intensity))))
+            left = m.left.get(("show_magnitude", (runs.word_of(n),)))
             if left is None:
                 continue
             last = left

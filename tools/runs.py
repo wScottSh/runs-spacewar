@@ -1548,6 +1548,39 @@ def check_unread(r: Routine) -> None:
                     raise RunsError(f"{s[-1]}: the local {t[1]} is never read")
 
 
+def constant_tables(prog: Program) -> set[tuple[str, str]]:
+    """The collection fields that are tables of constants: no routine sets
+    them, every slot's initial value is a number, and every mention names
+    its slot by number or by a parameter of its routine (which a run passes
+    as a number). Each mention is its slot's value, as a macro's arguments
+    are in each expansion, and the table has no word of its own."""
+    out = {(r.name, f) for r in prog.records.values() if r.count
+           for f, (_, init) in r.fields.items()
+           if init is not None and init[0] == "slots" and all(v[0] == "num" for v in init[1])}
+
+    def go(x, params):
+        if isinstance(x, list):
+            for y in x:
+                go(y, params)
+        elif isinstance(x, tuple) and x:
+            if x[0] == "index" and len(x) >= 3 and x[1][0] == "field" \
+                    and (x[2][0] == "num" or x[2][0] == "name" and x[2][1] in params):
+                return
+            if x[0] == "field" and len(x) == 3 and x[1][0] == "name":
+                out.discard((x[1][1], x[2]))
+            for y in x:
+                go(y, params)
+
+    for r in prog.routines.values():
+        for s in walk_statements(r.body):
+            if s[0] in ("let", "set"):
+                for t in s[1][1] if s[1][0] == "tuple" else [s[1]]:
+                    if t[0] == "index" and t[1][0] == "field" and t[1][1][0] == "name":
+                        out.discard((t[1][1][1], t[1][2]))
+        go(r.body, set(r.params))
+    return out
+
+
 def walk_statements(stmts: list):
     for s in stmts:
         yield s

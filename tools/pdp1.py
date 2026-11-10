@@ -353,11 +353,13 @@ class Binding:
 
     def places(self, records: list[str]):
         """Every (record, field, slot, address) of the named Records; fields
-        held in a program flag or an instruction are not words of their own."""
+        held in a program flag or an instruction, and tables of constants,
+        are not words of their own."""
+        constants = runs.constant_tables(self.prog)
         for rec in records:
             r = self.prog.records[rec]
             for fld in r.fields:
-                if (rec, fld) in FLAGS or (rec, fld) in INSTRUCTION_FIELDS:
+                if (rec, fld) in FLAGS or (rec, fld) in INSTRUCTION_FIELDS or (rec, fld) in constants:
                     continue
                 for slot in (range(r.count) if r.count else [None]):
                     yield rec, fld, slot, self.address(rec, fld, slot)

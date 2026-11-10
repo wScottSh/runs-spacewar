@@ -30,10 +30,10 @@ network expensive_planetarium                               # bck
     run count_frames                                        # isp bcc
     if planetarium.alternate_frames >= 0:
       run skip_a_frame                                      # law i 2
-      run show_magnitude(0, 0, 022, 3)                      # dislis 1j, 1q, 3
-      run show_magnitude(1, 022, 044, 2)                    # dislis 2j, 2q, 2
-      run show_magnitude(2, 044, 0306, 1)                   # dislis 3j, 3q, 1
-      run show_magnitude(3, 0306, 01652, 0)                 # dislis 4j, 4q, 0
+      run show_magnitude(0)                                 # dislis 1j, 1q, 3
+      run show_magnitude(1)                                 # dislis 2j, 2q, 2
+      run show_magnitude(2)                                 # dislis 3j, 3q, 1
+      run show_magnitude(3)                                 # dislis 4j, 4q, 0
       run count_steps                                       # isp bkc
       if planetarium.window_steps >= 0:
         run move_window

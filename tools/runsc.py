@@ -137,6 +137,29 @@ def substitute(tree, names: dict):
     return tree
 
 
+def constant_slots(prog: runs.Program, tree):
+    """tree with each slot of a table of constants (runs.constant_tables)
+    replaced by its value: each copy of the routine that names it holds the
+    value itself, as each expansion of a macro holds its arguments
+    (dislis J, Q, B for each magnitude; hc1d's copy H, I, N, `copy nt, kt, 44`)."""
+    tables = runs.constant_tables(prog)
+
+    def go(x):
+        if isinstance(x, list):
+            return [go(y) for y in x]
+        if not isinstance(x, tuple):
+            return x
+        if len(x) >= 3 and x[0] == "index" and x[1][0] == "field" and x[1][1][0] == "name" \
+                and (x[1][1][1], x[1][2]) in tables:
+            record = prog.records[x[1][1][1]]
+            if x[2][0] != "num" or not 0 <= x[2][1] < record.count:
+                raise BindError(f"{record.name}.{x[1][2]} is a table of constants: a run names its slot "
+                                f"by a number below {record.count}, not {x[2]!r}")
+            return record.fields[x[1][2]][1][1][x[2][1]]
+        return tuple(go(y) for y in x)
+    return go(tree)
+
+
 def mark_homes(tree, fields: set[str]):
     """tree with each slot of one of fields marked as where its cursor may
     have its home: ("index", field, slot, "home")."""
@@ -1452,7 +1475,7 @@ class Unit:
         the slot the cursors point at, or a slot by number."""
         names = names or {}
         local_names = routine_locals(r)
-        body = typed(self.prog, substitute(list(r.body), names), local_names, r.name)
+        body = typed(self.prog, constant_slots(self.prog, substitute(list(r.body), names)), local_names, r.name)
         if r.kind == "processor":
             if (cleared := self.clears_table(r.name, body)) is not None:
                 return [cleared]
