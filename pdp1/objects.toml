@@ -2,7 +2,7 @@
 # hp1 and hp3, jsp routines the main loop enters with its cursors on the
 # current object. The random and diff macros are laid out at each use.
 replaces = "lift/objects.c"
-pool = ["explosion_cloud.particles"]
+pool = ["explosion_count.particles"]
 
 # Counts held as the code of their use (docs/rules/held-as-code.md):
 # spread as the address field of the xct that runs one of a table of its

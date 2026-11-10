@@ -233,9 +233,14 @@ stream display
   y: word
   intensity: int
 
+# How many dots the explosion has left this frame. It is the game's: each
+# dot draws two random numbers from the generator hyperspace also draws
+# from, so the count decides what hyperspace later draws.
+game record explosion_count
+  particles: word = 0       # mxc: dots left to plot, counting up
+
 # The explosion's cloud, carried from one dot to the next.
 record explosion_cloud
-  particles: word = 0       # mxc: dots left to plot, counting up
   spread: word = 0          # msh: which of mst's shifts spreads the dots, scr 1s or scr 3s
   scatter: word = 0         # mi1: places the scl built from a random number shifts this dot
 

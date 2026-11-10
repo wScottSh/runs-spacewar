@@ -13,15 +13,15 @@ processor coast                                             # cla: no force
 
 processor size_explosion(slot)
   reads: objects
-  writes: explosion_cloud, handoff
+  writes: explosion_count, explosion_cloud, handoff
   set explosion_cloud.spread = 1                            # law mst; dap msh: scr 1s
   let size = objects.cycles[slot]                           # lac i mb1
   set size = -size                                          # cma cli: one instruction
   set handoff.particle_low = 0
-  set explosion_cloud.particles = size >> 3
+  set explosion_count.particles = size >> 3
   # Meant to give a big explosion the wider spread, but particles is
   # negative here for any real size, so the test never passes.
-  if explosion_cloud.particles - 0140 >= 0:
+  if explosion_count.particles - 0140 >= 0:
     set explosion_cloud.spread = 3                          # idx msh: scr 3s
 
 # The original builds an scl from the random number's low 9 bits; it
@@ -34,8 +34,8 @@ processor scatter_particle
 # The dot is presentation. The random numbers drawn for it, and the count of
 # dots left, are the game: hyperspace draws from the same generator.
 processor plot_particle(slot)
-  reads: random, objects
-  writes: explosion_cloud, display, handoff
+  reads: random, objects, explosion_cloud
+  writes: explosion_count, display, handoff
   let high = random.number
   # scr 9s; sir 9s pushes all of IO's old value, the last dot's y, out.
   set (high, handoff.particle_low) = scr(high, handoff.particle_low, 9)
@@ -46,7 +46,7 @@ processor plot_particle(slot)
   set (high, handoff.particle_low) = rcl(high, handoff.particle_low, 18)   # swap
   set high = high + objects.x[slot]
   emit display: high, handoff.particle_low, 3
-  set explosion_cloud.particles = explosion_cloud.particles + 1
+  set explosion_count.particles = explosion_count.particles + 1
 
 processor free_slot(slot)                                   # dzm i ml1
   writes: objects

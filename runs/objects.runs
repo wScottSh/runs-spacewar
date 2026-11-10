@@ -18,7 +18,7 @@ network explosion(slot)                                     # mex
     run scatter_particle                                    # dac mi1
     run next_random
     run plot_particle(slot)
-    if explosion_cloud.particles >= 0:                      # count \mxc, mz1
+    if explosion_count.particles >= 0:                      # count \mxc, mz1
       break
   run count_down(slot)                                      # count i ma1, mxr
   if objects.counter[slot] >= 0:
