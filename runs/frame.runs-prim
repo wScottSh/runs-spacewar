@@ -100,6 +100,11 @@ processor post_scores
   writes: scoreboard
   emit scoreboard, score.first, score.second
 
+processor read_scores_switch                                # lat; and (40
+  reads: console
+  writes: handoff
+  set handoff.scores_switch = console.test_word & 040
+
 processor clear_scores
   writes: score
   set score.first = 0

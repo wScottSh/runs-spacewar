@@ -94,7 +94,8 @@ network between_games                                       # a
         run ask
 
 network ask                                                 # a5
-  if console.test_word & 040 == 0:
+  run read_scores_switch
+  if handoff.scores_switch == 0:
     run new_game
   else:
     run show_scores
@@ -105,7 +106,8 @@ network ask                                                 # a5
 network show_scores                                         # a4
   run post_scores
   wait                                                      # hlt
-  if console.test_word & 040 != 0:
+  run read_scores_switch
+  if handoff.scores_switch != 0:
     run new_game
   else:
     run clear_scores
