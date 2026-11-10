@@ -2675,7 +2675,7 @@ class Function:
             if self.b.loops == "exit first":
                 self.loop(s, depth)
             elif self.exits_last(s[2]):
-                self.bottom_loop(s, depth)
+                self.bottom_loop(s, depth, last)
             elif self.rotated([], s) is not None:
                 self.rotated_loop(s, depth, last)
             else:
@@ -3300,23 +3300,30 @@ class Function:
 
     @staticmethod
     def exits_last(body: list) -> bool:
-        """The loop's one exit is its last statement, `if c: break`."""
+        """The loop's last statement is `if c: break`."""
         end = body[-1] if body else None
         return bool(end) and end[0] == "if" and len(end[1]) == 1 and not end[2] \
-            and [x[0] for x in end[1][0][1]] == ["break"] and not breaks(body[:-1]) \
+            and [x[0] for x in end[1][0][1]] == ["break"] \
             and not any(x[0] == "continue" for x in walk(body))
 
-    def bottom_loop(self, s, depth: int):
-        """A loop that exits only at its end is laid out with the test at
-        the bottom, jumping back to the top while the exit is not taken."""
+    def bottom_loop(self, s, depth: int, last: bool):
+        """A loop whose last statement is `if c: break` is laid out with the
+        test at the bottom, jumping back to the top while the exit is not
+        taken. A break before it jumps past the loop, as a rotated loop's
+        does; a break of a loop that ends the routine is its return."""
         _, _, body, where = s
         head = self.label("loop")
         cond = body[-1][1][0][0]
         if cond[0] != "bin" or cond[1] not in NEGATED:
             raise BindError(f"{where}: cannot negate {cond!r}")
         stay = ("bin", NEGATED[cond[1]], cond[2], cond[3])
+        after = self.label("after") if breaks(body[:-1]) and not last else None
+        self.loops.append((after, head))
         self.block([("label", head, where), *body[:-1], ("if", [(stay, [("goto", head, where)])], [], where)],
                    depth)
+        self.loops.pop()
+        if after:
+            self.emit(depth - 1, f"{after}: ;")
 
     def display(self, s, nxt, depth: int) -> int:
         """A point to plot: x in AC, y in IO, as the display instruction

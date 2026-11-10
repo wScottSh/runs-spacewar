@@ -260,33 +260,42 @@ processor draw_outline(slot)                                # sp5, jmp .
       continue
     set at = at + 1
 
-# The exhaust flame: while the rocket fires, a random number of dots behind
-# the tail, each burning a unit of fuel. The count and the fuel are the
-# game; the dots are presentation.
-processor exhaust(slot)                                     # sq6
-  reads: random, heading
-  writes: spaceship, pen, ships, display
+# The exhaust flame (network exhaust). How many dots, whether the rocket
+# fires, and the fuel each dot burns are the game's; the dots are the
+# presentation's.
+processor light_flame                                       # sq6: ranct sar 9s, sar 4s, \src
+  reads: random
+  writes: spaceship, handoff
   let dots = random.number >> 13
   if dots >= 0:
     set dots = -dots
   set spaceship.flame = dots
-  let controls = spaceship.controls
-  set controls = ral(controls, 2)
-  if controls >= 0:                                         # not firing: no flame
-    return
-  loop at most 040:                                         # sq7
-    set pen.down_x = heading.sine >> 8
-    set pen.down_y = heading.cosine >> 8
-    set ships.fuel[slot] = ships.fuel[slot] + 1
-    if ships.fuel[slot] >= 0:                               # out of fuel
-      set ships.fuel[slot] = 0
-      return
-    set pen.y = pen.y - pen.down_y
-    set pen.x = pen.x + pen.down_x
-    emit display: pen.x, pen.y, 0
-    set spaceship.flame = spaceship.flame + 1
-    if spaceship.flame >= 0:
-      break
+  set handoff.rocket_button = spaceship.controls            # lio \scw
+  set handoff.rocket_button = ral(handoff.rocket_button, 2)
+
+processor aim_flame                                         # sq7: scale \sn, 8s, \ssn
+  reads: heading
+  writes: pen
+  set pen.down_x = heading.sine >> 8
+  set pen.down_y = heading.cosine >> 8
+
+processor burn_fuel(slot)                                   # count i \mfu, st2
+  writes: ships
+  set ships.fuel[slot] = ships.fuel[slot] + 1
+
+processor empty_tank(slot)                                  # dzm i \mfu
+  writes: ships
+  set ships.fuel[slot] = 0
+
+processor plot_flame                                        # st2: yincr \sx1, \sy1, sub; dispt i, \sy1
+  writes: pen, display
+  set pen.y = pen.y - pen.down_y
+  set pen.x = pen.x + pen.down_x
+  emit display: pen.x, pen.y, 0
+
+processor count_flame                                       # count \src, sq7
+  writes: spaceship
+  set spaceship.flame = spaceship.flame + 1
 
 # Torpedoes. The counter is the tube's reload time. The fire button
 # launches while held; with sense switch 3 on, only when newly pressed. The

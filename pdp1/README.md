@@ -87,7 +87,7 @@ The keys that hold for a whole unit:
 
 `runsc` lays code out by rules of its own, from the shape of the RUNS text, the same for every binding:
 
-- A loop whose one exit is its last statement, `if c: break`, tests at the bottom and jumps back to the top while `c` fails (`count \mxc, mz1`).
+- A loop whose last statement is `if c: break` tests at the bottom and jumps back to the top while `c` fails (`count \mxc, mz1`). A break before it jumps past the loop, as a rotated loop's does (`dzm i \mfu / jmp sq9`, then `count \src, sq7`); a break of a loop that is the routine's last statement is its return.
 - `set x = x + 1` followed by a test of `x` against 0 is one index-and-skip (`isp`).
 - When an `if`'s else arm ends in an `if` whose arm ends with the statements of the first arm, those statements are laid out once, at the end of the inner arm, and the first arm jumps to them (`count i ma1, hp6`).
 - `set a = -a` on an AC local followed by `set f = 0` on a place in IO is one instruction, `cma cli`.

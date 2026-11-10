@@ -71,7 +71,7 @@ io_reads = ["ships.fuel"]
 [[place]]
 routine = "after_outline"
 convention = "BLOCK"
-io = ["controls"]
+io = ["handoff.rocket_button"]
 
 [[place]]
 exit = "spaceship_done"

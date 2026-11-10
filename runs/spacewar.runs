@@ -391,6 +391,7 @@ record handoff
   distance_high: word = 0   # AC:IO: the distance from the star cubed, scaled down; a ship
   distance_low: word = 0    #   feels gravity only when the high half is 0
   torpedo_button: word = 0  # AC: the fire button, if it counts as pressed, in the sign bit
+  rocket_button: word = 0   # IO: the control word rotated, the rocket button in the sign bit
   codes: word = 0           # IO through the outline compiler: the outline word, rotated
   direction: word = 0       # AC: the next direction code, which the compiler dispatches on
   pen_x: word = 0           # AC: the point the outline's walk is at
