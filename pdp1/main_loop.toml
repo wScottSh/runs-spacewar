@@ -5,7 +5,7 @@
 # firing ends.
 replaces = "lift/main_loop.c"
 registers = ["handoff", "outline_call", "breakout_check"]
-pool = ["frame.spare_time", "frame.restart_delay", "frame.objects_seen",
+pool = ["pacing.spare_time", "frame.restart_delay", "frame.objects_seen",
         "score.first", "score.second", "score.games_left", "controls.source"]
 # The Network the PDP-1 runs again whenever a firing ends: the host's loop.
 repeat = "frame"

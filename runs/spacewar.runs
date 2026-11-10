@@ -48,8 +48,12 @@ record ships[2]
 record random
   number: word = 0          # ran
 
-record frame
+# The frame's instruction budget. It is pacing: the spare-time loop burns
+# what the objects left of it, and no rule reads it, so it is presentation.
+presentation record pacing
   spare_time: word = 0      # mtc: the frame's instruction budget, counting up
+
+game record frame
   restart_delay: word = 0   # ntd: frames until the next game, counting up. The tape does not
                             # load it, but every game sets it before it counts it down.
   objects_seen: word = 0    # moc: counted, never read. The tape does not load it, so on the

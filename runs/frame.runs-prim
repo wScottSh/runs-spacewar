@@ -1,9 +1,9 @@
 # The main loop's own Processors.
 
 processor begin_frame                                       # ml0: load \mtc, -4000
-  writes: frame
+  writes: pacing
   let budget = -04000
-  set frame.spare_time = budget
+  set pacing.spare_time = budget
 
 processor hold_restart                                      # md1: twice a torpedo's life
   reads: handoff
@@ -46,18 +46,18 @@ processor collision(slot, other)
   set objects.counter[other] = frames
 
 processor charge_time(slot)                                 # mq4
-  writes: frame
+  writes: pacing
   reads: objects
-  set frame.spare_time = objects.cycles[slot] + frame.spare_time
+  set pacing.spare_time = objects.cycles[slot] + pacing.spare_time
 
 # The spare-time loop burns the rest of the frame's instruction budget. It
 # is pacing: begin_frame, charge_time and spare_time alone use the budget,
 # and nothing in the game reads it after, so its effects are presentation.
 processor spare_time
-  writes: frame
+  writes: pacing
   loop at most 0400001:
-    set frame.spare_time = frame.spare_time + 1
-    if frame.spare_time >= 0:
+    set pacing.spare_time = pacing.spare_time + 1
+    if pacing.spare_time >= 0:
       break
 
 # The survivors score: a ship whose routine word is still its own calc

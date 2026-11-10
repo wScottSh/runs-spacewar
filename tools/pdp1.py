@@ -39,7 +39,7 @@ FIELDS = {
     ("ships", "saved_routine"): "nh1", ("ships", "jumps_left"): "nh2", ("ships", "recharge"): "nh3",
     ("ships", "uncertainty"): "nh4",
     ("random", "number"): "ran",
-    ("frame", "spare_time"): "mtc", ("frame", "restart_delay"): "ntd", ("frame", "objects_seen"): "moc",
+    ("pacing", "spare_time"): "mtc", ("frame", "restart_delay"): "ntd", ("frame", "objects_seen"): "moc",
     ("score", "first"): "1sc", ("score", "second"): "2sc", ("score", "games_left"): "gct",
     ("controls", "source"): "cwg",
     ("tunables", "fuel_supply"): "foo", ("tunables", "angular_acceleration"): "maa",
