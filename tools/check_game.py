@@ -49,7 +49,7 @@ frames = importlib.util.module_from_spec(spec)
 sys.modules["frames"] = frames
 spec.loader.exec_module(frames)
 
-RECORDS = ["objects", "ships", "random", "frame", "pacing", "tunables", "outline_setting", "score", "controls"]
+RECORDS = ["objects", "ship_flight", "ship_outlines", "ships", "random", "frame", "pacing", "tunables", "outline_setting", "score", "controls"]
 # Fields the evaluator may hold unknown where SIMH holds a word: the lights,
 # program flags 1 and 2, keep what the machine held at power-on until a game
 # ends, and nothing in the game reads them. Any other field the evaluator
@@ -209,7 +209,7 @@ def a_case(game: Game, rng: random.Random, start: int | None) -> dict:
     a frame from ml0, else the start address."""
     m = game.machine()
     st = {r: copy.deepcopy(m.state[r]) for r in RECORDS}
-    o, sh = st["objects"], st["ships"]
+    o, sh = st["objects"], {**st["ship_flight"], **st["ship_outlines"], **st["ships"]}
     word = lambda: runs.W(rng.randrange(1 << 18))
     for s in range(0o30):
         o["routine"][s] = member("calc_routine", rng.choice(["none", "torpedo", "explosion"]))
@@ -242,7 +242,7 @@ def a_case(game: Game, rng: random.Random, start: int | None) -> dict:
     case = {"state": st, "lights": lights, "start": start, "test_words": (switches(), switches())}
     if start is not None:                       # power-on: only the inputs come from core
         fresh = {r: copy.deepcopy(m.state[r]) for r in RECORDS}
-        for r in ("objects", "ships"):          # the table is not on the tape: garbage the game clears
+        for r in ("objects", "ship_flight", "ship_outlines", "ships"):          # the table is not on the tape: garbage the game clears
             fresh[r] = st[r]
         fresh["score"] = st["score"]
         fresh["outline_setting"]["separate_outlines"] = st["outline_setting"]["separate_outlines"]

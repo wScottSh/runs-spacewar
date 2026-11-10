@@ -28,7 +28,7 @@ spec = importlib.util.spec_from_file_location("objref", pdp1.ROOT / "tools/check
 objref = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(objref)
 
-RECORDS = ["objects", "ships", "random"]
+RECORDS = ["objects", "ship_flight", "ship_outlines", "ships", "random"]
 CALLS = int(sys.argv[1]) if len(sys.argv) > 1 else 3000
 NEG = lambda v: v ^ runs.MASK
 COUNTER_EDGES = [NEG(1), NEG(2), runs.MASK, 0, 1, 0o377777, 0o400000, NEG(0o10), NEG(0o100)]
@@ -53,7 +53,7 @@ def a_state(m: runs.Machine, rng: random.Random, routine: str, ship: bool) -> tu
     if routine == "explosion":
         o["cycles"][slot] = runs.W(rng.choice([0o2000, 0o20, rng.randrange(0o4000), NEG(rng.randrange(0o4000)),
                                                0o1137, 0o1140, 0o377777, runs.MASK]))
-    sh = state["ships"]
+    sh = {**state["ship_flight"], **state["ship_outlines"], **state["ships"]}
     for s in range(2):
         for f in sh:
             sh[f][s] = word(rng)

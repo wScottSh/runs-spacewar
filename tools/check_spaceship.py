@@ -47,7 +47,7 @@ spec.loader.exec_module(shipref)
 
 NEG = lambda v: v ^ runs.MASK
 JMP = 0o600000
-RECORDS = ["objects", "ships", "random", "spaceship", "heading", "pen"]
+RECORDS = ["objects", "ship_flight", "ship_outlines", "ships", "random", "spaceship", "heading", "pen"]
 # The arithmetic routines' own words that have a place in core.
 SCRATCH = [(rec, fld) for rec, fld in pdp1.FIELDS
            if rec in ("square_root_call", "multiply_call", "integer_multiply_call", "divide_call", "sine_call")]
@@ -96,7 +96,7 @@ def a_state(m: runs.Machine, rng: random.Random, outlines: Outlines) -> tuple[st
                         + sorted({r for r, _ in SCRATCH})})
     slot = rng.randrange(2)
     routine = rng.choice(["first_spaceship", "second_spaceship"])
-    o, sh = st["objects"], st["ships"]
+    o, sh = st["objects"], {**st["ship_flight"], **st["ship_outlines"], **st["ships"]}
     table = rng.choice(["mixed"] * 18 + ["full", "one free"])
     free = rng.choice([1 - slot, 2, 0o26, 0o27, rng.randrange(2, 0o30)])
     for s in range(0o30):
@@ -157,7 +157,7 @@ def deposits(b: pdp1.Binding, st: dict, slot: int, sym: dict, image: dict) -> di
         at = sym[first] + slot
         out[sym[cursor]] = at if cursor in shipref.POOL_CURSORS else image[sym[cursor]] & ~0o7777 | at
     out[sym["sr1"]] = image[sym["sr1"]] & ~0o7777 | mtb + st["launch"]["slot"].v
-    out[sym["sp5"]] = image[sym["sp5"]] & ~0o7777 | b.encode("ships", "outline", st["ships"]["outline"][slot])
+    out[sym["sp5"]] = image[sym["sp5"]] & ~0o7777 | b.encode("ship_outlines", "outline", st["ship_outlines"]["outline"][slot])
     out[sym["cwg"]] = b.enum_word["control_source"][st["controls"]["source"].name]
     return out
 
@@ -246,7 +246,7 @@ def path(before: dict, after: dict, slot: int, halted: bool) -> list[str]:
         seen.append("pulled by gravity")
     if after["spaceship"]["rocket"].name == "firing":
         seen.append("thrusting")
-    if after["ships"]["fuel"][slot] != before["ships"]["fuel"][slot]:
+    if after["ship_flight"]["fuel"][slot] != before["ship_flight"]["fuel"][slot]:
         seen.append("burned fuel")
     if any(o0["routine"][s].name == "none" and o1["routine"][s].name == "torpedo" for s in range(0o30)):
         seen.append("torpedo launched")

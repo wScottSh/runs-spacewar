@@ -34,8 +34,8 @@ FIELDS = {
     ("objects", "routine"): "mtb", ("objects", "x"): "nx1", ("objects", "y"): "ny1",
     ("objects", "counter"): "na1", ("objects", "cycles"): "nb1",
     ("objects", "dx"): "ndx", ("objects", "dy"): "ndy",
-    ("ships", "angular_momentum"): "nom", ("ships", "angle"): "nth", ("ships", "fuel"): "nfu",
-    ("ships", "torpedoes"): "ntr", ("ships", "outline"): "not", ("ships", "previous_control"): "nco",
+    ("ship_flight", "angular_momentum"): "nom", ("ship_flight", "angle"): "nth", ("ship_flight", "fuel"): "nfu",
+    ("ship_flight", "torpedoes"): "ntr", ("ship_outlines", "outline"): "not", ("ships", "previous_control"): "nco",
     ("ships", "saved_routine"): "nh1", ("ships", "jumps_left"): "nh2", ("ships", "recharge"): "nh3",
     ("ships", "uncertainty"): "nh4",
     ("random", "number"): "ran",
@@ -76,7 +76,7 @@ FIELDS = {
 PIECES = {("outlines", "codes"): [(0, "ot1"), (0o10, "ot2")]}
 
 # Fields that hold a place in a collection: the binding keeps its address.
-INTO = {("ships", "outline"): ("outline_code", "stroke"), ("outline_call", "code"): ("outline_code", "stroke"),
+INTO = {("ship_outlines", "outline"): ("outline_code", "stroke"), ("outline_call", "code"): ("outline_code", "stroke"),
         ("magnitudes", "cursor"): ("star_catalog", "words"),
         ("outline_call", "table"): ("outlines", "codes"), ("outline_compiler", "table"): ("outlines", "codes")}
 

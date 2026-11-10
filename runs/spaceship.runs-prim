@@ -17,7 +17,7 @@ processor take_second_controls                              # rir 4s; dio \scw
 # The rocket fires while its button is held and fuel is left.
 processor steer(slot)                                       # sc1
   reads: tunables, console
-  writes: spaceship, ships, sine_call
+  writes: spaceship, ship_flight, sine_call
   let controls = spaceship.controls
   set spaceship.rocket = off
   let turn = 0
@@ -26,22 +26,22 @@ processor steer(slot)                                       # sc1
   set controls = ral(controls, 1)
   if controls < 0:                                          # rotate clockwise
     set turn = turn - tunables.angular_acceleration
-  set turn = turn + ships.angular_momentum[slot]
-  set ships.angular_momentum[slot] = turn
+  set turn = turn + ship_flight.angular_momentum[slot]
+  set ship_flight.angular_momentum[slot] = turn
   if console.angular_momentum == off:                       # szs 10
-    set ships.angular_momentum[slot] = 0
+    set ship_flight.angular_momentum[slot] = 0
     set turn = ral(turn, 7)
   set controls = ral(controls, 1)
   if controls < 0:                                          # the rocket button
     set spaceship.rocket = firing
-  if ships.fuel[slot] >= 0:                                 # out of fuel
+  if ship_flight.fuel[slot] >= 0:                                 # out of fuel
     set spaceship.rocket = off
-  let angle = turn + ships.angle[slot]
+  let angle = turn + ship_flight.angle[slot]
   if angle >= 0:                                            # keep the heading within a turn
     set angle = angle - 0311040
   if angle < 0:
     set angle = angle + 0311040
-  set ships.angle[slot] = angle
+  set ship_flight.angle[slot] = angle
   set sine_call.angle = angle
 
 processor take_sine                                         # dac \sn; dzm \bx; dzm \by
@@ -120,11 +120,11 @@ processor take_pull_y                                       # dac \by
 # The thrust: the heading's cosine and sine, each scaled by the tunable sac,
 # while the rocket fires; the pull adds to it.
 processor check_fuel(slot)                                  # cla; sad i \mfu; clf 6
-  reads: ships
+  reads: ship_flight
   writes: spaceship, cosine_call
-  if 0 == ships.fuel[slot]:
+  if 0 == ship_flight.fuel[slot]:
     set spaceship.rocket = off
-  set cosine_call.angle = ships.angle[slot]
+  set cosine_call.angle = ship_flight.angle[slot]
 
 processor aim_thrust_y                                      # dac \cs; sar 9s
   reads: sine_call
@@ -185,15 +185,15 @@ processor mark_center                                       # cla cli; dpy-4000
   writes: display
   emit display: 0, 0, 0
 
-# The ship's outline, its strokes from ships.outline[slot], which the main
+# The ship's outline, its strokes from ship_outlines.outline[slot], which the main
 # loop loads into the jump as it reaches the ship's slot. Each step moves
 # the pen and plots a dot, from the nose down one side to the end; then the
 # out steps are mirrored and the same strokes draw the other side, from the
 # nose again. The pen is left at the tail, and the walk goes back to sq6.
 processor draw_outline(slot)                                # sp5, jmp .
-  reads: ships, outline_code
+  reads: ship_outlines, outline_code
   writes: pen, outline_point, display
-  let at = ships.outline[slot]
+  let at = ship_outlines.outline[slot]
   loop at most 0304:
     let stroke = outline_code.stroke[at]
     if stroke == begin:
@@ -280,12 +280,12 @@ processor aim_flame                                         # sq7: scale \sn, 8s
   set pen.down_y = heading.cosine >> 8
 
 processor burn_fuel(slot)                                   # count i \mfu, st2
-  writes: ships
-  set ships.fuel[slot] = ships.fuel[slot] + 1
+  writes: ship_flight
+  set ship_flight.fuel[slot] = ship_flight.fuel[slot] + 1
 
 processor empty_tank(slot)                                  # dzm i \mfu
-  writes: ships
-  set ships.fuel[slot] = 0
+  writes: ship_flight
+  set ship_flight.fuel[slot] = 0
 
 processor plot_flame                                        # st2: yincr \sx1, \sy1, sub; dispt i, \sy1
   writes: pen, display
@@ -311,12 +311,12 @@ processor trigger(slot)                                     # dzm i ma1; mco, la
   set handoff.torpedo_button = ral(fire, 3)                 # the torpedo bit to the sign
 
 processor count_torpedo(slot)
-  writes: ships
-  set ships.torpedoes[slot] = ships.torpedoes[slot] + 1
+  writes: ship_flight
+  set ship_flight.torpedoes[slot] = ship_flight.torpedoes[slot] + 1
 
 processor out_of_torpedoes(slot)                            # dzm i \mtr: prevent count around
-  writes: ships
-  set ships.torpedoes[slot] = 0
+  writes: ship_flight
+  set ship_flight.torpedoes[slot] = 0
 
 processor first_slot
   writes: launch

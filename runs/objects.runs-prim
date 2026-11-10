@@ -117,18 +117,18 @@ processor jump(slot)                                        # add i mx1; dac i m
 processor head_out(slot)
   requires: slot < 2
   reads: handoff, random
-  writes: objects, ships
+  writes: objects, ship_flight
   set objects.dy[slot] = handoff.jump_high
   set objects.dx[slot] = handoff.jump_low
   let angle_steps = -3
-  set ships.angle[slot] = random.number
+  set ship_flight.angle[slot] = random.number
   loop at most 3:                   # bring the new heading within a turn
-    let heading = ships.angle[slot]
+    let heading = ship_flight.angle[slot]
     if heading >= 0:
       set heading = heading - 0311040
     if heading < 0:
       set heading = heading + 0311040
-    set ships.angle[slot] = heading
+    set ship_flight.angle[slot] = heading
     set angle_steps = angle_steps + 1
     if angle_steps >= 0:
       break

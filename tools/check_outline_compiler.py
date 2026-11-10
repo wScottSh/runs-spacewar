@@ -97,7 +97,7 @@ def new_games(prog: runs.Program, b: pdp1.Binding) -> int:
     nnn = sym["nnn"]
     rng = random.Random(0o3772)
     settings = [runs.MASK, 0] + [rng.randrange(1 << 18) for _ in range(4)]
-    watch = list(range(nnn, nnn + 2 * AREA)) + [b.address("ships", "outline", s) for s in (0, 1)]
+    watch = list(range(nnn, nnn + 2 * AREA)) + [b.address("ship_outlines", "outline", s) for s in (0, 1)]
     got = simh.run_jda(pdp1.SIMH, pdp1.ORACLE, sym["a2"], [Inputs(0) for _ in settings], op="jmp",
                        watch=watch, deposits={sym["ml0"]: JMP | STUB + 3},
                        each=[{b.address("outline_setting", "separate_outlines"): ddd} for ddd in settings])
@@ -108,7 +108,7 @@ def new_games(prog: runs.Program, b: pdp1.Binding) -> int:
         m.run("new_game")
         end = m.state["outline_call"]["code"].v
         got = code_words(m, b, end)
-        starts = [b.encode("ships", "outline", w) for w in m.state["ships"]["outline"]]
+        starts = [b.encode("ship_outlines", "outline", w) for w in m.state["ship_outlines"]["outline"]]
         bad = []
         if list(done.watched[-2:]) != starts:
             bad.append(f"outlines start simh {[f'{w:o}' for w in done.watched[-2:]]} runs {[f'{w:o}' for w in starts]}")

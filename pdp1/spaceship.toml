@@ -39,7 +39,7 @@ on = 1
 # Cursors homed in this unit: the first instruction that reads or writes
 # the field (mom, mth, mco).
 [walk]
-homes = ["ships.angular_momentum", "ships.angle", "ships.previous_control"]
+homes = ["ship_flight.angular_momentum", "ship_flight.angle", "ships.previous_control"]
 
 # The cursors on the new torpedo's slot: the search's cursor (sr1) for the
 # routine word, the rest set from it in the table's order.
@@ -65,7 +65,7 @@ convention = "JSP"
 routine = "spaceship"
 convention = "BLOCK"
 io = ["controls"]
-io_reads = ["ships.fuel"]
+io_reads = ["ship_flight.fuel"]
 
 # The block the compiled outline jumps back to.
 [[place]]
@@ -82,7 +82,7 @@ convention = "BLOCK"
 
 # The walk over the outline's strokes: each slot's words are its member's
 # arm, entered by a jump through sp5, where the main loop carries
-# ships.outline (pdp1/main_loop.toml). The point the walk is at lives in AC
+# ship_outlines.outline (pdp1/main_loop.toml). The point the walk is at lives in AC
 # and IO, and so do the mirror's words. It waits for the display's
 # completion pulse before its first dot and leaves its last dot's pending,
 # so the dot plotted just before it asks for one and the block it jumps

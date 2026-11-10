@@ -81,7 +81,7 @@ network after_outline(slot)                                 # sq6
     run trigger(slot)
     if handoff.torpedo_button < 0:
       run count_torpedo(slot)                               # count i \mtr, st1
-      if ships.torpedoes[slot] >= 0:
+      if ship_flight.torpedoes[slot] >= 0:
         run out_of_torpedoes(slot)
       else:
         run launch_torpedo(slot)
@@ -103,7 +103,7 @@ network exhaust(slot)                                       # sq6
     loop at most 040:                                       # sq7
       run aim_flame
       run burn_fuel(slot)
-      if ships.fuel[slot] >= 0:                             # out of fuel
+      if ship_flight.fuel[slot] >= 0:                             # out of fuel
         run empty_tank(slot)
         break
       run plot_flame

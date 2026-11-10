@@ -34,13 +34,19 @@ interface record objects[030]
   dx: word = 0              # ndx: velocity
   dy: word = 0              # ndy
 
-# Spaceship-only properties, slot for slot with objects[0] and objects[1].
-record ships[2]
+# Spaceship-only properties, slot for slot with objects[0] and objects[1],
+# in the table's order: how each ship flies, where its outline's strokes
+# start, then the rest.
+game record ship_flight[2]
   angular_momentum: word = 0    # nom
   angle: word = 0               # nth: heading
   fuel: word = 0                # nfu: counting up, out at 0
   torpedoes: word = 0           # ntr: torpedoes left, counting up
+
+presentation record ship_outlines[2]
   outline: word = 0             # not: where the ship's outline strokes start
+
+game record ships[2]
   previous_control: word = 0    # nco: last frame's control word
   saved_routine: calc_routine = none   # nh1: the ship's own calc routine, kept during hyperspace
   jumps_left: word = 0          # nh2: hyperspace jumps left, counting up
@@ -114,7 +120,7 @@ presentation stream scoreboard
 
 # The ship outlines are presentation. At each new game the outline compiler
 # (oc) decodes each outline into strokes (outline_code), and each frame a
-# spaceship walks its own (draw_outline). ships.outline keeps where each
+# spaceship walks its own (draw_outline). ship_outlines.outline keeps where each
 # ship's strokes start.
 
 # The ships' outlines (ot1, ot2), what the compiler reads. Each word holds
@@ -339,7 +345,7 @@ enum side
 
 # Where a ship's outline is drawn from, and the steps it is drawn with. The
 # outline is presentation: the spaceship sets these and walks its outline's
-# strokes (ships.outline), which plots the ship, leaves the pen at the
+# strokes (ship_outlines.outline), which plots the ship, leaves the pen at the
 # ship's tail, where the exhaust flame starts, and leaves the out steps
 # mirrored for the ship's other side. The steps are the heading scaled down
 # by 2^9, turned to each direction of a ship standing on its tail.

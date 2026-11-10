@@ -116,7 +116,7 @@ processor count_games                                       # a6
   set score.games_left = games
 
 processor clear_tables                                      # clear mtb, nnn-1
-  writes: objects, ships
+  writes: objects, ship_flight, ship_outlines, ships
   for slot in 0 .. 027:
     set objects.routine[slot] = none
     set objects.x[slot] = 0
@@ -126,11 +126,11 @@ processor clear_tables                                      # clear mtb, nnn-1
     set objects.dx[slot] = 0
     set objects.dy[slot] = 0
   for ship in 0 .. 1:
-    set ships.angular_momentum[ship] = 0
-    set ships.angle[ship] = 0
-    set ships.fuel[ship] = 0
-    set ships.torpedoes[ship] = 0
-    set ships.outline[ship] = 0
+    set ship_flight.angular_momentum[ship] = 0
+    set ship_flight.angle[ship] = 0
+    set ship_flight.fuel[ship] = 0
+    set ship_flight.torpedoes[ship] = 0
+    set ship_outlines.outline[ship] = 0
     set ships.previous_control[ship] = 0
     set ships.saved_routine[ship] = none
     set ships.jumps_left[ship] = 0
@@ -138,7 +138,7 @@ processor clear_tables                                      # clear mtb, nnn-1
     set ships.uncertainty[ship] = 0
 
 processor place_ships
-  writes: objects, ships
+  writes: objects, ship_flight
   set objects.routine[0] = first_spaceship
   set objects.routine[1] = second_spaceship
   let corner = 0200000
@@ -147,32 +147,32 @@ processor place_ships
   set corner = -corner
   set objects.x[1] = corner
   set objects.y[1] = corner
-  set ships.angle[0] = 0144420                              # pi
+  set ship_flight.angle[0] = 0144420                              # pi
 
 # The outlines go into the free core after the table, from its first word.
 processor outlines_from_free_core                           # law nnn; dac not
-  writes: outline_call, ships
+  writes: outline_call, ship_outlines
   set outline_call.code = 0
-  set ships.outline[0] = outline_call.code
+  set ship_outlines.outline[0] = outline_call.code
 
 processor choose_needle
   writes: outline_call
   set outline_call.table = 0                                # ot1
 
 processor second_outline                                    # a3
-  writes: ships, outline_call
-  set ships.outline[1] = outline_call.code
+  writes: ship_outlines, outline_call
+  set ship_outlines.outline[1] = outline_call.code
   set outline_call.table = 010                              # ot2
 
 processor arm_ships
   reads: handoff, tunables
-  writes: ships, objects
+  writes: ship_flight, objects
   let torpedoes = handoff.torpedo_supply
-  set ships.torpedoes[0] = torpedoes
-  set ships.torpedoes[1] = torpedoes
+  set ship_flight.torpedoes[0] = torpedoes
+  set ship_flight.torpedoes[1] = torpedoes
   let fuel = tunables.fuel_supply
-  set ships.fuel[0] = fuel
-  set ships.fuel[1] = fuel
+  set ship_flight.fuel[0] = fuel
+  set ship_flight.fuel[1] = fuel
   # The calc routine's time for the first frame, before it has run.
   let cycles = 02000
   set objects.cycles[0] = cycles

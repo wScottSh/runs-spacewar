@@ -19,7 +19,7 @@ The central star's slope and the ship's gravity share two pool words (bx,
 by), and program flag 6 is the star's mirror bit and the rocket's: each is
 compared with whichever rule wrote it last in the frame.
 
-The main loop loads ships.outline[slot] into sp5 for every colliding
+The main loop loads ship_outlines.outline[slot] into sp5 for every colliding
 object, so for a torpedo it reads past the 2-word array. With `poison`,
 SIMH's main loop instead loads a jump to address 0 there for every slot
 past the ships (an undefined instruction, which stops the machine): the
@@ -43,7 +43,7 @@ from pdp1cc.gate import corpus, simh
 from pdp1cc.gate.simh import Inputs, STUB, CALL
 from oracle_check import built_listing
 
-RECORDS = ["objects", "ships", "random", "frame", "pacing", "tunables", "spaceship", "heading", "pen", "planetarium", "magnitudes"]
+RECORDS = ["objects", "ship_flight", "ship_outlines", "ships", "random", "frame", "pacing", "tunables", "spaceship", "heading", "pen", "planetarium", "magnitudes"]
 NEG = lambda v: v ^ runs.MASK
 JMP = 0o600000
 
@@ -58,7 +58,7 @@ def near(rng: random.Random, centre: int, spread: int) -> runs.W:
 
 def a_frame(m: runs.Machine, rng: random.Random, outlines) -> tuple[dict, int]:
     st = copy.deepcopy({r: m.state[r] for r in RECORDS + ["console", "controls", "launch"]})
-    o, sh = st["objects"], st["ships"]
+    o, sh = st["objects"], {**st["ship_flight"], **st["ship_outlines"], **st["ships"]}
     cx, cy = rng.randrange(-0o300000, 0o300000), rng.randrange(-0o300000, 0o300000)
     spread = rng.choice([0o4000, 0o20000, 0o100000, 0o400000])
     full = rng.random() < 0.02
