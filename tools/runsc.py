@@ -1423,28 +1423,22 @@ class Unit:
     def flat_routine(self, r: runs.Routine) -> list:
         """A bound routine's statements. A Network it runs as the last thing
         of several branches is laid out once, where the last of them runs
-        it, and the others jump there. When the branches are the arms of a
-        jump table, it is laid out in the first arm, which the code after
-        the table follows (Function.jump_table)."""
+        it, and the others jump there."""
         self.args_done_after = self.binds.bound[r.name].args_done if r.name in self.binds.bound else None
         self.current = self.binds.bound[r.name]
         self.copies = 0
         stmts = self.flat(r)
         runs_at: list[str] = []
-        first: set[str] = set()
 
-        def collect(items, table=False):
+        def collect(items):
             for s in items:
                 if s[0] == "shared":
                     runs_at.append(s[1])
-                    if table:
-                        first.add(s[1])
-                    collect(s[2], table)
+                    collect(s[2])
                 elif s[0] == "if":
-                    inner = table or table_cases(s) is not None
                     for _, b in s[1]:
-                        collect(b, inner)
-                    collect(s[2], inner)
+                        collect(b)
+                    collect(s[2])
                 elif s[0] in ("loop", "slots"):
                     collect(s[-2])
         collect(stmts)
@@ -1458,7 +1452,7 @@ class Unit:
                     seen[s[1]] = seen.get(s[1], 0) + 1
                     if runs_at.count(s[1]) == 1:
                         out += rebuild(s[2])
-                    elif seen[s[1]] == (1 if s[1] in first else runs_at.count(s[1])):
+                    elif seen[s[1]] == runs_at.count(s[1]):
                         out += [("label", s[1], s[-1])] + rebuild(s[2])
                     else:
                         out.append(("goto", s[1], s[-1]))
