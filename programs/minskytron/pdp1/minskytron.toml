@@ -6,15 +6,10 @@ repeat = "circles"
 # A value moves from AC to IO by the swap macro (rcl 9s, rcl 9s).
 moves = "swap"
 
-# Fields held in a shift instruction: the word is the shift by the count.
-[homes]
-"shift_table.count" = "instruction"
-"shifts.ya" = "instruction"
-"shifts.xa" = "instruction"
-"shifts.yb" = "instruction"
-"shifts.xb" = "instruction"
-"shifts.yc" = "instruction"
-"shifts.xc" = "instruction"
+# Fields held as the code of their use (docs/rules/held-as-code.md): each
+# count is the shift by it, laid out as a data word and run by xct.
+held_as_code = ["shift_table.count", "shifts.ya", "shifts.xa", "shifts.yb", "shifts.xb", "shifts.yc",
+                "shifts.xc"]
 
 [streams]
 display = "dpy"

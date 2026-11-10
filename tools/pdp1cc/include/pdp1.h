@@ -97,6 +97,15 @@
  * (`xct x`). Only a shift is stored in a shift. A `shift_pair` is a dword
  * whose hi half (AC) is a shift: a function that returns a shift in AC and
  * a word in IO returns one, and its hi is a shift.
+ *
+ * Templates. A TEMPLATE function is compiled to words that are laid out
+ * nowhere: they are the code a value is held as, stored where the value
+ * is stored (docs/rules/held-as-code.md). Its AC and register parameters
+ * are what AC and IO hold where its words run; a VALUE parameter is a
+ * compile-time constant, fixed in each copy. Running off its end runs the
+ * words stored after it. CODE(t, n...) is the one word of template t with
+ * its values n: a constant, or for a count POPCOUNT(w & m), the shift with
+ * its count field the bits w & m (`m | (scl`).
  * `switch ((int)w)` over cases 0..n is a jump table indexed by w; a value
  * outside 0..n is undefined, as on the machine. When w is a HOMED word the
  * switch is Duff's device: the switch is w's home, the jump into the cases,
@@ -122,6 +131,8 @@ typedef struct dword { word hi, lo; } dword;
 typedef struct shift_pair { word hi, lo; } shift_pair;
 #define JDA __attribute__((pdp1_jda))
 #define BLOCK __attribute__((pdp1_block))
+#define TEMPLATE __attribute__((pdp1_template))
+#define VALUE __attribute__((pdp1_value))
 #define BYNAME __attribute__((pdp1_byname))
 #define SKIPS __attribute__((pdp1_skips))
 #define START __attribute__((pdp1_start))
@@ -152,6 +163,8 @@ shift I_RCL(int n), I_RAL(int n), I_SCL(int n), I_SCR(int n), I_SAR(int n);
 shift I_RCL_BITS(word m), I_RAL_BITS(word m), I_SCL_BITS(word m), I_SCR_BITS(word m),
     I_SAR_BITS(word m);
 extern const shift SHIFT_UNSET;
+shift CODE();
+word POPCOUNT(word m);
 extern const insn I_CMA, I_IOH, I_DPY_NOWAIT;
 dword xct();
 word tyi(void);
@@ -189,6 +202,8 @@ void halt(word ac, word io);
 
 #define JDA
 #define BLOCK
+#define TEMPLATE
+#define VALUE
 #define BYNAME
 #define SKIPS
 #define START

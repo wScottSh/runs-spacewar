@@ -17,7 +17,7 @@ CMP_OPS = {"<", ">=", "==", "!=", "<=", ">"}
 ATTR = re.compile(r"pdp1_(\w+)(?:\((.*)\))?$")
 CONVS = {c.value: c for c in ir.Conv if c is not ir.Conv.INLINE}
 ATTRIBUTES = CONVS.keys() | {"byname", "inline", "entry_cell", "at", "reserve", "pool", "homed",
-                              "skips", "start"}
+                              "skips", "start", "value"}
 HARDWARE = {"tyi", "lsm", "ioh", "hlt", "lat", "control_boxes"}   # one instruction, no operand
 DISPLAY = {"dpy", "dpy_nowait"}
 MAX_SENSE = 6
@@ -44,6 +44,9 @@ SHIFT_COUNT_FIELD = 0o777
 SHIFT, SHIFT_POINTER, SHIFT_ARRAY, SHIFT_FUNCTION = "shift", "shift*", "shift[]", "shift()"
 # A dword whose hi half is a shift, and a function that returns one.
 SHIFT_PAIR, SHIFT_PAIR_FUNCTION = "shift_pair", "shift_pair()"
+# CODE(t, v...): the one word of TEMPLATE t with its values fixed. POPCOUNT(w & m)
+# as a count value fills the shift's count field with the bits w & m.
+CODE, POPCOUNT = "CODE", "POPCOUNT"
 MACRO_SYMBOL = re.compile(r"[a-z][a-z0-9]{0,%d}" % (MACRO_SYMBOL_LEN - 1))
 
 
@@ -133,6 +136,8 @@ def _is_shift_value(node: c_ast.Node, shifts: dict[str, str], sigs: dict[str, ir
         return (node.name == SHIFT_UNSET and _builtin(node.name, sigs)) or shifts.get(node.name) == SHIFT
     if isinstance(node, c_ast.FuncCall) and isinstance(node.name, c_ast.ID):
         name = node.name.name
+        if name == CODE and _builtin(name, sigs):
+            return _TEMPLATES.is_shift(node)
         return (name in INSN_SHIFT.keys() | INSN_SHIFT_BITS.keys() and _builtin(name, sigs)) \
             or shifts.get(name) == SHIFT_FUNCTION
     return False
@@ -176,7 +181,12 @@ C_INT_OPS = {"+": lambda a, b: a + b, "-": lambda a, b: a - b, "*": lambda a, b:
              "<<": lambda a, b: a << b, ">>": lambda a, b: a >> b}
 
 
+_FIXED: dict[str, int] = {}      # the VALUE parameters of the TEMPLATE copy being lowered
+
+
 def c_int(node: c_ast.Node) -> int:
+    if isinstance(node, c_ast.ID) and node.name in _FIXED:
+        return _FIXED[node.name]
     if isinstance(node, c_ast.Constant) and node.type == "int":
         text = node.value.rstrip("uUlL")
         return int(text, 8 if _is_octal(text) else 0)
@@ -298,7 +308,7 @@ def _signature(decl: c_ast.Decl, namer: Namer, symbol: bool = True) -> ir.Signat
         convs = [ir.Conv.INLINE]
     if len(convs) != 1:
         raise _err(decl, f"{decl.name}: a function needs exactly one calling convention "
-                         "(JDA, JSP, XCT or BLOCK)")
+                         "(JDA, JSP, XCT, BLOCK or TEMPLATE)")
     conv = convs[0]
     ftype = decl.type
     params: list[ir.Param] = []
@@ -311,7 +321,11 @@ def _signature(decl: c_ast.Decl, namer: Namer, symbol: bool = True) -> ir.Signat
         p_attrs = _attrs(p)
         if "byname" in p_attrs and "inline" in p_attrs:
             raise _err(p, f"{p.name}: a parameter is BYNAME or INLINE, not both")
-        if "byname" in p_attrs:
+        if "value" in p_attrs:
+            if conv is not ir.Conv.TEMPLATE:
+                raise _err(p, f"{p.name}: only a TEMPLATE function takes a VALUE parameter")
+            kind = ir.ParamKind.VALUE
+        elif "byname" in p_attrs:
             kind = ir.ParamKind.BYNAME
         elif "inline" in p_attrs:
             kind = ir.ParamKind.INLINE
@@ -429,6 +443,10 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z", linked: dict[str, str] | N
             raise _err(ext, f"{ext.name}: an uninitialized file-scope object needs a storage "
                             "class: POOL, RESERVE or HOMED (or extern when another unit defines it)")
         globals_[ext.name] = ir.Extern(_symbol(ext, namer))
+    global _TEMPLATES
+    _TEMPLATES = _Templates({ext.decl.name: (ext, sigs[ext.decl.name]) for ext in ast.ext
+                             if isinstance(ext, c_ast.FuncDef) and sigs[ext.decl.name].conv is ir.Conv.TEMPLATE},
+                            globals_, sigs, pointers, arrays, types, shifts, prefix)
 
     for ext in objects:
         if ext.init is not None:
@@ -447,6 +465,8 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z", linked: dict[str, str] | N
     items: list[ir.TopItem] = []
     inlines: dict[str, ir.Function] = {}
     for ext in ast.ext:
+        if isinstance(ext, c_ast.FuncDef) and ext.decl.name in _TEMPLATES.defs:
+            continue
         if isinstance(ext, c_ast.FuncDef):
             fn = _lower_function(ext, sigs[ext.decl.name], globals_, sigs, pointers, namer,
                                  data, arrays, types, shifts)
@@ -484,6 +504,87 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z", linked: dict[str, str] | N
                         if isinstance(d := e.decl if isinstance(e, c_ast.FuncDef) else e, c_ast.Decl)
                         and d.name and "static" in d.storage)
     return ir.Unit(tuple(items), sigs, namer.counter, globals_, data, inlines, start, pointers, statics)
+
+
+class _Templates:
+    """The unit's TEMPLATE functions. Each is compiled by the ordinary
+    lowering and selection, with its VALUE parameters fixed, and its words
+    are laid out nowhere: they are the constants that store them."""
+
+    def __init__(self, defs: dict, globals_=None, sigs=None, pointers=None, arrays=None, types=None,
+                 shifts=None, prefix: str = "z"):
+        self.defs = defs            # name -> (FuncDef, Signature)
+        self.globals_, self.sigs, self.pointers = globals_, sigs, pointers
+        self.arrays, self.types, self.shifts = arrays, types, shifts
+        self.namer = Namer(prefix + "t" if len(prefix) == 1 else prefix)
+        self.done: dict[tuple, list[ir.Item]] = {}
+
+    def items(self, name: str, values: tuple[int, ...], node: c_ast.Node) -> list[ir.Item]:
+        """Template name's words, and the labels among them, with its values fixed."""
+        if name not in self.defs:
+            raise _err(node, f"{name} is no TEMPLATE function of this unit")
+        if (name, values) not in self.done:
+            from .select import FunctionLowerer
+            global _FIXED
+            fn, sig = self.defs[name]
+            given = [p.name for p in sig.params if p.kind is ir.ParamKind.VALUE]
+            if len(given) != len(values):
+                raise _err(node, f"{name} takes {len(given)} value(s), not {len(values)}")
+            inner = replace(sig, params=tuple(p for p in sig.params if p.kind is not ir.ParamKind.VALUE))
+            saved, _FIXED = _FIXED, dict(zip(given, values))
+            try:
+                lowered = _lower_function(fn, inner, self.globals_, self.sigs, self.pointers, self.namer,
+                                          {}, self.arrays, self.types, self.shifts)
+            finally:
+                _FIXED = saved
+            out = FunctionLowerer(lowered, self.namer).lower()
+            self.done[(name, values)] = [i for i in out if not (isinstance(i, ir.LabelDef) and i.name == sig.sym)]
+        return self.done[(name, values)]
+
+    def one_word(self, node: c_ast.FuncCall, values: tuple[int, ...]) -> ir.Word:
+        args = node.args.exprs if node.args else []
+        if not args or not isinstance(args[0], c_ast.ID):
+            raise _err(node, "CODE(t, v...) names a TEMPLATE function first")
+        words = [w for w in self.items(args[0].name, values, node) if isinstance(w, ir.Word)]
+        if len(words) != 1:
+            raise _err(node, f"CODE({args[0].name}, ...) is one word; the template compiles to {len(words)}")
+        return words[0]
+
+    @staticmethod
+    def _counts(node: c_ast.FuncCall) -> list[c_ast.Node]:
+        return (node.args.exprs if node.args else [])[1:]
+
+    def filled_at_run_time(self, node: c_ast.Node) -> bool:
+        return isinstance(node, c_ast.FuncCall) and isinstance(node.name, c_ast.ID) and node.name.name == CODE \
+            and any(_is_popcount(v) for v in self._counts(node))
+
+    def word(self, node: c_ast.FuncCall) -> ir.Insn:
+        """CODE(t, n...): the template's one word, a constant."""
+        w = self.one_word(node, tuple(c_int(v) for v in self._counts(node)))
+        return ir.Insn(w.op, w.operand, w.i)
+
+    def built(self, node: c_ast.FuncCall, lowerer: "_Lowerer") -> ir.Expr:
+        """CODE(t, POPCOUNT(w & m)): the template's shift with its count
+        field the bits w & m, joined at run time (`ior (scl`)."""
+        counts = self._counts(node)
+        if len(counts) != 1 or not _is_popcount(counts[0]):
+            raise _err(node, "a count filled at run time is CODE(t, POPCOUNT(w & m))")
+        w = self.one_word(node, (1,))
+        if w.operand != ir.ShiftCount(1):
+            raise _err(node, f"POPCOUNT fills a shift's count; the template's word is `{w.op}`")
+        return lowerer.shift_bits(counts[0], POPCOUNT, w.op)
+
+    def is_shift(self, node: c_ast.FuncCall) -> bool:
+        from .select import AC_SHIFTS, PAIR_OR_IO_SHIFTS
+        values = tuple(1 if _is_popcount(v) else c_int(v) for v in self._counts(node))
+        return self.one_word(node, values).op in AC_SHIFTS | PAIR_OR_IO_SHIFTS | {"sal"}
+
+
+def _is_popcount(node: c_ast.Node) -> bool:
+    return isinstance(node, c_ast.FuncCall) and isinstance(node.name, c_ast.ID) and node.name.name == POPCOUNT
+
+
+_TEMPLATES = _Templates({})
 
 
 def _start(ast: c_ast.FileAST, sigs: dict[str, ir.Signature]) -> str | None:
@@ -602,6 +703,8 @@ def insn(node: c_ast.Node, scope: _Scope, sigs: dict[str, ir.Signature],
         raise _err(node, "expected an instruction constructor")
     name = node.name.name
     args = node.args.exprs if node.args else []
+    if name == CODE:
+        return _TEMPLATES.word(node)
     if len(args) != 1:
         raise _err(node, f"{name} takes one argument")
     if name in INSN_MEMORY:
@@ -624,8 +727,8 @@ def is_insn(node: c_ast.Node, sigs: dict[str, ir.Signature]) -> bool:
     if isinstance(node, c_ast.ID):
         return node.name in INSN_CONSTANT and _builtin(node.name, sigs)
     return isinstance(node, c_ast.FuncCall) and isinstance(node.name, c_ast.ID) and \
-        node.name.name in INSN_MEMORY.keys() | INSN_FLAG.keys() | INSN_SHIFT.keys() and \
-        _builtin(node.name.name, sigs)
+        node.name.name in INSN_MEMORY.keys() | INSN_FLAG.keys() | INSN_SHIFT.keys() | {CODE} and \
+        _builtin(node.name.name, sigs) and not _TEMPLATES.filled_at_run_time(node)
 
 
 def _decl_attrs(decl: c_ast.Decl) -> dict[str, str]:
@@ -983,6 +1086,8 @@ class _Lowerer:
     # --------------------------------------------------------- expressions
     def expr(self, node: c_ast.Node) -> ir.Expr:
         match node:
+            case c_ast.ID(name=name) if name in _FIXED:
+                return ir.Const(to_word(_FIXED[name], node))
             case c_ast.Constant(type="int"):
                 return ir.Const(to_word(c_int(node), node))
             case c_ast.Cast(to_type=c_ast.Typename(type=c_ast.PtrDecl())):
@@ -999,6 +1104,8 @@ class _Lowerer:
             case c_ast.FuncCall(name=c_ast.ID(name=name)) if name in INSN_SHIFT_BITS and \
                     _builtin(name, self.sigs):
                 return self.shift_bits(node, name)
+            case c_ast.FuncCall(name=c_ast.ID(name=name)) if name == CODE and _builtin(name, self.sigs):
+                return _TEMPLATES.built(node, self)
             case c_ast.BinaryOp() if is_c_int(node):
                 return ir.Const(to_word(c_int(node), node))
             case c_ast.BinaryOp(op="+") if _array_address(node, self.arrays) \
@@ -1085,7 +1192,7 @@ class _Lowerer:
             raise _err(node, "a computed call is `jsp`: the function type is JSP")
         return ir.ComputedCall(self.expr(cast.expr), sig)
 
-    def shift_bits(self, node: c_ast.FuncCall, name: str) -> ir.Binary:
+    def shift_bits(self, node: c_ast.FuncCall, name: str, op: str | None = None) -> ir.Binary:
         """I_SCL_BITS(w & m): the count field w & m joined to `scl`, `ior (scl`."""
         args = node.args.exprs if node.args else []
         mask = args[0] if len(args) == 1 else None
@@ -1094,7 +1201,7 @@ class _Lowerer:
                         for m in (mask.left, mask.right))):
             raise _err(node, f"{name}(w & m): the count bits are w & m, m within "
                              f"{SHIFT_COUNT_FIELD:o}")
-        return ir.Binary("|", self.expr(mask), ir.Insn(INSN_SHIFT_BITS[name]))
+        return ir.Binary("|", self.expr(mask), ir.Insn(op or INSN_SHIFT_BITS[name]))
 
     def deref(self, node: c_ast.UnaryOp) -> ir.Deref:
         """*p for a pointer p held in a memory word or in a homed address field."""

@@ -269,7 +269,9 @@ class FunctionLowerer:
                               "toward the function's own return")
         jumps = [r for r in _returns(fn.body) if isinstance(r.value, ir.IndirectCall)]
         plain = [r for r in _returns(fn.body) if r not in tails and r not in jumps]
-        if tails:
+        if fn.sig.conv is ir.Conv.TEMPLATE:
+            pass                            # its words are stored, not entered: each way out is its own
+        elif tails:
             targets = {t.value.sig.name for t in tails}
             several = fn.sig.conv is ir.Conv.BLOCK and not fn.sig.inline_count and \
                 not any(t.value.sig.inline_count for t in tails)
@@ -353,7 +355,7 @@ class FunctionLowerer:
     def entry_state(self) -> State:
         ac = frozenset(Local(p.name) for p in self.fn.params if isinstance(p.storage, ir.Acc))
         io = frozenset(Local(p.name) for p in self.fn.params if isinstance(p.storage, ir.Io))
-        return State(ac if self.sig.conv in (ir.Conv.BLOCK, ir.Conv.XCT) else frozenset(), io)
+        return State(ac if self.sig.conv in (ir.Conv.BLOCK, ir.Conv.XCT, ir.Conv.TEMPLATE) else frozenset(), io)
 
     # ----------------------------------------------------------- statements
     def stmt(self, s: ir.Stmt, st: State | None) -> tuple[list[ir.Item], State | None]:
@@ -878,6 +880,11 @@ class FunctionLowerer:
         return out, st
 
     def return_(self, s: ir.Return, st: State):
+        if self.sig.conv is ir.Conv.TEMPLATE and s.value is None:
+            if s is not self.final:
+                raise SelectError(f"{self.sig.name}: a TEMPLATE ends by running off its end, "
+                                  "into the code stored after it")
+            return [], None
         if self.instances:
             return self.instance_return(s, st)
         if isinstance(s.value, ir.Call) and s.value.sig.conv is ir.Conv.BLOCK:

@@ -397,7 +397,7 @@ SCHEMA = {
              "moves": _one_of("swap"), "place": _PLACES, "inline": _PLACES, "code": _PLACES,
              "share": _dict(_field, _field), "into": _dict(_field, _field),
              "spell": _dict(_name, _dict(_name, _SPELLED)), "flags": _dict(_field, _int),
-             "homes": _dict(_field, _one_of("table", "instruction", "pointer")),
+             "homes": _dict(_field, _one_of("table", "pointer")), "held_as_code": _list(_field),
              "addresses": _dict(_field, _one_of("after table")), "table": _SECTION,
              "cursors": _dict(_field, _either(_name, _dict(_field, _name))), "walk": _SECTION,
              "streams": _dict(_name, _one_of("dpy", "hlt"))},
@@ -497,7 +497,8 @@ class Bindings:
         self.registers: set[str] = set()        # Records whose fields live in AC or IO
         self.cursors: dict[str, str] = {}       # field -> the cursor on the current object's slot
         self.pool: set[str] = set()             # fields that live in a pool word
-        self.homes: dict[str, str] = {}         # field -> "table" or "instruction": held in a shift instruction
+        self.homes: dict[str, str] = {}         # field -> "table" (a pointer into its shifts) or "pointer"
+        self.held: set[str] = set()             # fields held as the code of their use (held-as-code.md)
         self.spelled: dict[str, dict] = {}      # enum -> member -> how its word is spelled
         self.streams: dict[str, str] = {}       # stream -> the instruction that takes it (dpy, hlt)
         self.devices: dict[str, dict] = {}      # field -> the device instruction that reads it
@@ -547,6 +548,9 @@ class Bindings:
             for f, how in spec.get("homes", {}).items():
                 self.check_field(path, f)
                 self.homes[f] = how
+            for f in spec.get("held_as_code", []):
+                self.check_field(path, f)
+                self.held.add(f)
             self.spelled |= spec.get("spell", {})
             self.streams |= spec.get("streams", {})
             for f, n in spec.get("flags", {}).items():
@@ -624,6 +628,7 @@ class Bindings:
         for r in self.table.get("records", []):
             if self.prog.records.get(r) is None or self.prog.records[r].count is None or self.prog.records[r].stream:
                 raise BindError(f"[table] records: {r!r} is no collection of the RUNS")
+        self.check_stages()
         homed: dict[str, list[str]] = {}
         for path, spec in self.specs.items():
             for f in spec.get("walk", {}).get("homes", []) + list(spec.get("walk", {}).get("home_in", {})):
@@ -827,6 +832,25 @@ class Bindings:
     def table_size(self) -> int:
         return sum(self.prog.records[f.split(".")[0]].count for f in self.table_fields())
 
+    def check_stages(self):
+        """A field held as the code of its use is written at one stage and
+        read at a later one: no Processor both writes it and reads it."""
+        for name, r in self.prog.routines.items():
+            if r.kind != "processor":
+                continue
+            named = [dotted_of(e) for e in walk_expr(r.body) if e[0] == "field"]
+            targets = [held_field(t) for x in walk(r.body) if x[0] in ("let", "set")
+                       for t in (x[1][1] if x[1][0] == "tuple" else [x[1]])]
+            for f in sorted(self.held & set(targets)):
+                if named.count(f) > targets.count(f):
+                    raise BindError(f"{name}: {f} is held as the code of its use, so it is written at one "
+                                    f"stage and read at a later one; {name} writes it and reads it")
+
+    def coded(self, dotted: str) -> bool:
+        """A count held as code: its own shift (held), or a pointer into a
+        table of its shifts ([homes] "table")."""
+        return dotted in self.held or self.homes.get(dotted) == "table"
+
     def stored(self, dotted: str) -> bool:
         """The field has a word of its own: data, a pool word, or an entry word."""
         return dotted in self.placed or dotted in self.cell_of or dotted in self.pool
@@ -853,7 +877,8 @@ class Unit:
         self.callees: set[str] = set()
         self.pool_locals: set[str] = set()
         self.tables: dict[str, list[int]] = {}  # table-held field -> the shift counts it takes, in text order
-        self.kinds: dict[str, str] = {}         # field held in a shift -> the shift it is
+        self.kinds: dict[str, str] = {}         # count held as code -> the operator of its use
+        self.templates: dict[str, str] = {}     # TEMPLATE name -> its C text (template)
         self.copies_of: dict[str, str] = {}     # field -> a field it is copied from or to (union-find)
         self.walk = Section(f"{path.name} [walk]", self.spec.get("walk", {}))  # the cursors' walk over the slots
         self.homed: dict[str, str | None] = {}  # cursor -> the Processor its home is in (None: first access)
@@ -991,15 +1016,35 @@ class Unit:
         return f"{ctor}(&{word(d)})"
 
     def shift_initial(self, f: str, e=False) -> str:
-        """The word of a count held as its shift instruction: the shift by
-        it, or the unset shift for a field with no initial value."""
+        """The word of a count held as the code of its use: that code with
+        the count, or the unset shift for a field with no initial value."""
         if e is False:
             e = self.initial_of(f)
         if e is None:
             return "SHIFT_UNSET"
         if e[0] != "num":
-            raise BindError(f"{self.path.name}: {f} is held as its shift instruction: its initial value is a count")
-        return f"I_{self.shift_kind(f).upper()}({octal(e[1])})"
+            raise BindError(f"{self.path.name}: {f} is held as the code of its use: its initial value is a count")
+        return self.code_word(f, octal(e[1]))
+
+    def code_word(self, f: str, count: str) -> str:
+        """The one word of f's template with this count (C text)."""
+        return f"CODE({self.template(f)}, {count})"
+
+    def template(self, f: str) -> str:
+        """The TEMPLATE function of the shift f's count is held as: the use,
+        as the statement compiler writes a shift by a constant, with the
+        count its VALUE. Fields copied to one another share one."""
+        kind = self.shift_kind(f)
+        name = f"{self.binds.c_name(self.copy_root(f))}_code"
+        if kind in PAIR_OPS:
+            text = f"static TEMPLATE void {name}(word hi, register word lo, VALUE word n) {{ {kind}(hi, lo, n); }}"
+        elif kind in ("ral", "rar"):
+            text = f"static TEMPLATE void {name}(word a, VALUE word n) {{ a = {kind}(a, n); }}"
+        else:
+            op = {"sar": ">>", "sal": "<<"}[kind]
+            text = f"static TEMPLATE void {name}(word a, VALUE word n) {{ a = a {op} n; }}"
+        self.templates[name] = text
+        return name
 
     def slots(self, p: dict) -> list[str]:
         """Slots of a collection's field laid out as data words, with their
@@ -1009,7 +1054,7 @@ class Unit:
         e = self.prog.records[rec].fields[fld][1]
         values = e[1][lo:hi + 1] if e is not None and e[0] == "slots" else [e] * (hi - lo + 1)
         name = f"{self.binds.c_name(p['slots'])}_{octal(lo)}"
-        if self.binds.homes.get(p["slots"]) == "instruction":
+        if p["slots"] in self.binds.held:
             words = ", ".join(self.shift_initial(p["slots"], v) for v in values)
             return [f"shift {name}[{octal(hi - lo + 1)}] = {{ {words} }};"]
         out = [f"word {name}[{octal(hi - lo + 1)}] = {{ {', '.join(Function.constant(v) for v in values)} }};"]
@@ -1037,7 +1082,7 @@ class Unit:
         tape: an entry word is punched as 0, a register holds what the
         caller left, a pool word, a cursor or an instruction what the
         program first stores there. Its RUNS initial value must be 0."""
-        fields = set(self.binds.pool) | set(self.binds.homes) | set(self.binds.slot_cursors) \
+        fields = set(self.binds.pool) | set(self.binds.homes) | self.binds.held | set(self.binds.slot_cursors) \
             | {f for f in self.binds.field_names() if self.binds.in_register(f, self.path)}
         for p in self.spec.get("place", []) + self.spec.get("inline", []):
             if "routine" in p:
@@ -1063,18 +1108,17 @@ class Unit:
 
         for s in walk(stmts):
             if s[0] in ("let", "set") and s[2][0] == "call" and s[2][1] in PAIR_OPS and len(s[2][2]) == 3 \
-                    and (f := dotted_of(s[2][2][2])) in self.binds.homes:
+                    and self.binds.coded(f := dotted_of(s[2][2][2])):
                 kind(f, s[2][1], s[-1])
             for e in walk_expr([x for x in s[1:-1] if isinstance(x, tuple)]):
-                if e[0] == "bin" and e[1] in (">>", "<<") and (f := dotted_of(e[3])) in self.binds.homes:
+                if e[0] == "bin" and e[1] in (">>", "<<") and self.binds.coded(f := dotted_of(e[3])):
                     kind(f, {">>": "sar", "<<": "sal"}[e[1]], s[-1])
                 elif e[0] == "call" and e[1] in ("ral", "rar") and len(e[2]) == 2 \
-                        and (f := dotted_of(e[2][1])) in self.binds.homes:
+                        and self.binds.coded(f := dotted_of(e[2][1])):
                     kind(f, e[1], s[-1])
             if s[0] == "set" and (to := held_field(s[1])) and (src := held_field(s[2])):
                 self.copies_of[self.copy_root(to)] = self.copy_root(src)
-            if s[0] == "set" and (f := dotted_of(s[1])) in self.binds.homes \
-                    and self.binds.homes[f] == "table":
+            if s[0] == "set" and self.binds.homes.get(f := dotted_of(s[1])) == "table":
                 if s[2][0] != "num":
                     raise BindError(f"{s[-1]}: {f} is a table entry, so it is set to a number")
                 if s[2][1] not in (table := self.tables.setdefault(f, [])):
@@ -1091,8 +1135,8 @@ class Unit:
 
     def holds_shift(self, f: str) -> bool:
         """f holds a shift instruction: it is held as one, or copied to or from one."""
-        return self.binds.homes.get(f) == "instruction" or any(
-            self.copy_root(g) == self.copy_root(f) for g in self.kinds if self.binds.homes[g] == "instruction")
+        return f in self.binds.held or any(
+            self.copy_root(g) == self.copy_root(f) for g in self.kinds if g in self.binds.held)
 
     def word_type(self, f: str) -> str:
         return "shift" if self.holds_shift(f) else "word"
@@ -1101,8 +1145,7 @@ class Unit:
         """A field held as its shift instruction takes the kind of the
         shifts it is copied from or to. A routine of the unit whose AC
         result holds such a shift returns it as one."""
-        held = [f for f, how in self.binds.homes.items() if how == "instruction"]
-        for f in held:
+        for f in sorted(self.binds.held):
             if f not in self.kinds:
                 kin = {self.kinds[g] for g in self.kinds if self.copy_root(g) == self.copy_root(f)}
                 if len(kin) > 1:
@@ -1536,7 +1579,7 @@ class Unit:
                 body += self.routine(self.binds.bound[p["routine"]])
             elif "fields" in p:
                 for f in p["fields"]:
-                    if self.binds.homes.get(f) == "instruction":
+                    if f in self.binds.held:
                         body.append(f"shift {self.binds.c_name(f)} = {self.shift_initial(f)};")
                     else:
                         body.append(f"word {self.binds.c_name(f)} = {self.initial(f)};")
@@ -1552,7 +1595,7 @@ class Unit:
                 body.append(self.table_words())
             elif "shifts" in p:
                 f = p["shifts"]
-                entries = ", ".join(f"I_{self.shift_kind(f).upper()}({octal(n)})" for n in self.shift_table(f))
+                entries = ", ".join(self.code_word(f, octal(n)) for n in self.shift_table(f))
                 body.append(f"shift {self.binds.c_name(f)}_shifts[{len(self.tables[f])}] = {{ {entries} }};")
             else:
                 body += self.machine(p, head)
@@ -1602,11 +1645,12 @@ class Unit:
         head = sorted(self.typedefs) + list(dict.fromkeys(head))
         for f in sorted(self.kinds):
             name = self.binds.c_name(f)
-            if self.binds.homes[f] == "table":
+            if self.binds.homes.get(f) == "table":
                 head += [f"HOMED const shift *{name};", f"extern shift {name}_shifts[{len(self.shift_table(f))}];"]
             elif f not in self.binds.placed:
                 # no data word: the instruction at its one use, run in place
                 head.append(f"HOMED shift {name} = SHIFT_UNSET;")
+        head += [self.templates[name] for name in sorted(self.templates)]
         return "\n".join(head + inline + body) + "\n"
 
 
@@ -1906,10 +1950,10 @@ class Function:
             if e[1] == ("num", 0):
                 return "MINUS_ZERO", 99
             return f"-{self._paren(e[1], 11)}", 11
-        if op == "bin" and e[1] in (">>", "<<") and (count := dotted_of(e[3])) in self.binds.homes:
+        if op == "bin" and e[1] in (">>", "<<") and self.binds.coded(count := dotted_of(e[3])):
             # shifted by the count a field holds: run the shift instruction that holds it
             return f"xct({self.shift_word(count)}, {self.expr(e[2])})", 99
-        if op == "call" and e[1] in ("ral", "rar") and (count := dotted_of(e[2][1])) in self.binds.homes:
+        if op == "call" and e[1] in ("ral", "rar") and self.binds.coded(count := dotted_of(e[2][1])):
             return f"xct({self.shift_word(count)}, {self.expr(e[2][0])})", 99
         if op == "bin" and e[1] == ">>" and self.b.shifts == "xct":
             if e[3][0] != "num":
@@ -2139,7 +2183,7 @@ class Function:
         local's, through the whole function."""
         for s in walk(stmts):
             if s[0] in ("let", "set") and s[1][0] == "tuple" and s[2][0] == "call" \
-                    and dotted_of(s[2][2][2]) in self.binds.homes:
+                    and self.binds.coded(dotted_of(s[2][2][2])):
                 for half, part in zip(s[2][2][:2], ("pair.hi", "pair.lo")):
                     key = dotted_of(half) or half[1]
                     if self.alias.setdefault(key, part) != part:
@@ -3114,7 +3158,7 @@ class Function:
     def shift_word(self, count: str) -> str:
         """The shift instruction that holds a field's count, as xct runs it."""
         name = self.binds.c_name(count)
-        return f"*home({name})" if self.binds.homes[count] == "table" else name
+        return f"*home({name})" if self.binds.homes.get(count) == "table" else name
 
     def home(self, dotted: str, e, depth: int) -> int:
         """A set of a field held in a shift instruction. One held as a
@@ -3122,15 +3166,15 @@ class Function:
         first; one built at run time is the shift by as many places as the
         mask has bits."""
         name = self.binds.c_name(dotted)
-        if self.binds.homes[dotted] == "instruction":
+        if dotted in self.binds.held:
             if e[0] == "call" and e[1] == "popcount":
-                # built from a mask: the shift by as many places as it has bits
-                self.emit(depth, f"{name} = I_{self.unit.shift_kind(dotted).upper()}_BITS({self.expr(e[2][0])});")
+                # built from a mask: the code with as many places as it has bits
+                self.emit(depth, f"{name} = {self.unit.code_word(dotted, f'POPCOUNT({self.expr(e[2][0])})')};")
             elif held_field(e) and self.unit.copy_root(held_field(e)) == self.unit.copy_root(dotted):
                 # a copy of another word that holds the same shift
                 self.emit(depth, f"{name} = {self.expr(e)};")
             else:
-                raise BindError(f"{self.b.name}: {dotted} is held as its shift instruction: set it to "
+                raise BindError(f"{self.b.name}: {dotted} is held as the code of its use: set it to "
                                 f"popcount(w & m), or to a field that holds a shift of its kind")
             return 1
         table, v, known = self.unit.shift_table(dotted), e[1], self.known.get(dotted)
@@ -3193,7 +3237,7 @@ class Function:
             return 1
         if dotted in self.binds.flags:
             return self.flag(dotted, e, depth)
-        if self.binds.homes.get(dotted) in ("table", "instruction"):
+        if self.binds.coded(dotted):
             return self.home(dotted, e, depth)
         if dotted and self.b.skips and dotted == self.b.skips[0]:
             if e[0] != "member":
@@ -3258,7 +3302,7 @@ class Function:
         if e[0] != "call" or e[1] not in PAIR_OPS:
             raise BindError(f"{where}: a pair is set only by a pair operator")
         halves = [self.expr(a) for a in e[2][:2]]
-        if (count := dotted_of(e[2][2])) in self.binds.homes:
+        if self.binds.coded(count := dotted_of(e[2][2])):
             self.emit(depth, f"pair = xct({self.shift_word(count)}, {', '.join(halves)});")
         else:
             self.emit(depth, f"{e[1]}({', '.join(halves + [self.expr(e[2][2])])});")

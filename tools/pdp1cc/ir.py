@@ -151,6 +151,7 @@ class Conv(Enum):
     XCT = "xct"
     BLOCK = "block"
     INLINE = "inline"
+    TEMPLATE = "template"   # compiled to words that are laid out nowhere: the code a value is held as
 
 
 class ParamKind(Enum):
@@ -158,6 +159,7 @@ class ParamKind(Enum):
     IO = "io"
     BYNAME = "byname"
     INLINE = "inline"
+    VALUE = "value"     # a TEMPLATE's value: a compile-time constant in each copy of its words
 
     @property
     def after_call(self) -> bool:

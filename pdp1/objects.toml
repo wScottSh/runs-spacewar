@@ -4,12 +4,14 @@
 replaces = "lift/objects.c"
 pool = ["explosion_cloud.particles"]
 
-# Fields held in a shift instruction: spread as the address field of the
-# xct that runs one of a table of shifts (msh, xct .), scatter as the
-# shift itself, built at run time where it runs (mi1).
+# Counts held as the code of their use (docs/rules/held-as-code.md):
+# spread as the address field of the xct that runs one of a table of its
+# shifts (msh, xct .), scatter as its shift itself, built at run time where
+# it runs (mi1).
+held_as_code = ["explosion_cloud.scatter"]
+
 [homes]
 "explosion_cloud.spread" = "table"
-"explosion_cloud.scatter" = "instruction"
 
 # The routine word: the calc routine's address, with the sign bit when the
 # object does not collide. The torpedo's is taken from a constant word
