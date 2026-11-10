@@ -320,6 +320,13 @@ interface record heading
   sine: word = 0            # sn
   cosine: word = 0          # cs
 
+# The ship's nose as the game computes it this turn, a 32nd of the heading
+# ahead of its center. The game starts a torpedo ahead of it; the
+# presentation draws the outline from it.
+interface record ship_nose
+  x: word = 0               # sx1
+  y: word = 0               # sy1
+
 game record spaceship
   controls: word = 0        # scw: this ship's control word, its four bits at the top
   rocket: rocket = off      # program flag 6: the rocket fires this frame
@@ -330,8 +337,6 @@ game record spaceship
   x_squared: word = 0       # t2
   nose_step_x: word = 0     # ssn: a 32nd of the heading, from the center to the nose
   nose_step_y: word = 0     # scn
-  nose_x: word = 0          # sx1: the ship's nose
-  nose_y: word = 0          # sy1
   torpedo_x: word = 0       # stx: where a torpedo starts, ahead of the ship's tip
   torpedo_y: word = 0       # sty
   flame: word = 0           # src: exhaust dots still to draw, counting up

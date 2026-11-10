@@ -57,7 +57,7 @@ FIELDS = {
     ("spaceship", "gravity_x"): "bx", ("spaceship", "gravity_y"): "by",
     ("spaceship", "operand"): "t1", ("spaceship", "x_squared"): "t2",
     ("spaceship", "nose_step_x"): "ssn", ("spaceship", "nose_step_y"): "scn",
-    ("spaceship", "nose_x"): "sx1", ("spaceship", "nose_y"): "sy1", ("spaceship", "star_wait"): "ssn",
+    ("ship_nose", "x"): "sx1", ("ship_nose", "y"): "sy1", ("spaceship", "star_wait"): "ssn",
     ("spaceship", "torpedo_x"): "stx", ("spaceship", "torpedo_y"): "sty", ("spaceship", "flame"): "src",
     ("pen", "x"): "sx1", ("pen", "y"): "sy1", ("pen", "down_x"): "ssn", ("pen", "down_y"): "scn",
     ("pen", "out_x"): "scm", ("pen", "out_y"): "ssm", ("pen", "out_down_x"): "ssc",
