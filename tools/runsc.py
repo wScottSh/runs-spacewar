@@ -1152,7 +1152,7 @@ class Unit:
             tb = Bound(w.routine, self.path, "TEMPLATE", io=set(wb.io), pulse=wb.pulse)
             fn = Function(self, tb, own, typed(self.prog, stmts, routine_locals(self.prog.routines[w.routine]),
                                                w.routine))
-            fn.pulsed = True                    # every point of the walk follows another
+            fn.pulsed = wb.pulse                # a walk that waits for a pulse is entered with one pending
             out += [f"static TEMPLATE void {self.binds.c_name(f)}_{member}({params})", "{", *fn.compile(), "}"]
         return out
 
