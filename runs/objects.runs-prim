@@ -82,10 +82,10 @@ processor warp_from_y                                      # diff leaves y in AC
   writes: handoff
   set handoff.coordinate = handoff.position >> 9
 
-processor plot_torpedo(slot)                                # diff leaves x in AC; dispt i, i my1, 1
-  reads: objects, handoff
+processor plot_torpedo(slot)                                # dispt i, i my1, 1
+  reads: objects
   writes: display
-  emit display: handoff.position, objects.y[slot], 1
+  emit display: objects.x[slot], objects.y[slot], 1
 
 # Hyperspace.
 

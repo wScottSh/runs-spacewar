@@ -1945,7 +1945,7 @@ class Function:
         self.merged_head: tuple[object, str] | None = None
         self.results: dict[str, str] = {}       # callee -> its result's C local
         self.cursor_params = set(unit.prog.routines[bound.name].params)
-        self.pending: tuple[str, str, int] | None = None    # (field, call, depth): a result in AC, see call
+        self.pending: tuple | None = None       # (field, call, depth, the word it stored into): a result in AC, see call
         self.consumed: tuple | None = None
         self.nested = 0
         self.top: list[str] = []                # declared at the function's top
@@ -2188,6 +2188,10 @@ class Function:
             text = self.alias.get(e[1], e[1])
             self.stored_as(e[1], text)
             return text, 99
+        if op in ("field", "index") and self.pending and self.pending[3] == e[:3] and self.pending[2] == self.nested:
+            # the word the call just stored its result into: the result
+            self.consumed, self.pending = self.pending, None
+            return self.consumed[1], 99
         if op == "field":
             if (d := dotted_of(e)) is None:
                 raise BindError(f"cannot compile {e!r}")
@@ -3613,6 +3617,19 @@ class Function:
             elif self.expr(t) != half:
                 raise BindError(f"{where}: a pair shift's result goes back where it came from")
 
+    def stored_result(self, name: str, result: str):
+        """The word a routine stores its AC result into as its last
+        statement. The result is in AC when the call returns, so the next
+        statement reads that word from AC, as it reads a word a Processor
+        it follows just stored: Minskytron's step_a ends with dac xa, and
+        plot_a plots xa from AC (lio ya; dpy-i); the torpedo plots the x
+        that diff stored (dac i mx1; dispt i, i my1)."""
+        body = self.unit.prog.routines[name].body if name in self.unit.prog.routines else []
+        if body and body[-1][0] == "set" and body[-1][1][0] in ("field", "index") \
+                and dotted_of(body[-1][2]) == result:
+            return body[-1][1][:3]
+        return None
+
     def call(self, s, last: bool, depth: int):
         _, name, args, where = s
         callee = self.binds.bound[name]
@@ -3638,7 +3655,7 @@ class Function:
                     and self.read_later(callee.result[0]):
                 self.emit(depth, f"{self.place(callee.result[0])} = {text};")
             elif callee.result:
-                self.pending = (callee.result[0], text, self.nested)
+                self.pending = (callee.result[0], text, self.nested, self.stored_result(name, callee.result[0]))
             else:
                 self.emit(depth, f"{text};")
             if callee.pulse and not callee.code:
