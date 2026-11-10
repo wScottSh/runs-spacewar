@@ -19,7 +19,7 @@ A program keeps a list of commands as data. At one stage it writes, for each com
 2. **The generator**, in place of each of the decoder's writes of a member `m` to `L`: code that writes `m`'s template, word by word, at the buffer's cursor and advances the cursor.
 3. **The entry**, in place of the walker: a jump into the buffer where this instance's list starts.
 
-## What the binding may vary
+## What the declarations may vary
 
 These are data, one key each, and differ from program to program:
 
@@ -36,7 +36,7 @@ These are data, one key each, and differ from program to program:
 4. **One way in, one way out.** It is entered by a jump to the start of an instance and leaves by a jump to one fixed place.
 5. **A finite command set**, each member with its own template.
 
-An occurrence fits when all five hold and its differences are binding keys from the list above. An occurrence that needs any other difference shows the rule is too narrow.
+An occurrence fits when all five hold and its differences are declaration keys from the list above. An occurrence that needs any other difference shows the rule is too narrow.
 
 ## What it is not
 

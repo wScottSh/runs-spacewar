@@ -1,6 +1,6 @@
 # Standing orders: the Spacewar conversion
 
-This repo converts Spacewar! 3.1 into **pure** RUNS. The conversion is a reorganization of the existing program (the PDP-1 assembly, and the C lift that builds the same image), never a port and never a rewrite of behavior. The RUNS text, compiled with the PDP-1 binding, builds the original image at every commit.
+This repo converts Spacewar! 3.1 into **pure** RUNS. The conversion is a reorganization of the existing program (the PDP-1 assembly, and the C lift that builds the same image), never a port and never a rewrite of behavior. The RUNS text, compiled with the PDP-1 declarations, builds the original image at every commit.
 
 ## Pure
 
@@ -16,27 +16,26 @@ This repo converts Spacewar! 3.1 into **pure** RUNS. The conversion is a reorgan
 1. `uv run -q python tools/runsc.py | tail -1` prints `MATCH` with sha256 `8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf`.
 2. `tools/check_all.sh` passes. It takes about 6 minutes; run it in the background and edit nothing under `runs/`, `pdp1/` or `tools/` while it runs.
 3. The purity report gains no line: `PYTHONPATH=tools uv run -q python tools/check_purity.py --against HEAD` exits 0. It allows a new line only where a Record just got its kind and revealed an impurity already there; the decisions row lists those.
-4. A row in `docs/decisions.tsv` for each decision: what, why, evidence, result.
-5. Push each verified commit to main: `git push origin HEAD:main`, fast-forward only (rebase on `origin/main` first if it moved). Standing order from the user; no need to ask.
+4. The PDP-1 declarations do not grow: `uv run -q python tools/check_declarations.py` exits 0 (`pdp1/DECLARATIONS`, below).
+5. A row in `docs/decisions.tsv` for each decision: what, why, evidence, result.
+6. Push each verified commit to main: `git push origin HEAD:main`, fast-forward only (rebase on `origin/main` first if it moved). Standing order from the user; no need to ask.
 
 ## Where a change goes
 
-Change the lowest layer that works, in this order:
+1. **The RUNS text.** The work lives here. Hard text means the text's shape is wrong: sketch at least two pure shapes and compile each.
+2. **The compiler** (`tools/runsc.py`), only when no pure shape compiles. It is the one PDP-1 back end for every PDP-1 game. A change is a rule a second PDP-1 program uses, and its decisions row names the idiom and that program.
+3. Neither works: stop and report the shapes tried and the evidence.
 
-1. **The RUNS text.** Most of the work lives here. Sketch at least two pure shapes of the routine and compile each before you reach for layer 2 or 3.
-2. **The binding** (`pdp1/*.toml`). Per-game layout facts only, in the binding's existing vocabulary.
-3. **The compiler** (`tools/runsc.py`). It becomes the one PDP-1 back end for every PDP-1 game, so it changes rarely. A change is a rule a second PDP-1 program would use, and its decisions row names the idiom and why it is general.
+**There is no binding.** What used to be called the binding is the PDP-1 package's declarations (`pdp1/*.toml`): the half of the PDP-1 platform code that never runs. It records the 1962 programmer's arbitrary choices about where the game's data lives and how routines are called, nothing the game computes, and a port leaves it behind with the PDP-1 presentation. Presentation Processors touch only interface Records; declarations may name game Records because they never run. They are not a place to solve hard text: `tools/check_declarations.py` fails any commit that adds a line, and only the user raises the count in `pdp1/DECLARATIONS`, with the decisions row quoting the user. A commit that removes lines lowers it. The code still says `Bindings` and `BindError`; read them as the declarations.
 
-The binding holds layout, never logic: no expression, statement, or number the game computes with (`pdp1/README.md`).
-
-Purity is fixed. When a pure shape will not compile to the original image, the compiler or binding grows; the shape stays pure.
+Purity is fixed. When a pure shape will not compile to the original image, the shape stays pure and the work stops for a report.
 
 ## Converting one interaction
 
 1. Read the original for it: `source/spacewar3.1_complete.txt`, the lift in `lift/`, and the current RUNS.
 2. Name its data as Records, each with a kind, and its rules as Processors, each pure.
 3. Wire them into the Network in the original's order.
-4. Compile. On `MATCH`, run the checks of every commit. Otherwise try the next shape, then the binding, then the compiler, in the order above.
+4. Compile. On `MATCH`, run the checks of every commit. Otherwise try the next shape, then a general compiler rule, in the order above.
 5. Done when the interaction is pure, the image matches, `check_all.sh` passes, and the purity count fell.
 
 ## Evidence
@@ -49,6 +48,6 @@ Purity is fixed. When a pure shape will not compile to the original image, the c
 ## Where things are
 
 - `todo.md`, the last round: the plan, the riskiest part, and where the work stands. Read it before the first change of a session.
-- `pdp1/README.md`: the binding's vocabulary and the rules `runsc` enforces. Read it before you change the binding or the compiler.
+- `pdp1/README.md`: the declarations' vocabulary and the rules `runsc` enforces. Read it before you change the declarations or the compiler.
 - `../runs-spec`: the RUNS spec. `NETWORK_TOPOLOGY.md` (Records, kinds, Networks) and `CONVERSION_PROCESS.md` (how a conversion goes) bear on every unit. A language change lands there too, with examples that `../runs-spec/tools/check_examples.py ../runs-spec .` runs.
 - `viewer/`: draws the RUNS text (`npm run net`, then `npm run dev`).

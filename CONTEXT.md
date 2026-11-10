@@ -83,12 +83,12 @@ The reference implementation of RUNS. It checks the RUNS text statically, then r
 _Avoid_: interpreter, emulator
 
 **Compiler**:
-`runsc`. It turns the RUNS text and the Binding into the Compiled image, by way of the lift's C dialect (`docs/c-lift/README.md`).
+`runsc`. It turns the RUNS text and the Declarations into the Compiled image, by way of the lift's C dialect (`docs/c-lift/README.md`).
 _Avoid_: assembler, transpiler
 
-**Binding**:
-How one target machine carries the RUNS text: tape order, calling conventions, which register or word holds a value, devices. It holds only choices play cannot observe, never game logic.
-_Avoid_: mapping, layout (layout play reads belongs to the RUNS text)
+**Declarations**:
+The half of one platform's package that never runs (`pdp1/*.toml` for the PDP-1): where that machine keeps each value and how it calls each routine, tape order, devices. They record the original programmer's arbitrary choices, never game logic, and they may name game Records because they never run. A port leaves them behind with that platform's presentation. They only shrink (`tools/check_declarations.py`).
+_Avoid_: binding (retired: it read as a layer to solve hard text in), mapping, layout (layout play reads belongs to the RUNS text)
 
 **Image**:
 The tape image (`.rim`) the PDP-1 loads. The **Oracle image** is the Assembler's output from Ground Truth. The **Compiled image** is the Compiler's output from the RUNS text. The two must have the same sha256.
@@ -105,7 +105,7 @@ A recorded input→output pair of raw words for one of the original's `jda` rout
 _Avoid_: test case, fixture, golden
 
 **Mutation check**:
-The check that every edit to the RUNS text or the Binding changes the Compiled image, is refused, or is shown to be the Same game.
+The check that every edit to the RUNS text or the Declarations changes the Compiled image, is refused, or is shown to be the Same game.
 _Avoid_: the gate (unqualified), fuzzing
 
 **Same game**:

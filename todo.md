@@ -181,6 +181,8 @@ The hardest compile sites after it: the outline (logic kept as instructions in a
 
 ### Decisions for the user
 
+- [x] The binding is retired (pure-5): `pdp1/*.toml` are the PDP-1 package's declarations, which only shrink (`tools/check_declarations.py`, `pdp1/DECLARATIONS`). Open: audit them (what the text can state moves to the text; what a general rule derives is deleted); move the drawing-only ones into the presentation text.
+
 - [x] The Network's form: settled (runs-spec README "The order is in the text"); the only form the constraints allow.
 - [x] `jump`: impure in every program; a general compiler emits code-as-data from pure RUNS.
 - [ ] The viewer lays the net out with its own grouping; it becomes a transcription once the Network's form is settled.
