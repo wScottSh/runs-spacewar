@@ -17,6 +17,7 @@ This repo converts Spacewar! 3.1 into **pure** RUNS. The conversion is a reorgan
 2. `tools/check_all.sh` passes. It takes about 6 minutes; run it in the background and edit nothing under `runs/`, `pdp1/` or `tools/` while it runs.
 3. The purity report gains no line: `PYTHONPATH=tools uv run -q python tools/check_purity.py --against HEAD` exits 0. It allows a new line only where a Record just got its kind and revealed an impurity already there; the decisions row lists those.
 4. A row in `docs/decisions.tsv` for each decision: what, why, evidence, result.
+5. Push each verified commit to main: `git push origin HEAD:main`, fast-forward only (rebase on `origin/main` first if it moved). Standing order from the user; no need to ask.
 
 ## Where a change goes
 
