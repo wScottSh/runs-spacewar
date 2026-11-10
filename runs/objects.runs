@@ -12,12 +12,15 @@ network explosion(slot)                                     # mex
   run inertia_x(slot)
   run coast                                                 # cla
   run inertia_y(slot)
+  run spread_particles
   run size_explosion(slot)
+  run widen_spread
   loop at most 0400001:                                     # mz1
     run next_random
     run scatter_particle                                    # dac mi1
     run next_random
     run plot_particle(slot)
+    run count_particle
     if explosion_count.particles >= 0:                      # count \mxc, mz1
       break
   run count_down(slot)                                      # count i ma1, mxr
