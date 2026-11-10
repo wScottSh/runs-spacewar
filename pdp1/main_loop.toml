@@ -4,7 +4,7 @@
 # Network is a block the others jump to; the frame starts again where a
 # firing ends.
 replaces = "lift/main_loop.c"
-registers = ["handoff", "outline_call", "breakout_check"]
+registers = ["handoff", "explosion_dot", "outline_reading", "outline_point", "outline_call", "breakout_check"]
 pool = ["pacing.spare_time", "frame.restart_delay", "frame.objects_seen",
         "score.first", "score.second", "score.games_left", "controls.source"]
 # The Network the PDP-1 runs again whenever a firing ends: the host's loop.
@@ -122,7 +122,7 @@ convention = "BLOCK"
 [[place]]
 routine = "new_game"
 convention = "BLOCK"
-io_reads = ["tunables.separate_outlines"]
+io_reads = ["outline_setting.separate_outlines"]
 
 [[place]]
 routine = "read_control_boxes"

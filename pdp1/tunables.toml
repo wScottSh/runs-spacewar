@@ -45,7 +45,7 @@ result = ["handoff.thrust"]
 
 [[place]]
 fields = ["tunables.star_capture_radius", "tunables.collision_radius", "tunables.collision_radius_half",
-          "tunables.separate_outlines"]
+          "outline_setting.separate_outlines"]
 
 [[place]]
 routine = "torpedo_space_warpage"

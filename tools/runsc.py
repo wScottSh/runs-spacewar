@@ -115,6 +115,15 @@ def walk_expr(e):
             yield from walk_expr(x)
 
 
+def every_node(tree):
+    """Every tuple in a tree of statements, arms and expressions."""
+    if isinstance(tree, tuple):
+        yield tree
+    if isinstance(tree, (tuple, list)):
+        for x in tree:
+            yield from every_node(x)
+
+
 def substitute(tree, names: dict):
     """tree with each ("name", n) for n in names replaced by names[n]."""
     if isinstance(tree, tuple) and len(tree) == 2 and tree[0] == "name" and tree[1] in names:
@@ -2439,8 +2448,9 @@ class Function:
         return None
 
     def one_instruction(self, s, nxt) -> str | None:
-        """`set a = -a` on an AC local, then `set f = 0` on a place in IO:
-        cma and cli, which the PDP-1 does as one instruction. Likewise a
+        """`set a = -a` or `set a = 0` on an AC local, then `set f = 0` on a
+        place in IO or a field of a register Record: cma or cla with cli,
+        which the PDP-1 does as one instruction. Likewise a
         program flag set, then a new AC local set to 0: clf and cla."""
         if nxt and s[0] == "set" and dotted_of(s[1]) in self.binds.flags and nxt[0] == "let" \
                 and nxt[1][0] == "name" and nxt[2] == ("num", 0) and nxt[1][1] not in self.b.io:
@@ -2450,13 +2460,27 @@ class Function:
             flag = self.binds.flags[dotted_of(s[1])]
             how = self.flag_word(s[2], dotted_of(s[1]))
             return f"{'stf' if how else 'clf'}({flag}), {name} = 0;"
-        if not (nxt and s[0] == nxt[0] == "set" and s[1][0] == "name" and s[2] == ("neg", s[1])
+        if not (nxt and s[0] == nxt[0] == "set" and s[1][0] == "name" and s[2] in (("neg", s[1]), ("num", 0))
                 and nxt[2] == ("num", 0) and nxt[1][0] != "tuple"):
             return None
         a, io = self.expr(s[1]), self.expr(nxt[1])
-        if not self.ac_resident(a) or io not in self.io_resident():
+        if not self.ac_resident(a):
             return None
-        return f"{a} = -{a}, {io} = 0;"
+        if io not in self.io_resident():
+            # a register field cleared in the AC operate's word is in IO from here
+            held = dotted_of(nxt[1])
+            if held is None or not self.binds.in_register(held, self.unit.path) or held in self.alias:
+                return None
+            bodies = [r.body for r in self.binds.prog.routines.values()]
+            written = sum(t[0] in ("let", "set") and t[1] == nxt[1] for b in bodies for t in walk(b))
+            read = sum(x == nxt[1] for x in every_node(bodies)) > written
+            halves = sorted(set(c for c in self.alias.values() if c.endswith(".lo")))
+            if not read and len(halves) == 1:
+                io = self.alias[held] = halves[0]   # a field nothing reads: the IO the routine already names
+            else:
+                self.declare_top(f"register word {io};")
+                self.io_names.add(io)
+        return f"{a} = {'-' + a if s[2][0] == 'neg' else '0'}, {io} = 0;"
 
     def clear_with_flag(self, stmts: list, k: int, depth: int) -> int | None:
         """A program flag set, then a new AC local and a new IO local set to

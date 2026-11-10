@@ -100,11 +100,11 @@ def new_games(prog: runs.Program, b: pdp1.Binding) -> int:
     watch = list(range(nnn, nnn + 2 * AREA)) + [b.address("ships", "outline", s) for s in (0, 1)]
     got = simh.run_jda(pdp1.SIMH, pdp1.ORACLE, sym["a2"], [Inputs(0) for _ in settings], op="jmp",
                        watch=watch, deposits={sym["ml0"]: JMP | STUB + 3},
-                       each=[{b.address("tunables", "separate_outlines"): ddd} for ddd in settings])
+                       each=[{b.address("outline_setting", "separate_outlines"): ddd} for ddd in settings])
     differ = 0
     for ddd, done in zip(settings, got):
         m = runs.Machine(prog)
-        m.state["tunables"]["separate_outlines"] = runs.W(ddd)
+        m.state["outline_setting"]["separate_outlines"] = runs.W(ddd)
         m.run("new_game")
         end = m.state["outline_call"]["code"].v
         got = code_words(m, b, end)

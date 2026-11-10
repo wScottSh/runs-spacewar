@@ -45,7 +45,7 @@ FIELDS = {
     ("tunables", "fuel_supply"): "foo", ("tunables", "angular_acceleration"): "maa",
     ("tunables", "star_capture_radius"): "str",
     ("tunables", "collision_radius"): "me1", ("tunables", "collision_radius_half"): "me2",
-    ("tunables", "separate_outlines"): "ddd", ("tunables", "hyperspatial_uncertainty"): "hur",
+    ("outline_setting", "separate_outlines"): "ddd", ("tunables", "hyperspatial_uncertainty"): "hur",
     ("explosion_count", "particles"): "mxc",
     ("square_root_call", "entry"): "sqt", ("square_root_call", "passes_left"): "sq1",
     ("square_root_call", "root"): "sq2",

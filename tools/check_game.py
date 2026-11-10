@@ -49,7 +49,7 @@ frames = importlib.util.module_from_spec(spec)
 sys.modules["frames"] = frames
 spec.loader.exec_module(frames)
 
-RECORDS = ["objects", "ships", "random", "frame", "pacing", "tunables", "score", "controls"]
+RECORDS = ["objects", "ships", "random", "frame", "pacing", "tunables", "outline_setting", "score", "controls"]
 # Fields the evaluator may hold unknown where SIMH holds a word: the lights,
 # program flags 1 and 2, keep what the machine held at power-on until a game
 # ends, and nothing in the game reads them. Any other field the evaluator
@@ -229,7 +229,7 @@ def a_case(game: Game, rng: random.Random, start: int | None) -> dict:
                                                       word().v]))
     st["frame"]["objects_seen"] = word()
     st["pacing"]["spare_time"] = word()
-    st["tunables"]["separate_outlines"] = runs.W(rng.choice([runs.MASK, 0, word().v]))
+    st["outline_setting"]["separate_outlines"] = runs.W(rng.choice([runs.MASK, 0, word().v]))
     first = rng.choice([0, 1, 2, 7, rng.randrange(1 << 18)])
     st["score"] = {"first": runs.W(first),
                    "second": runs.W(first if rng.random() < 0.4 else rng.choice([0, 1, 3, rng.randrange(1 << 18)])),
@@ -245,7 +245,7 @@ def a_case(game: Game, rng: random.Random, start: int | None) -> dict:
         for r in ("objects", "ships"):          # the table is not on the tape: garbage the game clears
             fresh[r] = st[r]
         fresh["score"] = st["score"]
-        fresh["tunables"]["separate_outlines"] = st["tunables"]["separate_outlines"]
+        fresh["outline_setting"]["separate_outlines"] = st["outline_setting"]["separate_outlines"]
         case["state"], case["lights"] = fresh, None
     return case
 

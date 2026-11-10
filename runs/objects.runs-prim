@@ -23,7 +23,7 @@ processor size_explosion(slot)
   writes: explosion_count, handoff
   let size = objects.cycles[slot]                           # lac i mb1
   set size = -size                                          # cma cli: one instruction
-  set handoff.particle_low = 0
+  set handoff.explosion_low = 0
   set explosion_count.particles = size >> 3
 
 # Meant to give a big explosion the wider spread, but particles is
@@ -44,17 +44,17 @@ processor scatter_particle
 # The dot is presentation, placed by the random number the game drew.
 processor plot_particle(slot)
   reads: random, objects, explosion_cloud
-  writes: display, handoff
+  writes: display, explosion_dot
   let high = random.number
   # scr 9s; sir 9s pushes all of IO's old value, the last dot's y, out.
-  set (high, handoff.particle_low) = scr(high, handoff.particle_low, 9)
-  set handoff.particle_low = handoff.particle_low >> 9
-  set (high, handoff.particle_low) = scr(high, handoff.particle_low, explosion_cloud.spread)
-  set (high, handoff.particle_low) = scl(high, handoff.particle_low, explosion_cloud.scatter)
+  set (high, explosion_dot.low) = scr(high, explosion_dot.low, 9)
+  set explosion_dot.low = explosion_dot.low >> 9
+  set (high, explosion_dot.low) = scr(high, explosion_dot.low, explosion_cloud.spread)
+  set (high, explosion_dot.low) = scl(high, explosion_dot.low, explosion_cloud.scatter)
   set high = high + objects.y[slot]
-  set (high, handoff.particle_low) = rcl(high, handoff.particle_low, 18)   # swap
+  set (high, explosion_dot.low) = rcl(high, explosion_dot.low, 18)   # swap
   set high = high + objects.x[slot]
-  emit display: high, handoff.particle_low, 3
+  emit display: high, explosion_dot.low, 3
 
 # The count of dots left is the game's: each dot draws two random numbers
 # from the generator hyperspace also draws from.

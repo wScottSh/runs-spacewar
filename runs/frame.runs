@@ -124,7 +124,7 @@ network new_game                                            # a2
   run outlines_from_free_core
   # When separate_outlines is +0 both ships share one outline, the wedge,
   # which leaves room for ddt (a3).
-  if tunables.separate_outlines < 0:                        # lio ddd; spi i
+  if outline_setting.separate_outlines < 0:                        # lio ddd; spi i
     run choose_needle
     run compile_outline                                     # jda oc / ot1
   run second_outline                                        # a3

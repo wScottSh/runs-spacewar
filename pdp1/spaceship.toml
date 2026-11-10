@@ -90,4 +90,4 @@ convention = "BLOCK"
 [[code]]
 routine = "draw_outline"
 pulse = true
-io = ["handoff.pen_y"]
+io = ["outline_point.y"]

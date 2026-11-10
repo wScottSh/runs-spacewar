@@ -10,7 +10,7 @@
 # number, constellation and name. The four magnitudes lie one after the
 # other: the first from slot 0 (1j), the second from 022 (2j), the third
 # from 044 (3j) and the fourth from 0306 (4j), up to 01652.
-record star_catalog[01652]
+presentation record star_catalog[01652]
   words: word =
     8192 - 1537         # 1j: 87 Taur, Aldebaran
     371 << 8

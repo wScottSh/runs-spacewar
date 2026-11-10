@@ -27,15 +27,15 @@ processor store_first                                       # clf 6
 
 processor take_word                                         # setup \occ, 6; ocg, lio .
   reads: outlines
-  writes: outline_compiler, handoff
+  writes: outline_compiler, outline_reading
   set outline_compiler.codes_left = -6
-  set handoff.codes = outlines.codes[outline_compiler.table]
+  set outline_reading.codes = outlines.codes[outline_compiler.table]
 
 processor take_code                                         # och
-  writes: handoff, outline_compiler
-  set handoff.direction = 0                                 # cla
-  set (handoff.direction, handoff.codes) = rcl(handoff.direction, handoff.codes, 3)
-  set outline_compiler.codes_rest = handoff.codes           # dio \oci
+  writes: outline_reading, outline_compiler
+  set outline_reading.direction = 0                                 # cla
+  set (outline_reading.direction, outline_reading.codes) = rcl(outline_reading.direction, outline_reading.codes, 3)
+  set outline_compiler.codes_rest = outline_reading.codes           # dio \oci
 
 processor step_down
   writes: outline_code, outline_call
@@ -82,8 +82,8 @@ processor end_outline
 
 processor take_rest                                         # lio \oci
   reads: outline_compiler
-  writes: handoff
-  set handoff.codes = outline_compiler.codes_rest
+  writes: outline_reading
+  set outline_reading.codes = outline_compiler.codes_rest
 
 processor count_code
   writes: outline_compiler

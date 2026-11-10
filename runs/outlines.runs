@@ -19,20 +19,20 @@ network compile_outline                                     # jda oc, the outlin
   run take_word                                             # ocj
   loop at most 0140:                                        # och: each code, from the left
     run take_code
-    if handoff.direction == 7:                              # the end
+    if outline_reading.direction == 7:                              # the end
       run end_outline
       break
-    elif handoff.direction == 0 or handoff.direction == 1:  # oc1: down
+    elif outline_reading.direction == 0 or outline_reading.direction == 1:  # oc1: down
       run step_down
-    elif handoff.direction == 2:                            # oc2: out
+    elif outline_reading.direction == 2:                            # oc2: out
       run step_out
-    elif handoff.direction == 3:                            # oc3: out and down
+    elif outline_reading.direction == 3:                            # oc3: out and down
       run step_out_down
-    elif handoff.direction == 4:                            # oc4: in
+    elif outline_reading.direction == 4:                            # oc4: in
       run step_in
-    elif handoff.direction == 5:                            # oc5: in and down
+    elif outline_reading.direction == 5:                            # oc5: in and down
       run step_in_down
-    elif handoff.direction == 6:                            # oc6: store, then restore
+    elif outline_reading.direction == 6:                            # oc6: store, then restore
       if outline_compiler.six == store:                     # szf 6
         run six_stored
         run store_position

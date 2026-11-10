@@ -123,7 +123,7 @@ presentation stream scoreboard
 #   0, 1 down   2 out   3 out and down   4 in   5 in and down
 #   6 store the pen's position, and at the next 6 restore it
 #   7 the end: draw the other side, then go back to the spaceship
-record outlines[020]
+presentation record outlines[020]
   codes: word =
     0111131                 # ot1: the needle, the first ship's
     0111111
@@ -160,11 +160,11 @@ enum stroke
   end                       # 7: the other side, or the end of the outline
 
 # Two outlines, each a begin, a nose and at most 0140 codes.
-record outline_code[0304]
+presentation record outline_code[0304]
   stroke: stroke
   back: word                # an end's nose: where the other side starts
 
-record outline_call
+presentation record outline_call
   code: word = 0            # oc's entry word: where in outline_code the next stroke goes; at
                             #   the end, the slot after the outline
   table: word = 0           # the word after the call: where in outlines the outline starts
@@ -175,7 +175,7 @@ enum six_code
   restore
 
 # The outline compiler's own words.
-record outline_compiler
+presentation record outline_compiler
   table: word = 0           # ocg: the outline word it reads, a place in outlines
   codes_left: word = 0      # occ: codes still to read in that word, counting up
   codes_rest: word = 0      # oci: the word, rotated past the codes read
@@ -185,7 +185,7 @@ record outline_compiler
 # The central star's line: how far each dot moves along x and along y.
 # Each is the sign and the three bits just below a display coordinate, so a
 # dot moves less than one point.
-record central_star
+presentation record central_star
   slope_x: word = 0         # bx
   slope_y: word = 0         # by
 
@@ -196,13 +196,13 @@ enum half
 
 # The Expensive Planetarium's own words: it draws every other frame, and
 # moves its window one step left every 16 of those.
-record planetarium
+presentation record planetarium
   alternate_frames: word = 0    # bcc: counting up
   window_steps: word = 0        # bkc: counting up
   right_margin: word = 010000   # fpr: the sky's x at the right edge of the screen
 
 # Where each magnitude's next scan starts: a place in star_catalog.words.
-record magnitudes[4]
+presentation record magnitudes[4]
   cursor: word =            # flo
     0                       # the first magnitude's first star (1j)
     022                     # the second's (2j)
@@ -223,12 +223,15 @@ record tunables
   star_capture_radius: word = 1             # str
   collision_radius: word = 06000            # me1
   collision_radius_half: word = 03000       # me2
-  separate_outlines: word = -0              # ddd: -0 compiles an outline for each ship; 0 shares one
   hyperspatial_uncertainty: word = 040000   # hur
+
+# The tunable only the outlines read: whether each ship has its own.
+presentation record outline_setting
+  separate_outlines: word = -0              # ddd: -0 compiles an outline for each ship; 0 shares one
 
 # What the scope shows: each point in the order it is plotted. It leaves the
 # game; the frame Network's contract declares it.
-stream display
+presentation stream display
   x: word
   y: word
   intensity: int
@@ -241,7 +244,7 @@ interface record explosion_count
   particles: word = 0       # mxc: dots left to plot, counting up
 
 # The explosion's cloud, carried from one dot to the next.
-record explosion_cloud
+presentation record explosion_cloud
   spread: word = 0          # msh: which of mst's shifts spreads the dots, scr 1s or scr 3s
   scatter: word = 0         # mi1: places the scl built from a random number shifts this dot
 
@@ -340,7 +343,7 @@ enum side
 # ship's tail, where the exhaust flame starts, and leaves the out steps
 # mirrored for the ship's other side. The steps are the heading scaled down
 # by 2^9, turned to each direction of a ship standing on its tail.
-record pen
+presentation record pen
   x: word = 0               # sx1
   y: word = 0               # sy1
   down_x: word = 0          # ssn: added to x
@@ -367,11 +370,11 @@ game record launch
 # Values the original hands from one rule to the next in AC and IO. Each is a
 # place only because a register carried it: into or out of a tunable the
 # original executes with xct, or into the diff macro.
-record handoff
+game record handoff
   coordinate: word = 0      # AC into `the`: a torpedo's coordinate, sar 9s
   acceleration: word = 0    # AC into diff: from `the`, or 0 (cla)
   position: word = 0        # AC out of diff: the new position
-  particle_low: word = 0    # IO through the explosion's dots: cleared (cli), then each dot's y
+  explosion_low: word = 0   # IO: cleared with the count's cma (cli); the dots shift it out unread
   jump_high: word = 0       # AC: hyperspace's random draw into and out of hr1, hr2;
   jump_low: word = 0        # IO:   one 36-bit value, scaled as one. IO holds what the main
                             #   loop left there when hyperspace begins; the draw pushes it out
@@ -392,7 +395,18 @@ record handoff
   distance_low: word = 0    #   feels gravity only when the high half is 0
   torpedo_button: word = 0  # AC: the fire button, if it counts as pressed, in the sign bit
   rocket_button: word = 0   # IO: the control word rotated, the rocket button in the sign bit
-  codes: word = 0           # IO through the outline compiler: the outline word, rotated
+
+# The explosion's dot in AC and IO: IO carries the low half from one dot's
+# shifts to the next; the high half is the dot's own local.
+presentation record explosion_dot
+  low: word = 0             # IO: each dot's y
+
+# The outline compiler's carries in AC and IO.
+presentation record outline_reading
+  codes: word = 0           # IO: the outline word, rotated
   direction: word = 0       # AC: the next direction code, which the compiler dispatches on
-  pen_x: word = 0           # AC: the point the outline's walk is at
-  pen_y: word = 0           # IO
+
+# The point the outline's walk is at, carried in AC and IO.
+presentation record outline_point
+  x: word = 0               # AC
+  y: word = 0               # IO
