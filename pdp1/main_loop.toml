@@ -12,13 +12,17 @@ repeat = "frame"
 # A value moves from AC to IO by the swap macro (rcl 9s, rcl 9s).
 moves = "swap"
 
-# The compiled outlines lie in the free core right after the table (nnn).
+# The outlines' code lies in the free core right after the table (nnn),
+# up to the star catalog.
 [addresses]
-"outline_code.insn" = "after table"
+"outline_code.stroke" = "after table"
 
-# Each ship's compiled outline is held as its address.
+[code_words]
+"outline_code.stroke" = 0o2105
+
+# Where each ship's outline strokes start is held as the address of their code.
 [into]
-"ships.outline" = "outline_code.insn"
+"ships.outline" = "outline_code.stroke"
 
 # The object table: objects then ships, field after field, each field's
 # slots together, from object_table (core_layout.c). The clearing loop's
@@ -55,10 +59,10 @@ clear = "clearing"
 # address field of the first instruction of this unit that reads or writes
 # its field, or of the first in the named Processor. A walk from the slot
 # after another uses the other cursors (ml2, mx2, ...). The word
-# draw_outline's jump goes through (ships.outline at the slot, as its RUNS
-# says) is carried into its home (sp5, the jump into the compiled outline)
-# as the second walk begins (mot). runsc refuses the carry unless every
-# calc that reaches the jump runs after that walk in the same slot, and
+# draw_outline's walk starts from (ships.outline at the slot, as its RUNS
+# says) is carried into its home (sp5, the jump into the strokes' words) as
+# the second walk begins (mot). runsc refuses the carry unless every calc
+# that reaches the walk runs after that walk in the same slot, and
 # nothing in the slot writes the field. For a torpedo the load reads past
 # the outline array (reach_oracle), and nothing jumps through it (check_frame
 # poison, INTENT.md). mas is stepped with the cursors, and nothing reads it.

@@ -21,6 +21,11 @@ RULES: dict[str, str] = {
     "FOR-EVER": "for (;;) S: top: S; jmp top",
     "CONTINUE": "continue: jmp top",
     "GOTO": "goto L: jmp L; a C label names the first word of its statement",
+    "HELD": "HELD(x) in a TEMPLATE: a word left for the held field x, filled where the template is stored",
+    "LAY-OUT": "LAY_OUT(p, t, ...): each word of template t stored through p (`lac (w / dac i p / idx p`); "
+               "a run of the word IO holds by the store routine (`jsp f`); a jump within t built from p "
+               "(`add (k / dap j`); a held field's word from its value",
+    "CROSS-JUMP": "paths that join and end in the same words share one copy: `jmp` to its first word",
     "EX-STEP": "mus(h, l, m) / dis(h, l, m): one multiply or divide step on AC:IO",
     "EX-MOVE": "value between AC and IO (register local from AC, or into AC): rcr 9s; rcr 9s",
     "EX-CONST-IO": "constant into a register (IO) local: 0 -> cli, else lio (c",

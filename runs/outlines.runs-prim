@@ -1,21 +1,25 @@
 # The outline compiler's Processors. oc's entry word, outline_call.code, is
-# where the next word of code goes.
+# where the next stroke goes.
 
 processor start_reading                                     # dap ocg
   reads: outline_call
   writes: outline_compiler
   set outline_compiler.table = outline_call.table
 
-# One word of code (plinst).
-processor lay_out(instruction)
+processor begin_outline
   writes: outline_code, outline_call
-  set outline_code.insn[outline_call.code] = instruction
+  set outline_code.stroke[outline_call.code] = begin
   set outline_call.code = outline_call.code + 1
 
 processor mark_start                                        # dap ocm
   reads: outline_call
   writes: outline_compiler
-  set outline_compiler.start_over = jmp(outline_code.insn[outline_call.code])
+  set outline_compiler.start_over = outline_call.code
+
+processor start_at_nose
+  writes: outline_code, outline_call
+  set outline_code.stroke[outline_call.code] = nose
+  set outline_call.code = outline_call.code + 1
 
 processor store_first                                       # clf 6
   writes: outline_compiler
@@ -32,26 +36,48 @@ processor take_code                                         # och
   set handoff.direction = 0                                 # cla
   set (handoff.direction, handoff.codes) = rcl(handoff.direction, handoff.codes, 3)
   set outline_compiler.codes_rest = handoff.codes           # dio \oci
-  set handoff.swap = rcl(9)                                 # lio (rcl 9s
 
-# Half a swap, twice: AC and IO change places in the code (ocs).
-processor compile_swap
-  reads: handoff
+processor step_down
   writes: outline_code, outline_call
-  set outline_code.insn[outline_call.code] = handoff.swap
-  set outline_call.code = outline_call.code + 1
-  set outline_code.insn[outline_call.code] = handoff.swap
+  set outline_code.stroke[outline_call.code] = down
   set outline_call.code = outline_call.code + 1
 
-# The word the next lay_out_pending lays out (lac).
-processor pend(instruction)
-  writes: handoff
-  set handoff.pending = instruction
-
-processor lay_out_pending                                   # dac i oc; idx oc
-  reads: handoff
+processor step_out
   writes: outline_code, outline_call
-  set outline_code.insn[outline_call.code] = handoff.pending
+  set outline_code.stroke[outline_call.code] = out
+  set outline_call.code = outline_call.code + 1
+
+processor step_out_down
+  writes: outline_code, outline_call
+  set outline_code.stroke[outline_call.code] = out_down
+  set outline_call.code = outline_call.code + 1
+
+processor step_in
+  writes: outline_code, outline_call
+  set outline_code.stroke[outline_call.code] = in
+  set outline_call.code = outline_call.code + 1
+
+processor step_in_down
+  writes: outline_code, outline_call
+  set outline_code.stroke[outline_call.code] = in_down
+  set outline_call.code = outline_call.code + 1
+
+processor store_position
+  writes: outline_code, outline_call
+  set outline_code.stroke[outline_call.code] = store
+  set outline_call.code = outline_call.code + 1
+
+processor restore_position
+  writes: outline_code, outline_call
+  set outline_code.stroke[outline_call.code] = restore
+  set outline_call.code = outline_call.code + 1
+
+# The 7 code: the end, which sends the first side's walk back to the nose.
+processor end_outline
+  reads: outline_compiler
+  writes: outline_code, outline_call
+  set outline_code.stroke[outline_call.code] = end
+  set outline_code.back[outline_call.code] = outline_compiler.start_over
   set outline_call.code = outline_call.code + 1
 
 processor take_rest                                         # lio \oci
@@ -74,17 +100,3 @@ processor six_stored                                        # stf 6
 processor six_restored                                      # clf 6
   writes: outline_compiler
   set outline_compiler.six = store
-
-# The first side's jump past the return, four words on (add (4; dap ocn).
-processor jump_to_other_side
-  writes: outline_compiler, outline_code, outline_call
-  set outline_compiler.to_other_side = jmp(outline_code.insn[outline_call.code + 4])
-  set outline_code.insn[outline_call.code] = outline_compiler.to_other_side
-  set outline_call.code = outline_call.code + 1
-
-# Back to the second side's start (plinst ocm).
-processor jump_to_start
-  reads: outline_compiler
-  writes: outline_code, outline_call
-  set outline_code.insn[outline_call.code] = outline_compiler.start_over
-  set outline_call.code = outline_call.code + 1

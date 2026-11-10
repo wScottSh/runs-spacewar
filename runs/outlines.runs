@@ -1,23 +1,20 @@
 # The outline compiler (oc, source lines 398-507), Dan Edwards' fiddle to
 # speed up the spaceship display. Instead of reading a ship's outline every
-# frame, the game compiles it once each new game into code that draws the
-# ship (outline_code), and each frame the spaceship runs it (draw_outline).
-# It is presentation, ported exactly: the words it writes are the
-# original's. The Networks follow the original's labels; each Processor is
-# a run of its instructions between them.
+# frame, the game decodes it once each new game into strokes (outline_code),
+# and each frame the spaceship walks them (draw_outline). It is
+# presentation. The Networks follow the original's labels; each Processor
+# is a run of its instructions between them.
 #
-# Each direction code compiles a step of the pen: add the step's x to AC,
-# swap AC and IO (rcl 9s twice), step y, swap back, wait for the last dot
-# and plot this one. The 7 code ends the outline: the code runs the steps
-# once more, mirrored, for the other side, then leaves the pen at the tail
-# and goes back to the spaceship at sq6.
+# Each direction code is one stroke: a step of the pen, a store or a
+# restore of its position, or the end. A begin and a nose come first; the
+# end sends the walk back to the nose for the other side, mirrored, then
+# leaves the pen at the tail and goes back to the spaceship at sq6.
 
 network compile_outline                                     # jda oc, the outline after the call
   run start_reading                                         # dap ocg
-  run lay_out(stf(5))                                       # flag 5: the first side
-  run mark_start                                            # dap ocm: the second side starts here
-  run lay_out(lac(pen.x))                                   # ock: the pen starts at the nose
-  run lay_out(lio(pen.y))
+  run begin_outline                                         # the first side
+  run mark_start                                            # dap ocm: the other side starts here
+  run start_at_nose                                         # ock: the pen starts at the nose
   run store_first                                           # clf 6: the first 6 code stores
   run take_word                                             # ocj
   loop at most 0140:                                        # och: each code, from the left
@@ -26,73 +23,24 @@ network compile_outline                                     # jda oc, the outlin
       run end_outline
       break
     elif handoff.direction == 0 or handoff.direction == 1:  # oc1: down
-      run step(add(pen.down_x), sub(pen.down_y))
+      run step_down
     elif handoff.direction == 2:                            # oc2: out
-      run step(add(pen.out_x), add(pen.out_y))
+      run step_out
     elif handoff.direction == 3:                            # oc3: out and down
-      run step(add(pen.out_down_x), sub(pen.out_down_y))
+      run step_out_down
     elif handoff.direction == 4:                            # oc4: in
-      run step(sub(pen.out_x), sub(pen.out_y))
+      run step_in
     elif handoff.direction == 5:                            # oc5: in and down
-      run step(add(pen.in_down_x), sub(pen.in_down_y))
+      run step_in_down
     elif handoff.direction == 6:                            # oc6: store, then restore
       if outline_compiler.six == store:                     # szf 6
+        run six_stored
         run store_position
       else:
-        run restore_position                                # oc9
-    run lay_out_pending                                     # ocd
+        run six_restored                                    # oc9
+        run restore_position
     run take_rest                                           # lio \oci
     run count_code                                          # count \occ, och
     if outline_compiler.codes_left >= 0:
       run next_word                                         # idx ocg
       run take_word                                         # jmp ocj
-
-# A step (comtab): x, swap, then y, which the dot lays out.
-network step(x, y)
-  run lay_out(x)
-  run compile_swap                                          # jsp ocs
-  run pend(y)
-  run dot
-
-# The step's y, swap back, wait for the last dot and plot this one (oce).
-network dot
-  run lay_out_pending
-  run compile_swap                                          # jsp ocs
-  run lay_out(ioh)
-  run pend(dpy)
-
-network store_position
-  run six_stored                                            # stf 6
-  run lay_out(dac(pen.saved_x))
-  run pend(dio(pen.saved_y))
-
-network restore_position                                    # oc9
-  run six_restored                                          # clf 6
-  run lay_out(lac(pen.saved_x))
-  run pend(lio(pen.saved_y))
-
-# The 7 code. On the first side flag 5 is set, and the code jumps past the
-# return to mirror the steps and start over; on the second it stores the
-# tail and jumps back to the spaceship.
-network end_outline
-  run lay_out(szf(5))
-  run jump_to_other_side                                    # add (4; dap ocn; plinst ocn
-  run lay_out(dac(pen.x))                                   # the tail, where the flame starts
-  run lay_out(dio(pen.y))
-  run lay_out(jmp(after_outline))                           # sq6
-  run lay_out(clf(5))                                       # the other side
-  run lay_out(lac(pen.out_x))                               # out is in
-  run lay_out(cma)
-  run lay_out(dac(pen.out_x))
-  run lay_out(lac(pen.out_y))
-  run lay_out(cma)
-  run lay_out(dac(pen.out_y))
-  run lay_out(lac(pen.out_down_y))                          # out and down is in and down
-  run lay_out(lio(pen.in_down_y))
-  run lay_out(dac(pen.in_down_y))
-  run lay_out(dio(pen.out_down_y))
-  run lay_out(lac(pen.out_down_x))
-  run lay_out(lio(pen.in_down_x))
-  run lay_out(dac(pen.in_down_x))
-  run lay_out(dio(pen.out_down_x))
-  run jump_to_start                                         # plinst ocm

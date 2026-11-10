@@ -10,17 +10,6 @@ type word
   complement: ones          # -0 exists; add and subtract are the PDP-1's (end-around carry, never yield -0)
   compare: sign             # word < 0 tests the sign bit; == compares all 18 bits
 
-# A word of code: a PDP-1 instruction, as the outline compiler writes it and
-# a spaceship runs it (`jump`). Each is built by its instruction's name and
-# its operand: lac(pen.x) is `lac \sx1`, jmp(after_outline) is `jmp sq6`,
-# stf(5) is `stf 5`, rcl(9) is `rcl 9s`, cma is `cma`. An operand names a
-# word of a Record or code, a routine, or a number; the word is read only
-# when the instruction runs. The machine runs code by its own rules. These
-# are the instructions the game reaches:
-type insn
-  instructions: lac lio dac dio add sub jmp stf clf szf cma ioh dpy rcl
-  display: display          # dpy-4000 plots AC, IO at intensity 0, and asks for the pulse ioh waits for
-
 # The routine word (the ml1 property): which calc routine runs the object.
 # Each value also fixes whether the object collides; core keeps that in the
 # word's sign bit.
@@ -49,7 +38,7 @@ record ships[2]
   angle: word = 0               # nth: heading
   fuel: word = 0                # nfu: counting up, out at 0
   torpedoes: word = 0           # ntr: torpedoes left, counting up
-  outline: word = 0             # not: the ship's compiled outline
+  outline: word = 0             # not: where the ship's outline strokes start
   previous_control: word = 0    # nco: last frame's control word
   saved_routine: calc_routine = none   # nh1: the ship's own calc routine, kept during hyperspace
   jumps_left: word = 0          # nh2: hyperspace jumps left, counting up
@@ -117,10 +106,10 @@ stream scoreboard
   first: word               # AC
   second: word              # IO
 
-# The ship outlines are presentation, ported as the original runs them: at
-# each new game the outline compiler (oc) lays each one out as code, and
-# each frame a spaceship runs its own (draw_outline). ships.outline keeps
-# where each ship's code starts.
+# The ship outlines are presentation. At each new game the outline compiler
+# (oc) decodes each outline into strokes (outline_code), and each frame a
+# spaceship walks its own (draw_outline). ships.outline keeps where each
+# ship's strokes start.
 
 # The ships' outlines (ot1, ot2), what the compiler reads. Each word holds
 # six 3-bit direction codes, read from the left, that trace one side of a
@@ -147,15 +136,31 @@ record outlines[020]
     0365114
     0700000
 
-# The compiled outlines (nnn): the free core after the object table, up to
-# the star catalog. The tape does not load these words, and a new game
-# compiles the outlines into them before anything runs them.
-record outline_code[02105]
-  insn: insn
+# An outline decoded, one stroke a direction code: what the walk does at
+# each. The first side begins, then each side starts at the nose, takes the
+# outline's steps and stores and restores, and ends. The strokes lie in the
+# free core after the object table (nnn). The tape does not load them, and
+# a new game decodes the outlines into them before anything walks them.
+enum stroke
+  begin                     # the first side begins
+  nose                      # a side starts at the nose
+  down                      # 0, 1
+  out                       # 2
+  out_down                  # 3
+  in                        # 4
+  in_down                   # 5
+  store                     # 6, the first of a pair
+  restore                   # 6, the second
+  end                       # 7: the other side, or the end of the outline
+
+# Two outlines, each a begin, a nose and at most 0140 codes.
+record outline_code[0304]
+  stroke: stroke
+  back: word                # an end's nose: where the other side starts
 
 record outline_call
-  code: word = 0            # oc's entry word: where in outline_code the next word goes; at
-                            #   the end, the word after the outline
+  code: word = 0            # oc's entry word: where in outline_code the next stroke goes; at
+                            #   the end, the slot after the outline
   table: word = 0           # the word after the call: where in outlines the outline starts
 
 # What the next 6 code of an outline compiles.
@@ -169,8 +174,7 @@ record outline_compiler
   codes_left: word = 0      # occ: codes still to read in that word, counting up
   codes_rest: word = 0      # oci: the word, rotated past the codes read
   six: six_code = store     # program flag 6
-  start_over: insn = jmp(outline_compiler.start_over)        # ocm: where the second side starts
-  to_other_side: insn = jmp(outline_compiler.to_other_side)  # ocn: past the end, on the first side
+  start_over: word = 0      # ocm: where the outline's nose is, where the other side starts
 
 # The central star's line: how far each dot moves along x and along y.
 # Each is the sign and the three bits just below a display coordinate, so a
@@ -307,10 +311,16 @@ record spaceship
   flame: word = 0           # src: exhaust dots still to draw, counting up
   star_wait: word = 0       # ssn: the count a ship in the star waits out
 
+# Which side of a ship's outline is drawn: the first, then the other,
+# mirrored.
+enum side
+  other
+  first
+
 # Where a ship's outline is drawn from, and the steps it is drawn with. The
-# outline is presentation: the spaceship sets these and jumps into its
-# compiled outline (ships.outline), which plots the ship, leaves the pen at
-# the ship's tail, where the exhaust flame starts, and leaves the out steps
+# outline is presentation: the spaceship sets these and walks its outline's
+# strokes (ships.outline), which plots the ship, leaves the pen at the
+# ship's tail, where the exhaust flame starts, and leaves the out steps
 # mirrored for the ship's other side. The steps are the heading scaled down
 # by 2^9, turned to each direction of a ship standing on its tail.
 record pen
@@ -326,6 +336,7 @@ record pen
   in_down_y: word = 0       # ssd: subtracted from y
   saved_x: word = 0         # ssa: where a 6 code stores the pen, and the next restores it
   saved_y: word = 0         # ssi
+  side: side = other        # program flag 5: which side of the outline the walk draws
 
 # Whether a ship breaking out of hyperspace survives: the margin by which a
 # random number outweighs its uncertainty.
@@ -365,5 +376,5 @@ record handoff
   torpedo_button: word = 0  # AC: the fire button, if it counts as pressed, in the sign bit
   codes: word = 0           # IO through the outline compiler: the outline word, rotated
   direction: word = 0       # AC: the next direction code, which the compiler dispatches on
-  swap: insn = 0            # IO into ocs: rcl 9s, half of the swap the compiler lays out twice
-  pending: insn = 0         # AC: the next word the compiler lays out
+  pen_x: word = 0           # AC: the point the outline's walk is at
+  pen_y: word = 0           # IO

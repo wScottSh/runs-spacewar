@@ -395,6 +395,10 @@ class FunctionLowerer:
                 return [W(op, "EX-FLAG", ir.Num(n))], st
             case ir.StoreNext():
                 return self.store_next(s, st)
+            case ir.Held(name=name):
+                return [W(None, "HELD", ir.Sym(name), note="filled where the template is stored")], st
+            case ir.LayOut():
+                return self.lay_out(s, st)
             case ir.AssignAddr(target=ir.Var(storage=ir.Homed(sym=sym))) if sym in self.switch_tables:
                 return self.store_case(s, st)
             case ir.AssignAddr():
@@ -645,6 +649,41 @@ class FunctionLowerer:
         step = W("idx", "EX-POSTINC-STORE", mem(s.pointer), via=_via(s.pointer))
         st = st.without_memory()
         return items + [store, step], State(frozenset({fact(s.pointer)}), st.io)
+
+    def lay_out(self, s: ir.LayOut, st: State):
+        """The stores of a template's words, lowered as the statements they
+        are: `*p++ = w` for each, a call of the store routine for a run of
+        the word IO holds, `j.addr = p + k; *p++ = j` for a jump k words on
+        within the template, and `*p++ = h` for a held field's word."""
+        words = [i for i in s.items if isinstance(i, ir.Word)]
+        at: dict[str, int] = {}
+        for n, i in enumerate(s.items):
+            if isinstance(i, ir.LabelDef):
+                at[i.name] = sum(isinstance(j, ir.Word) for j in s.items[:n])
+        holes = list(s.holes)
+        key = lambda w: (w.op, w.operand, w.i)
+        stmts: list[ir.Stmt] = []
+        k = 0
+        while k < len(words):
+            w = words[k]
+            if s.store and all(key(x) == key(s.io_word) for x in words[k:k + s.run]) \
+                    and len(words) - k >= s.run:
+                stmts.append(ir.Eval(ir.Call(s.store, (s.io,))))
+                k += s.run
+                continue
+            if w.rule == "HELD":
+                stmts.append(ir.StoreNext(s.pointer, holes.pop(0)))
+            elif isinstance(w.operand, ir.Sym) and w.operand.name in at:
+                if s.jump is None:
+                    raise SelectError(f"{s.template} jumps within itself: give LAY_OUT the word it builds "
+                                      "the jump in")
+                stmts += [ir.AssignAddr(s.jump, ir.Binary("+", s.pointer, ir.Const(at[w.operand.name] - k))),
+                          ir.StoreNext(s.pointer, s.jump)]
+            else:
+                stmts.append(ir.StoreNext(s.pointer, ir.Insn(w.op, w.operand, w.i)))
+            k += 1
+        items, st = self.stmt(ir.Block(tuple(stmts)), st)
+        return [replace(i, via=i.via + (check("LAY-OUT"),)) if isinstance(i, ir.Word) else i for i in items], st
 
     def switch(self, s: ir.Switch, st: State):
         """add (T; dap J; J, jmp .; T: one word per case. A goto case is its

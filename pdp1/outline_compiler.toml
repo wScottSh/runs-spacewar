@@ -1,10 +1,15 @@
 # The outline compiler (source lines 398-507): ocs, the JSP routine that
-# lays out half a swap twice, then oc, the JDA routine that compiles one
-# outline into the code space.
+# lays out IO twice, then oc, the JDA routine that decodes one outline
+# into the strokes' code.
 replaces = "lift/outline_compiler.c"
 pool = ["outline_compiler.codes_left", "outline_compiler.codes_rest", "pen.saved_x", "pen.saved_y"]
 
-# The flag that says what the next 6 code compiles. Flag 6 also holds
+# The strokes are held as the code of their use (docs/rules/held-as-code.md):
+# each slot is draw_outline's arm for its member, laid end to end. An end's
+# nose is held as the jump to it, which the compiler copies from ocm.
+held_as_code = ["outline_code.stroke", "outline_code.back", "outline_compiler.start_over"]
+
+# The flag that says what the next 6 code decodes. Flag 6 also holds
 # spaceship.rocket and the central star's mirror bit: each of the three
 # sets or clears it before it reads it (clf 6 here, at the star's start,
 # and in steer).
@@ -22,18 +27,22 @@ restore = 1
 
 # Fields that hold a place in a Record collection hold its address.
 [into]
-"outline_call.code" = "outline_code.insn"
+"outline_call.code" = "outline_code.stroke"
 "outline_call.table" = "outlines.codes"
 "outline_compiler.table" = "outlines.codes"
 
+# ocs: lays out IO twice through oc's entry word. IO takes the word it
+# lays out (rcl 9s, half a swap) as each code is taken.
 [[place]]
-routine = "compile_swap"
-convention = "JSP"
-io_param = "handoff.swap"
+store = "outline_code.stroke"
+times = 2
+loaded = "take_code"
 
 # The code goes through oc's entry word. The routine steps past the word
 # after its call (idx ocx) once mark_start has taken the code's address
-# from AC; the two jumps it fills in lie after its return (ocm, ocn).
+# from AC; the jump to the nose lies after its return (ocm), with the word
+# the end's jump past its return is built in (ocn). Arms that end alike
+# share their last words (oce, ocd).
 [[place]]
 routine = "compile_outline"
 convention = "JDA"
@@ -42,4 +51,5 @@ inline = "outline_call.table"
 result = ["outline_call.code"]
 io = ["handoff.codes"]
 args_done = "mark_start"
-data = ["outline_compiler.start_over", "outline_compiler.to_other_side"]
+data = ["outline_compiler.start_over"]
+tails = "shared"

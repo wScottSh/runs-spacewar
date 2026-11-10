@@ -185,14 +185,80 @@ processor mark_center                                       # cla cli; dpy-4000
   writes: display
   emit display: 0, 0, 0
 
-# The ship's compiled outline, ships.outline[slot], which the main loop
-# loads into the jump as it reaches the ship's slot. It plots the ship from
-# the pen and the steps, the second side mirrored, leaves the pen at the
-# tail and jumps back to sq6. Each of its words runs at most once a side.
+# The ship's outline, its strokes from ships.outline[slot], which the main
+# loop loads into the jump as it reaches the ship's slot. Each step moves
+# the pen and plots a dot, from the nose down one side to the end; then the
+# out steps are mirrored and the same strokes draw the other side, from the
+# nose again. The pen is left at the tail, and the walk goes back to sq6.
 processor draw_outline(slot)                                # sp5, jmp .
   reads: ships, outline_code
-  writes: pen, display
-  jump outline_code.insn[ships.outline[slot]] at most 04212
+  writes: pen, handoff, display
+  let at = ships.outline[slot]
+  loop at most 0304:
+    let stroke = outline_code.stroke[at]
+    if stroke == begin:
+      set pen.side = first                                  # stf 5
+    elif stroke == nose:
+      set handoff.pen_x = pen.x                             # lac \sx1
+      set handoff.pen_y = pen.y                             # lio \sy1
+    elif stroke == down:
+      set handoff.pen_x = handoff.pen_x + pen.down_x
+      set (handoff.pen_x, handoff.pen_y) = rcl(handoff.pen_x, handoff.pen_y, 18)   # swap: only AC adds
+      set handoff.pen_x = handoff.pen_x - pen.down_y
+      set (handoff.pen_x, handoff.pen_y) = rcl(handoff.pen_x, handoff.pen_y, 18)
+      emit display: handoff.pen_x, handoff.pen_y, 0
+    elif stroke == out:
+      set handoff.pen_x = handoff.pen_x + pen.out_x
+      set (handoff.pen_x, handoff.pen_y) = rcl(handoff.pen_x, handoff.pen_y, 18)   # swap: only AC adds
+      set handoff.pen_x = handoff.pen_x + pen.out_y
+      set (handoff.pen_x, handoff.pen_y) = rcl(handoff.pen_x, handoff.pen_y, 18)
+      emit display: handoff.pen_x, handoff.pen_y, 0
+    elif stroke == out_down:
+      set handoff.pen_x = handoff.pen_x + pen.out_down_x
+      set (handoff.pen_x, handoff.pen_y) = rcl(handoff.pen_x, handoff.pen_y, 18)   # swap: only AC adds
+      set handoff.pen_x = handoff.pen_x - pen.out_down_y
+      set (handoff.pen_x, handoff.pen_y) = rcl(handoff.pen_x, handoff.pen_y, 18)
+      emit display: handoff.pen_x, handoff.pen_y, 0
+    elif stroke == in:
+      set handoff.pen_x = handoff.pen_x - pen.out_x
+      set (handoff.pen_x, handoff.pen_y) = rcl(handoff.pen_x, handoff.pen_y, 18)   # swap: only AC adds
+      set handoff.pen_x = handoff.pen_x - pen.out_y
+      set (handoff.pen_x, handoff.pen_y) = rcl(handoff.pen_x, handoff.pen_y, 18)
+      emit display: handoff.pen_x, handoff.pen_y, 0
+    elif stroke == in_down:
+      set handoff.pen_x = handoff.pen_x + pen.in_down_x
+      set (handoff.pen_x, handoff.pen_y) = rcl(handoff.pen_x, handoff.pen_y, 18)   # swap: only AC adds
+      set handoff.pen_x = handoff.pen_x - pen.in_down_y
+      set (handoff.pen_x, handoff.pen_y) = rcl(handoff.pen_x, handoff.pen_y, 18)
+      emit display: handoff.pen_x, handoff.pen_y, 0
+    elif stroke == store:
+      set pen.saved_x = handoff.pen_x
+      set pen.saved_y = handoff.pen_y
+    elif stroke == restore:
+      set handoff.pen_x = pen.saved_x
+      set handoff.pen_y = pen.saved_y
+    elif stroke == end:
+      if pen.side == other:                                 # szf 5
+        set pen.x = handoff.pen_x                           # the tail, where the flame starts
+        set pen.y = handoff.pen_y
+        break                                               # jmp sq6
+      set pen.side = other                                  # clf 5: the other side
+      # The point is spent: AC and IO carry the mirror's words.
+      set handoff.pen_x = -pen.out_x                        # out is in
+      set pen.out_x = handoff.pen_x
+      set handoff.pen_x = -pen.out_y
+      set pen.out_y = handoff.pen_x
+      set handoff.pen_x = pen.out_down_y                    # out and down is in and down
+      set handoff.pen_y = pen.in_down_y
+      set pen.in_down_y = handoff.pen_x
+      set pen.out_down_y = handoff.pen_y
+      set handoff.pen_x = pen.out_down_x
+      set handoff.pen_y = pen.in_down_x
+      set pen.in_down_x = handoff.pen_x
+      set pen.out_down_x = handoff.pen_y
+      set at = outline_code.back[at]                        # the nose again
+      continue
+    set at = at + 1
 
 # The exhaust flame: while the rocket fires, a random number of dots behind
 # the tail, each burning a unit of fuel. The count and the fuel are the

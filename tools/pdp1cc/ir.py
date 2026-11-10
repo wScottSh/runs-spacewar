@@ -397,6 +397,24 @@ class AssignAddr:       # x.addr = e, or p = e for a homed p: e's address bits i
 
 
 @dataclass(frozen=True)
+class Held:             # HELD(x) in a TEMPLATE: the word of field x, held as code, lies here
+    name: str
+
+
+@dataclass(frozen=True)
+class LayOut:           # LAY_OUT(p, t, ...): template t's words stored through p, p stepped past each
+    pointer: "Var"
+    template: str
+    items: tuple        # the template's words and labels (Word, LabelDef)
+    store: "Signature | None"   # a JSP routine that stores IO through p, `run` times
+    io: "Var | None"            # the register local holding the word it stores
+    io_word: "Insn | None"      # that word
+    run: int
+    jump: "Var | None"          # the data word a jump within the template is built in
+    holes: tuple        # the words of the held fields, in the order the template holds them
+
+
+@dataclass(frozen=True)
 class Switch:           # switch ((int)e) over cases 0..n: a jump table
     value: Expr
     slots: tuple["Stmt | None", ...]     # cases 0..n-1: a Goto, or None to fall into the next
@@ -461,6 +479,7 @@ class Function:
     params: tuple[Var, ...]
     body: Block
     at: int | None = None       # AT(a): laid out from address a
+    shared_tails: bool = False  # SHARED_TAILS: paths that join share the words they end with
 
     @property
     def sym(self) -> str:

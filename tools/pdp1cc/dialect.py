@@ -17,7 +17,7 @@ CMP_OPS = {"<", ">=", "==", "!=", "<=", ">"}
 ATTR = re.compile(r"pdp1_(\w+)(?:\((.*)\))?$")
 CONVS = {c.value: c for c in ir.Conv if c is not ir.Conv.INLINE}
 ATTRIBUTES = CONVS.keys() | {"byname", "inline", "entry_cell", "at", "reserve", "pool", "homed",
-                              "skips", "start", "value"}
+                              "skips", "start", "value", "shared_tails"}
 HARDWARE = {"tyi", "lsm", "ioh", "hlt", "lat", "control_boxes"}   # one instruction, no operand
 DISPLAY = {"dpy", "dpy_nowait"}
 MAX_SENSE = 6
@@ -446,7 +446,7 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z", linked: dict[str, str] | N
     global _TEMPLATES
     _TEMPLATES = _Templates({ext.decl.name: (ext, sigs[ext.decl.name]) for ext in ast.ext
                              if isinstance(ext, c_ast.FuncDef) and sigs[ext.decl.name].conv is ir.Conv.TEMPLATE},
-                            globals_, sigs, pointers, arrays, types, shifts, prefix)
+                            globals_, sigs, pointers, arrays, types, shifts, prefix, ast)
 
     for ext in objects:
         if ext.init is not None:
@@ -476,7 +476,8 @@ def lower_unit(ast: c_ast.FileAST, prefix: str = "z", linked: dict[str, str] | N
                                     "its calls; AT does not apply")
                 inlines[fn.sig.name] = fn
                 continue
-            items.append(ir.Function(fn.sig, fn.params, fn.body, _origin(ext.decl)))
+            items.append(ir.Function(fn.sig, fn.params, fn.body, _origin(ext.decl),
+                                     "shared_tails" in _attrs(ext.decl)))
         elif isinstance(ext, c_ast.Decl) and ext.name in DIRECTIVES:
             items.append(ir.Directive(DIRECTIVES[ext.name]))
         elif isinstance(ext, c_ast.Decl) and not _is_function(ext.type) and not _in_header(ext):
@@ -512,8 +513,9 @@ class _Templates:
     are laid out nowhere: they are the constants that store them."""
 
     def __init__(self, defs: dict, globals_=None, sigs=None, pointers=None, arrays=None, types=None,
-                 shifts=None, prefix: str = "z"):
+                 shifts=None, prefix: str = "z", ast: c_ast.FileAST | None = None):
         self.defs = defs            # name -> (FuncDef, Signature)
+        self.ast = ast
         self.globals_, self.sigs, self.pointers = globals_, sigs, pointers
         self.arrays, self.types, self.shifts = arrays, types, shifts
         self.namer = Namer(prefix + "t" if len(prefix) == 1 else prefix)
@@ -540,6 +542,34 @@ class _Templates:
             out = FunctionLowerer(lowered, self.namer).lower()
             self.done[(name, values)] = [i for i in out if not (isinstance(i, ir.LabelDef) and i.name == sig.sym)]
         return self.done[(name, values)]
+
+    def store_run(self, store: str, node: c_ast.Node) -> tuple[int, ir.Insn]:
+        """A store routine's run: how many times its body stores IO through
+        the pointer (`*p++ = w`), and the word it stores, which the
+        templates it lays out hold that many times in a row, and no other."""
+        body = next((e for e in self.ast.ext if isinstance(e, c_ast.FuncDef) and e.decl.name == store), None)
+        if body is None:
+            raise _err(node, f"{store}: a store routine is defined in this unit")
+        run = sum(isinstance(s, c_ast.Assignment) and isinstance(s.lvalue, c_ast.UnaryOp) and s.lvalue.op == "*"
+                  and isinstance(s.lvalue.expr, c_ast.UnaryOp) and s.lvalue.expr.op == "p++"
+                  for s in body.body.block_items or [])
+        found: set[tuple] = set()
+
+        def visit(n: c_ast.Node):
+            if isinstance(n, c_ast.FuncCall) and isinstance(n.name, c_ast.ID) and n.name.name == "LAY_OUT" \
+                    and len(n.args.exprs) > 2 and isinstance(n.args.exprs[2], c_ast.ID) \
+                    and n.args.exprs[2].name == store:
+                words = [(w.op, w.operand, w.i) for w in self.items(n.args.exprs[1].name, (), n)
+                         if isinstance(w, ir.Word)]
+                found.update(words[k] for k in range(len(words) - run + 1) if len(set(words[k:k + run])) == 1)
+            for _, c in n.children():
+                visit(c)
+        visit(self.ast)
+        if run < 1 or len(found) != 1:
+            raise _err(node, f"{store} stores IO {run} times: the templates it lays out hold "
+                             f"{len(found)} words that many times in a row, not one")
+        op, operand, i = found.pop()
+        return run, ir.Insn(op, operand, i)
 
     def one_word(self, node: c_ast.FuncCall, values: tuple[int, ...]) -> ir.Word:
         args = node.args.exprs if node.args else []
@@ -788,7 +818,7 @@ def _same_declaration(a: c_ast.Decl, b: c_ast.Decl) -> bool:
     """Same parameters, return type and dialect attributes, so no single
     declaration's attribute is decoration."""
     sa, sb = _signature(a, Namer("q")), _signature(b, Namer("q"))
-    placement = {"at", "start"}     # AT and START belong to the definition alone
+    placement = {"at", "start", "shared_tails"}     # AT, START and SHARED_TAILS belong to the definition alone
     attrs_a = {k: v for k, v in _attrs(a).items() if k not in placement}
     attrs_b = {k: v for k, v in _attrs(b).items() if k not in placement}
     return (sa.params, sa.returns, sa.conv) == (sb.params, sb.returns, sb.conv) and attrs_a == attrs_b
@@ -888,6 +918,13 @@ class _Lowerer:
                 return ir.SkipReturn()
             case c_ast.FuncCall(name=c_ast.ID(name="pdp1_args_done")):
                 return ir.ArgsDone()
+            case c_ast.FuncCall(name=c_ast.ID(name="HELD")) if _builtin("HELD", self.sigs):
+                args = node.args.exprs if node.args else []
+                if self.fn_name not in _TEMPLATES.defs or len(args) != 1 or not isinstance(args[0], c_ast.ID):
+                    raise _err(node, "HELD(x) stands in a TEMPLATE function and names one held field")
+                return ir.Held(args[0].name)
+            case c_ast.FuncCall(name=c_ast.ID(name="LAY_OUT")) if _builtin("LAY_OUT", self.sigs):
+                return self.lay_out(node)
             case c_ast.FuncCall(name=c_ast.ID(name="pdp1_place")):
                 return ir.PlaceHere(tuple(self.data[a.name] for a in node.args.exprs))
             case c_ast.FuncCall(name=c_ast.ID(name=op)) if op in FLAG_OPS and _builtin(op, self.sigs):
@@ -927,6 +964,33 @@ class _Lowerer:
             case c_ast.EmptyStatement():
                 return None
         raise _err(node, f"statement {type(node).__name__} is not in the implemented dialect yet")
+
+    def lay_out(self, node: c_ast.FuncCall) -> ir.LayOut:
+        """LAY_OUT(p, t, f, io, j, h...): template t's words through p. f is a
+        JSP routine that stores IO through p, and io the register local
+        that holds the word it stores (REPEATED(f)); j the data word a jump
+        within t is built in; 0 for any not used. h: the words of the fields
+        t holds (HELD), in order."""
+        args = node.args.exprs if node.args else []
+        if len(args) < 5 or not all(isinstance(a, c_ast.ID) for a in args[:2]):
+            raise _err(node, "LAY_OUT(p, t, f, io, j, h...) names a pointer and a TEMPLATE function")
+        pointer = self.scope.lookup(args[0])
+        if not isinstance(pointer.storage, ir.Memory):
+            raise _err(node, "LAY_OUT stores through a pointer held in a memory word")
+        unused = lambda a: is_c_int(a) and c_int(a) == 0
+        store = None if unused(args[2]) else self.sigs.get(args[2].name)
+        if not unused(args[2]) and (store is None or store.conv is not ir.Conv.JSP):
+            raise _err(node, "LAY_OUT's store routine is a JSP function")
+        io = None if unused(args[3]) else self.scope.lookup(args[3])
+        if (store is None) != (io is None) or io is not None and not isinstance(io.storage, ir.Io):
+            raise _err(node, "LAY_OUT's store routine comes with the register local it stores")
+        jump = None if unused(args[4]) else self.scope.lookup(args[4])
+        items = _TEMPLATES.items(args[1].name, (), node)
+        run, io_word = _TEMPLATES.store_run(store.name, node) if store else (0, None)
+        holes = tuple(self.expr(a) for a in args[5:])
+        if len(holes) != sum(isinstance(w, ir.Word) and w.rule == "HELD" for w in items):
+            raise _err(node, f"LAY_OUT gives one word for each field {args[1].name} holds")
+        return ir.LayOut(pointer, args[1].name, tuple(items), store, io, io_word, run, jump, holes)
 
     def switch(self, node: c_ast.Switch) -> ir.Switch:
         """switch ((int)e) { case 0: ... case n: ... }: every case 0..n in order,
@@ -1106,6 +1170,11 @@ class _Lowerer:
                 return self.shift_bits(node, name)
             case c_ast.FuncCall(name=c_ast.ID(name=name)) if name == CODE and _builtin(name, self.sigs):
                 return _TEMPLATES.built(node, self)
+            case c_ast.FuncCall(name=c_ast.ID(name="REPEATED")) if _builtin("REPEATED", self.sigs):
+                args = node.args.exprs if node.args else []
+                if len(args) != 1 or not isinstance(args[0], c_ast.ID):
+                    raise _err(node, "REPEATED(f) names a store routine")
+                return _TEMPLATES.store_run(args[0].name, node)[1]
             case c_ast.BinaryOp() if is_c_int(node):
                 return ir.Const(to_word(c_int(node), node))
             case c_ast.BinaryOp(op="+") if _array_address(node, self.arrays) \

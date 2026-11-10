@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 from oracle_check import oracle_symbols  # noqa: E402
 
 SIMH = ROOT / "build/pdp1"
+BUILD = ROOT / "build/runs"         # runsc's last build: its C and its listing
 ORACLE = ROOT / "build/oracle.rim"
 
 # Record field: the Macro symbol of its first word (a collection's array).
@@ -60,8 +61,8 @@ FIELDS = {
     ("pen", "out_down_y"): "csm", ("pen", "in_down_x"): "csn", ("pen", "in_down_y"): "ssd",
     ("pen", "saved_x"): "ssa", ("pen", "saved_y"): "ssi",
     ("outline_compiler", "codes_left"): "occ", ("outline_compiler", "codes_rest"): "oci",
-    ("outline_compiler", "start_over"): "ocm", ("outline_compiler", "to_other_side"): "ocn",
-    ("outline_code", "insn"): "nnn",
+    ("outline_compiler", "start_over"): "ocm",
+    ("outline_code", "stroke"): "nnn",
     ("central_star", "slope_x"): "bx", ("central_star", "slope_y"): "by",
     ("planetarium", "alternate_frames"): "bcc", ("planetarium", "window_steps"): "bkc",
     ("planetarium", "right_margin"): "fpr",
@@ -72,11 +73,17 @@ FIELDS = {
 PIECES = {("outlines", "codes"): [(0, "ot1"), (0o10, "ot2")]}
 
 # Fields that hold a place in a collection: the binding keeps its address.
-INTO = {("ships", "outline"): ("outline_code", "insn"), ("outline_call", "code"): ("outline_code", "insn"),
+INTO = {("ships", "outline"): ("outline_code", "stroke"), ("outline_call", "code"): ("outline_code", "stroke"),
         ("magnitudes", "cursor"): ("star_catalog", "words"),
         ("outline_call", "table"): ("outlines", "codes"), ("outline_compiler", "table"): ("outlines", "codes")}
 
-# The PDP-1's words for the instructions of `type insn`: memory reference
+# The collection held as code (docs/rules/held-as-code.md): each slot is its
+# member's words, laid out end to end. Fields held as a jump to one of its places.
+CODE = ("outline_code", "stroke")
+CODE_JUMPS = {("outline_compiler", "start_over"), ("outline_code", "back")}
+JMP = 0o600000
+
+# The PDP-1's words for the instructions of the code: memory reference
 # instructions are an operation and an address, the rest whole words.
 MEMORY = {"lac": 0o20, "lio": 0o22, "dac": 0o24, "dio": 0o32, "add": 0o40, "sub": 0o42, "jmp": 0o60}
 # The routines code jumps to: the label of each.
@@ -129,6 +136,58 @@ DPY = 0o720007              # dpy, intensity in bits 6-8
 DPY_NOWAIT = 0o724007
 
 
+def template_members(prog: runs.Program) -> dict[str, list[tuple]]:
+    """Each member of the collection held as code, as the words of its
+    TEMPLATE, which runsc wrote and pdp1cc compiles, from the last build
+    (build/runs): ("word", w), ("label", name), ("past", opcode, label)
+    for a jump within it, ("hole", field) for a held field's word."""
+    from pdp1cc import dialect, front
+    from pdp1cc import program as cc
+    _, files = cc.load(BUILD / "lift.toml")
+    asts = [front.parse(f.c) for f in files]
+    linked = dialect.external_symbols(asts)
+    sym = cc.symbols((BUILD / "build/lift/program.lst").read_text(errors="replace"))
+    prefix = "_".join(CODE) + "_"
+    for f, ast in zip(files, asts):
+        names = [e.decl.name for e in ast.ext if hasattr(e, "decl") and e.decl.name.startswith(prefix)]
+        if names:
+            dialect.lower_unit(ast, f.prefix, linked)
+            break
+    fields = {f"{r}_{n}": (r, n) for r, n in CODE_JUMPS}
+    out = {}
+    for name in sorted(set(names) & dialect._TEMPLATES.defs.keys()):
+        items = []
+        compiled = dialect._TEMPLATES.items(name, (), None)
+        labels = {w.name for w in compiled if not hasattr(w, "op")}
+        for w in compiled:
+            if not hasattr(w, "op"):
+                items.append(("label", w.name))
+            elif w.rule == "HELD":
+                items.append(("hole", fields[w.operand.name][1]))
+            elif w.op == "jmp" and w.operand.name in labels:
+                items.append(("past", JMP, w.operand.name))
+            else:
+                items.append(("word", word_value(w, sym)))
+        out[name[len(prefix):]] = items
+    return out
+
+
+def word_value(w, sym: dict[str, int]) -> int:
+    """The PDP-1 word of an instruction word pdp1cc selected."""
+    o = w.operand
+    if w.op in MEMORY:
+        return MEMORY[w.op] << 12 | (0o10000 if w.i else 0) | sym[o.name] + o.offset
+    if w.op == "iot" and w.i and o is None:
+        return 0o730000                                     # ioh
+    n = getattr(o, "n", getattr(o, "value", None))
+    op, *rest = w.op.split()
+    if rest:                                                # a skip spelled whole: `szf 5`
+        n = int(rest[-1], 8)
+    return {"stf": lambda: 0o760010 | n, "clf": lambda: 0o760000 | n, "szf": lambda: 0o640000 | n,
+            "rcl": lambda: 0o663000 | (1 << n) - 1, "cma": lambda: 0o761000,
+            "dpy-4000": lambda: DPY_NOWAIT}[op]()
+
+
 class Binding:
     def __init__(self, prog: runs.Program):
         self.prog = prog
@@ -141,6 +200,8 @@ class Binding:
         self.routine_word = self.enum_word["calc_routine"]
         self.moved: dict[tuple[str, str], int] = {}     # a field a check lays out elsewhere: its address
         self.slot_at: dict[tuple[str, str, int], int] = {}  # a slot laid out on its own: its address
+        self.members = template_members(prog)
+        self.code_slots: list[int] = []                 # the code laid out: each slot's address, then its end
 
     def address(self, record: str, fld: str, slot: int | None = None) -> int:
         if (record, fld, slot) in self.slot_at:
@@ -155,26 +216,99 @@ class Binding:
     def encode(self, record: str, fld: str, value) -> int:
         if isinstance(value, runs.Member):
             return self.enum_word[value.enum][value.name]
-        if isinstance(value, runs.Insn):
-            return self.instruction(value)
+        if (record, fld) in CODE_JUMPS:
+            return JMP | self.code_address(value.v)
+        if (record, fld) in INTO and INTO[(record, fld)] == CODE:
+            return self.code_address(value.v)
         if (record, fld) in INTO and INTO[(record, fld)] in PIECES:
             return self.address(*INTO[(record, fld)], value.v)
         if (record, fld) in INTO:
             return (self.address(*INTO[(record, fld)], 0) + value.v) & runs.MASK
         return value.v
 
-    def instruction(self, i: runs.Insn) -> int:
-        """The word the PDP-1 runs for an instruction of the RUNS text."""
-        x = i.operand
-        if i.op in MEMORY:
-            where = self.sym[ROUTINES[x]] if isinstance(x, str) else self.address(x.record, x.field, x.slot)
-            return MEMORY[i.op] << 12 | where
-        return {"stf": lambda: 0o760010 | x, "clf": lambda: 0o760000 | x, "szf": lambda: 0o640000 | x,
-                "rcl": lambda: 0o663000 | (1 << x) - 1, "cma": lambda: 0o761000, "ioh": lambda: 0o730000,
-                "dpy": lambda: DPY_NOWAIT}[i.op]()
+    def code_address(self, slot: int) -> int:
+        """Where a slot of the code lies: in the code laid out, at its
+        member's words; past it, a word a slot."""
+        slots = self.code_slots or [self.address(*CODE, 0)]
+        if slot < len(slots):
+            return slots[slot]
+        return (slots[-1] + slot - (len(slots) - 1)) & runs.MASK
+
+    def code_slot(self, address: int) -> int:
+        slots = self.code_slots or [self.address(*CODE, 0)]
+        if address in slots:
+            return slots.index(address)
+        if slots[0] <= address < slots[-1]:
+            raise ValueError(f"{address:o} is inside a stroke's words, not where one starts")
+        return (address - slots[-1]) % (runs.MASK + 1) + len(slots) - 1
+
+    def size(self, member: str) -> int:
+        return sum(w[0] != "label" for w in self.members[member])
+
+    def lay_out_code(self, code: dict, end: int) -> dict[int, int]:
+        """The code's words for its slots before end, each its member's
+        words (their templates), from the collection's address. Sets where
+        each slot lies, for encode and decode."""
+        fld = CODE[1]
+        at = self.address(*CODE, 0)
+        self.code_slots = []
+        for k in range(end):
+            self.code_slots.append(at)
+            at += self.size(code[fld][k].name)
+        self.code_slots.append(at)
+        words = {}
+        for k in range(end):
+            words |= self.member_words(code[fld][k].name, self.code_slots[k],
+                                       {h: code[h][k] for h in code if h != fld})
+        return words
+
+    def read_code(self, words: dict[int, int]) -> int:
+        """SIMH's code read back as slots: from the collection's address, the
+        member whose words lie there, one after another, while one does.
+        Sets where each slot lies; returns the count of slots."""
+        at = self.address(*CODE, 0)
+        self.code_slots = [at]
+        while True:
+            for m in self.members:
+                holes = {w[1]: None for w in self.members[m] if w[0] == "hole"}
+                want = self.member_words(m, at, holes)
+                if all(w is None or words.get(a) == w for a, w in want.items()):
+                    break
+            else:
+                return len(self.code_slots) - 1
+            at += self.size(m)
+            self.code_slots.append(at)
+
+    def member_words(self, member: str, at: int, holds: dict) -> dict[int, int | None]:
+        """A member's words at an address. A jump to a place the slot holds
+        is None when the place is not given."""
+        ws = self.members[member]
+        pos, k = {}, at
+        for w in ws:
+            if w[0] == "label":
+                pos[w[1]] = k
+            else:
+                k += 1
+        out, k = {}, at
+        for w in ws:
+            kind = w[0]
+            if kind == "word":
+                out[k] = w[1]
+            elif kind == "past":
+                out[k] = w[1] | pos[w[2]]
+            elif kind == "hole":
+                v = holds[w[1]]
+                out[k] = None if v is None else JMP | self.code_address(v.v)
+            if kind != "label":
+                k += 1
+        return out
 
     def decode(self, record: str, fld: str, word: int):
         typ = self.prog.records[record].fields[fld][0]
+        if (record, fld) in CODE_JUMPS:
+            return runs.W(self.code_slot(word & 0o7777))
+        if (record, fld) in INTO and INTO[(record, fld)] == CODE:
+            return runs.W(self.code_slot(word))
         if (record, fld) in INTO:
             if INTO[(record, fld)] in PIECES:
                 raise ValueError(f"{record}.{fld}: no place in a collection laid out in pieces is read back")

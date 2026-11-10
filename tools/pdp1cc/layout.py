@@ -35,6 +35,8 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Emitted]:
                 lowerer = FunctionLowerer(top, namer, following, keeps_io, inlines, homes, exitless,
                                           exits=exits)
                 own = lowerer.lower()
+                if top.shared_tails:
+                    own = cross_jump(own, namer)
                 keeps_io[top.sym] = preserves_io(own) and not lowerer.fell_through
                 if entered_by_fallthrough:
                     own = _tag_first_word(own, "LAY-FALLTHROUGH")
@@ -57,6 +59,62 @@ def place(unit: ir.Unit, label_prefix: str) -> list[ir.Emitted]:
         raise LayoutError(f"HOMED pointer {', '.join(homeless)} has no home: use it once as "
                           "*home(p), or declare it extern when other text holds its home")
     return attach_labels(items)
+
+
+SKIPS = {"sza", "spa", "sma", "spi", "szf", "szs", "szo", "sas", "sad", "isp", "skp"}
+
+
+def _skips(w: ir.Word) -> bool:
+    return w.op is not None and (w.op.split()[0] in SKIPS or "skip" in w.op)
+
+
+def _same(a: ir.Word, b: ir.Word) -> bool:
+    return (a.op, a.operand, a.i) == (b.op, b.operand, b.i)
+
+
+def cross_jump(items: list[ir.Item], namer: Namer) -> list[ir.Item]:
+    """Paths that join at a label and end with the same words share one
+    copy of them (CROSS-JUMP): the path that falls into the label keeps
+    its words, and a path that jumps there jumps to the first word they
+    share instead. A shared run neither ends in a skip nor follows one on
+    the jumping path, and no other path enters it there."""
+    changed = True
+    while changed:
+        changed = False
+        for j, w in enumerate(items):
+            if not (isinstance(w, ir.Word) and w.op == "jmp" and not w.i and isinstance(w.operand, ir.Sym)):
+                continue
+            label = next((n for n, i in enumerate(items)
+                          if isinstance(i, ir.LabelDef) and i.name == w.operand.name), None)
+            if label is None:
+                continue
+            fall = [n for n in range(label) if isinstance(items[n], ir.Word)]
+            if not fall or items[fall[-1]].op == "jmp" or _skips(items[fall[-1]]):
+                continue                    # no path falls into the label
+            matched, a = [], j - 1
+            while a >= 0 and isinstance(items[a], ir.Word) and len(matched) < len(fall) \
+                    and a != fall[-1 - len(matched)] and _same(items[a], items[fall[-1 - len(matched)]]):
+                matched.append(a)
+                a -= 1
+            while matched and (_skips(items[matched[0]]) or a >= 0 and isinstance(items[a], ir.Word)
+                               and _skips(items[a])):
+                a = matched.pop()           # a shared run neither ends in a skip nor follows one
+            if not matched or not (matched[-1] > label or j < fall[-len(matched)]):
+                continue
+            first = fall[-len(matched)]
+            if isinstance(items[first - 1], ir.LabelDef):
+                name, ins = items[first - 1].name, []
+            else:
+                name = namer.fresh()
+                ins = [ir.LabelDef(name)]
+            jump = W("jmp", "CROSS-JUMP", ir.Sym(name))
+            items = items[:first] + ins + items[first:]
+            shift = len(ins) if first < matched[-1] else 0
+            lo, hi = matched[-1] + shift, j + shift
+            items = items[:lo] + [jump] + items[hi + 1:]
+            changed = True
+            break
+    return items
 
 
 def exit_cells(functions: list[ir.Function]) -> tuple[dict[str, str], frozenset[str]]:

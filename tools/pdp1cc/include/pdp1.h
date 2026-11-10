@@ -132,6 +132,7 @@ typedef struct shift_pair { word hi, lo; } shift_pair;
 #define JDA __attribute__((pdp1_jda))
 #define BLOCK __attribute__((pdp1_block))
 #define TEMPLATE __attribute__((pdp1_template))
+#define SHARED_TAILS __attribute__((pdp1_shared_tails))
 #define VALUE __attribute__((pdp1_value))
 #define BYNAME __attribute__((pdp1_byname))
 #define SKIPS __attribute__((pdp1_skips))
@@ -165,6 +166,9 @@ shift I_RCL_BITS(word m), I_RAL_BITS(word m), I_SCL_BITS(word m), I_SCR_BITS(wor
 extern const shift SHIFT_UNSET;
 shift CODE();
 word POPCOUNT(word m);
+void HELD();
+void LAY_OUT();
+insn REPEATED();
 extern const insn I_CMA, I_IOH, I_DPY_NOWAIT;
 dword xct();
 word tyi(void);
@@ -204,6 +208,7 @@ void halt(word ac, word io);
 #define BLOCK
 #define TEMPLATE
 #define VALUE
+#define SHARED_TAILS
 #define BYNAME
 #define SKIPS
 #define START

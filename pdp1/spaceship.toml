@@ -22,10 +22,15 @@ pool = ["spaceship.controls", "spaceship.sine", "spaceship.cosine", "spaceship.g
 
 [flags]
 "spaceship.rocket" = 6
+"pen.side" = 5
 
 [spell.rocket]
 off = 0
 firing = 1
+
+[spell.side]
+other = 0
+first = 1
 
 [spell.switch]
 off = 0
@@ -75,11 +80,14 @@ exit = "spaceship_done"
 routine = "spaceship_in_star"
 convention = "BLOCK"
 
-# The compiled outline: entered by a jump through sp5, where the main loop
-# carries ships.outline (pdp1/main_loop.toml). It waits for the display's
+# The walk over the outline's strokes: each slot's words are its member's
+# arm, entered by a jump through sp5, where the main loop carries
+# ships.outline (pdp1/main_loop.toml). The point the walk is at lives in AC
+# and IO, and so do the mirror's words. It waits for the display's
 # completion pulse before its first dot and leaves its last dot's pending,
 # so the dot plotted just before it asks for one and the block it jumps
 # back to waits for it (ioh).
 [[code]]
 routine = "draw_outline"
 pulse = true
+io = ["handoff.pen_y"]

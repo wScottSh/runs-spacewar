@@ -10,19 +10,19 @@ outline is loaded into the jump at sp5 as the main loop loads it, and the
 routine is entered as the main loop enters it (jsp). The evaluator fires the
 Network on the same Records.
 
-The routine runs whole, through its compiled outline. The outlines are
-compiled once, into the free core after the table by the original's own
-outline compiler in SIMH, and into outline_code by the RUNS one in the
-evaluator; the two must lay out the same words. The evaluator runs its
-code by the machine's rules (draw_outline). So every point is compared,
-the outline's included.
+The routine runs whole, through its outline. The outlines are compiled
+once, into the free core after the table by the original's own outline
+compiler in SIMH, and decoded into strokes (outline_code) by the RUNS one
+in the evaluator; the strokes, each spelled as its member's words, must be
+SIMH's words. The evaluator walks the strokes (draw_outline). So every
+point is compared, the outline's included.
 
 When the object table is full, the original halts in a loop at sr1+6; the
 check redirects that halt to the stub, and the evaluator must `stop` there.
 
 With `moved`, SIMH's compiler lays the outlines out from 05000 instead of
 right after the table, and the ships' outline words point there: the
-evaluator, which knows only places in outline_code, must still match. Where
+evaluator, which knows only slots of outline_code, must still match. Where
 the code space lies is the binding's.
 
 Usage: [N] [moved] (calls per routine, default 3000)."""
@@ -66,13 +66,15 @@ def signed(rng: random.Random, bits: int) -> int:
 class Outlines:
     """The two outlines, compiled one after the other from the start of the
     free core: in SIMH by the original's compiler, after the table, and in
-    the evaluator by the RUNS one, into outline_code. `at` is where each
-    starts, a place in outline_code; the words must be the same."""
+    the evaluator decoded by the RUNS one into strokes, outline_code. `at`
+    is where each starts, a slot of outline_code; the strokes, each spelled
+    as its member's words (pdp1.Binding.lay_out_code), must be SIMH's
+    words."""
 
     def __init__(self, m: runs.Machine, b: pdp1.Binding):
         self.b = b
         sym = b.sym
-        start, self.code = b.address("outline_code", "insn", 0), {}
+        start, self.code = b.address("outline_code", "stroke", 0), {}
         call = m.state["outline_call"]
         call["code"] = runs.W(0)
         self.at = {}
@@ -83,8 +85,7 @@ class Outlines:
             self.at[shape], call["table"] = call["code"].v, runs.W(table)
             m.run("compile_outline")
             start = done.ac
-        words = {b.address("outline_code", "insn", k): b.encode("outline_code", "insn", w)
-                 for k, w in enumerate(m.state["outline_code"]["insn"][:call["code"].v])}
+        words = b.lay_out_code(m.state["outline_code"], call["code"].v)
         if words != self.code:
             raise SystemExit("the RUNS outline compiler lays out other words than the original's")
         self.display = {a: w for a, w in self.code.items() if w == pdp1.DPY_NOWAIT}
@@ -166,7 +167,7 @@ def main() -> int:
     prog = runs.program(runs.source())
     b = pdp1.Binding(prog)
     if "moved" in sys.argv[2:]:
-        b.moved[("outline_code", "insn")] = 0o5000
+        b.moved[("outline_code", "stroke")] = 0o5000
     sym = b.sym
     image = image_words()
     m = runs.Machine(prog)
@@ -222,7 +223,7 @@ def main() -> int:
             if differ <= 5:
                 print(f"  call {k} {routine} slot {slot}: " + "; ".join(bad)[:600])
         paths.update(path(st, m.state, slot, halted))
-    moved = f" (the outlines at {b.address('outline_code', 'insn', 0):05o})" if b.moved else ""
+    moved = f" (the outlines at {b.address('outline_code', 'stroke', 0):05o})" if b.moved else ""
     print(f"spaceship{moved}: {len(cases)} calls, {len(cases) - differ} match, {differ} differ; "
           f"{sum(len(w.plotted) for w in want)} points")
     print("  " + ", ".join(f"{k} {n}" for k, n in paths.most_common()))

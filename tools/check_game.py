@@ -90,6 +90,15 @@ def house_rules(prog: runs.Program, deposits) -> runs.Program:
     return dataclasses.replace(prog, routines=routines)
 
 
+@dataclasses.dataclass(frozen=True)
+class CodeWord:
+    """A word of SIMH's that holds a place in the outline's strokes: the
+    address of the stroke's words. Where a slot lies depends on the strokes
+    before it, so it is compared with the evaluator's slot laid out by the
+    evaluator's strokes."""
+    word: int
+
+
 class Game:
     """The evaluator, the binding and SIMH's addresses for one session."""
 
@@ -115,7 +124,8 @@ class Game:
         state: dict = {}
         for rec, fld, slot, at in self.places:
             try:
-                v = self.b.decode(rec, fld, values[at])
+                v = CodeWord(values[at]) if pdp1.INTO.get((rec, fld)) == pdp1.CODE \
+                    else self.b.decode(rec, fld, values[at])
             except ValueError:
                 v = runs.UNKNOWN
             if slot is None:
@@ -135,6 +145,12 @@ class Game:
                 for s, (w, g) in enumerate(zip(want, got) if isinstance(want, list) else [(want, got)]):
                     if g is runs.UNKNOWN and (w is runs.UNKNOWN or f"{rec}.{fld}" in POWER_ON):
                         continue
+                    if isinstance(w, CodeWord) and not isinstance(g, CodeWord):
+                        # the strokes the evaluator's compiler laid out, before outline_call.code
+                        kept = self.b.code_slots
+                        self.b.lay_out_code(m.state["outline_code"], m.state["outline_call"]["code"].v)
+                        g = CodeWord(self.b.encode(rec, fld, g))
+                        self.b.code_slots = kept
                     if w != g:
                         where = f"[{s}]" if isinstance(want, list) else ""
                         bad.append(f"{rec}.{fld}{where} simh {self.word(rec, fld, w)} runs {self.word(rec, fld, g)}")
@@ -143,6 +159,8 @@ class Game:
     def word(self, rec: str, fld: str, v) -> str:
         if v is runs.UNKNOWN:
             return "unknown"
+        if isinstance(v, CodeWord):
+            return f"{v.word:06o}"
         if isinstance(v, runs.Member) and v.enum == "light":
             return v.name
         return f"{self.b.encode(rec, fld, v):06o}"
