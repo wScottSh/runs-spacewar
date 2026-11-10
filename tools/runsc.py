@@ -1454,7 +1454,7 @@ class Unit:
         local_names = routine_locals(r)
         body = typed(self.prog, substitute(list(r.body), names), local_names, r.name)
         if r.kind == "processor":
-            if (cleared := self.clears_table(body)) is not None:
+            if (cleared := self.clears_table(r.name, body)) is not None:
                 return [cleared]
             return body
         return self.flat_body(body, r, tail=tail)
@@ -1632,9 +1632,12 @@ class Unit:
                                 f"the jump through the word passes {passed}")
         return ("dispatch", e, where, [body[0][1] for body in arms.values() if body[0][0] == "run"])
 
-    def clears_table(self, body: list):
-        """A Processor that sets every field of the table's Records to its
-        zero word in every slot: the clearing loop over the whole table."""
+    def clears_table(self, name: str, body: list):
+        """A Processor that sets fields of the table's Records to their zero
+        word in every slot: the clearing loop over the whole table. The loop
+        also clears a table field the Processor leaves alone only when that
+        field's old value is dead there: every path on from each run of the
+        Processor sets each of its slots before anything reads it."""
         table = self.binds.table
         if not table or not body or any(x[0] != "for" for x in body):
             return None
@@ -1648,9 +1651,65 @@ class Unit:
                 if lo != ("num", 0) or hi != ("num", self.prog.records[rec].count - 1):
                     return None
                 cleared.add(d)
-        if cleared != set(self.binds.table_fields()):
+        if not cleared or not cleared <= set(self.binds.table_fields()):
             return None
+        for f in self.binds.table_fields():
+            if f not in cleared and (why := self.live_after(name, f)):
+                raise BindError(f"{name}: the clearing loop clears the whole table, and {f}'s old value is not "
+                                f"dead after it: {why}")
         return ("clear", body[0][-1])
+
+    def live_after(self, name: str, field: str) -> str | None:
+        """Why a field's old value may be read after a run of the Processor
+        (None: every path from each run sets every slot of it before any
+        read). Each run is a statement of a Network's body; what follows it
+        there runs on, through the Networks and Processors it runs. A slot
+        counts as set by a top-level `set field[k]` with k a number; any
+        other mention of the field while a slot is unset is a read."""
+        rec, fld = field.split(".")
+
+        def mentions(tree) -> bool:
+            return any(n[0] == "field" and n[1] == ("name", rec) and n[2] == fld for n in every_node(tree))
+
+        def follow(stmts: list, unset: frozenset, stack: tuple):
+            for s in stmts:
+                if not unset:
+                    return unset
+                if s[0] == "set" and s[1][0] == "index" and dotted_of(s[1][1]) == field and s[1][2][0] == "num":
+                    if mentions(s[2]):
+                        raise BindError(f"{s[-1]} reads it")
+                    unset = unset - {s[1][2][1]}
+                elif s[0] == "run" and s[1] in self.prog.routines:
+                    if mentions(s[2]) or s[1] in stack:
+                        raise BindError(f"{s[-1]} reads it")
+                    unset = follow(self.prog.routines[s[1]].body, unset, stack + (s[1],))
+                elif s[0] == "if":
+                    ends = []
+                    for c, arm in s[1]:
+                        if mentions(c):
+                            raise BindError(f"{s[-1]} reads it")
+                        ends.append(follow(arm, unset, stack))
+                    unset = frozenset().union(*ends, follow(s[2], unset, stack))
+                elif s[0] in ("stop", "return", "jump", "break", "continue"):
+                    raise BindError(f"{s[-1]} leaves before it is set")
+                elif mentions(s):
+                    raise BindError(f"{s[-1]} reads it")
+            return unset
+
+        count = self.prog.records[rec].count
+        found = False
+        for r in self.prog.routines.values():
+            for k, s in enumerate(r.body):
+                if s[0] != "run" and name in runs.runs_of(list(s[1:])):
+                    return f"{r.name} runs {name} inside a statement ({s[-1]}), not as one of its body"
+                if s[0] == "run" and s[1] == name:
+                    found = True
+                    try:
+                        if follow(r.body[k + 1:], frozenset(range(count)), (r.name,)):
+                            return f"{r.name} ends before it is set"
+                    except BindError as e:
+                        return str(e)
+        return None if found else f"no Network runs {name}"
 
     def zero(self, e) -> bool:
         if e == ("num", 0):

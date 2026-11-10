@@ -115,7 +115,8 @@ network new_match                                           # a6
   run count_games
   run new_game
 
-# A new game (a2): clear the whole object table, put the ships in opposite
+# A new game (a2): clear the object table (the outlines' words are set here
+# before anything reads them), put the ships in opposite
 # corners with the needle turned around, compile their outlines into the
 # free core after the table, and arm them.
 network new_game                                            # a2

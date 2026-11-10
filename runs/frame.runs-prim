@@ -116,7 +116,7 @@ processor count_games                                       # a6
   set score.games_left = games
 
 processor clear_tables                                      # clear mtb, nnn-1
-  writes: objects, ship_flight, ship_outlines, ships
+  writes: objects, ship_flight, ships
   for slot in 0 .. 027:
     set objects.routine[slot] = none
     set objects.x[slot] = 0
@@ -130,7 +130,6 @@ processor clear_tables                                      # clear mtb, nnn-1
     set ship_flight.angle[ship] = 0
     set ship_flight.fuel[ship] = 0
     set ship_flight.torpedoes[ship] = 0
-    set ship_outlines.outline[ship] = 0
     set ships.previous_control[ship] = 0
     set ships.saved_routine[ship] = none
     set ships.jumps_left[ship] = 0
