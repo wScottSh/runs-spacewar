@@ -492,7 +492,7 @@ SCHEMA = {
     "walk": {"set_after": _name, "index": _field, "homes": _list(_field), "home_in": _dict(_field, _name),
              "carry": _list(_name), "stray": _SECTION, "other": _dict(_field, _name)},
     "stray": {"after": _field, "cursor": _name},
-    "table": {"at": _name, "records": _list(_name), "clear": _name},
+    "table": {"at": _name, "clear": _name},
     "routine": {"routine": _name, "convention": _one_of("JDA", "JSP", "XCT", "BLOCK"), "entry": _field,
                 "ac_param": _field, "io_param": _field, "byname": _field, "result": _list(_field),
                 "io": _list(_LOCAL), "cells": _list(_field), "skips": lambda v: _list(_TEXT, 2)(v) and _field(v[0]) and _name(v[1]),
@@ -517,7 +517,7 @@ SCHEMA = {
 }
 # The keys each must hold.
 REQUIRED = {"unit": {"replaces", "place"}, "routine": {"convention"}, "inline": {"routine"}, "code": {"routine"},
-            "slots": {"range"}, "jsp_slot": {"at", "returns", "jump"}, "table": {"at", "records"},
+            "slots": {"range"}, "jsp_slot": {"at", "returns", "jump"}, "table": {"at"},
             "store": {"loaded"},
             "stray": {"after", "cursor"}, "start": {"at", "network"}}
 
@@ -679,7 +679,19 @@ class Bindings:
                 if "base" in p:
                     self.check_field(path, p["base"])
                     self.bases[p["base"]] = path
+        if self.table:
+            walked = {f.split(".")[0] for f in self.cursors}
+            self.table["records"] = [r for r in self.prog.records if r in walked]
+        self.registers |= {name for name, r in self.prog.records.items() if r.count is None and not r.stream
+                           and not any(self.has_word(f"{name}.{f}") for f in r.fields)}
         self.check_names()
+
+    def has_word(self, dotted: str) -> bool:
+        """The declarations give the field a place: a word, an entry word, a
+        pool word, a device or flag, an address, a cursor or an instruction."""
+        return self.stored(dotted) or any(dotted in d for d in (
+            self.devices, self.flags, self.addresses, self.held, self.homes, self.shared, self.cursors,
+            self.slot_cursors, self.pieces, self.bases))
 
     def device_file(self, path: Path | None):
         """pdp1/devices.toml: which console instruction or sense switch holds
@@ -725,7 +737,7 @@ class Bindings:
                             f"names nothing else, in the RUNS or in C")
         for r in self.table.get("records", []):
             if self.prog.records.get(r) is None or self.prog.records[r].count is None or self.prog.records[r].stream:
-                raise BindError(f"[table] records: {r!r} is no collection of the RUNS")
+                raise BindError(f"[table]: {r!r}, whose fields have cursors, is no collection of the RUNS")
         self.check_stages()
         homed: dict[str, list[str]] = {}
         for path, spec in self.specs.items():
@@ -780,9 +792,6 @@ class Bindings:
                     + list(walk.get("other", {})) + ([walk["stray"]["after"]] if "stray" in walk else []):
                 if f:
                     self.check_field(path, f)
-            for r in spec.get("table", {}).get("records", []):
-                if r not in self.prog.records:
-                    raise BindError(f"{path.name}: table.records {r!r} is no Record")
             for p in spec.get("place", []) + spec.get("inline", []) + spec.get("code", []):
                 if "jsp_slot" in p:
                     routine(p["jump"], "jsp_slot jump")

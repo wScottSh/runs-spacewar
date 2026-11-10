@@ -4,7 +4,7 @@
 # Network is a block the others jump to; the frame starts again where a
 # firing ends.
 replaces = "lift/main_loop.c"
-registers = ["handoff", "outline_reading", "outline_point", "outline_call", "breakout_check"]
+registers = ["outline_call"]
 pool = ["pacing.spare_time", "frame.restart_delay", "frame.objects_seen",
         "score.first", "score.second", "score.games_left", "controls.source"]
 # The Network the PDP-1 runs again whenever a firing ends: the host's loop.
@@ -24,12 +24,11 @@ moves = "swap"
 [into]
 "ship_outlines.outline" = "outline_code.stroke"
 
-# The object table: objects then ships, field after field, each field's
-# slots together, from object_table (core_layout.c). The clearing loop's
-# cursor is homed in its dzm.
+# The object table: field after field, each field's slots together, from
+# object_table (core_layout.c). Its Records are those whose fields have
+# cursors, in the text's order. The clearing loop's cursor is homed in its dzm.
 [table]
 at = "object_table"
-records = ["objects", "ship_flight", "ship_outlines", "ships"]
 clear = "clearing"
 
 # A Record field indexed by a slot the main loop's cursors point at is the

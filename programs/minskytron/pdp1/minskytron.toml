@@ -1,7 +1,6 @@
 # The Minskytron (dpys5.mac lines 257-364): the start at 500, which picks
 # the shifts from the test word, then the pass the machine runs forever.
 replaces = "lift/minskytron.c"
-registers = ["shift_pick"]
 repeat = "circles"
 # A value moves from AC to IO by the swap macro (rcl 9s, rcl 9s).
 moves = "swap"

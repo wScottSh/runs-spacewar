@@ -16,7 +16,7 @@ This repo converts Spacewar! 3.1 into **pure** RUNS. The conversion is a reorgan
 1. `uv run -q python tools/runsc.py | tail -1` prints `MATCH` with sha256 `8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf`.
 2. `tools/check_all.sh` passes. It takes about 6 minutes; run it in the background and edit nothing under `runs/`, `pdp1/` or `tools/` while it runs.
 3. The purity report gains no line: `PYTHONPATH=tools uv run -q python tools/check_purity.py --against HEAD` exits 0. It allows a new line only where a Record just got its kind and revealed an impurity already there; the decisions row lists those.
-4. The PDP-1 declarations do not grow: `uv run -q python tools/check_declarations.py` exits 0 (`pdp1/DECLARATIONS`, below).
+4. The PDP-1 declarations do not grow: `uv run -q python tools/check_declarations.py` exits 0. It counts entries, not lines: every scalar value and every list element of the TOML (`pdp1/DECLARATIONS`, below).
 5. A row in `docs/decisions.tsv` for each decision: what, why, evidence, result.
 6. Push each verified commit to main: `git push origin HEAD:main`, fast-forward only (rebase on `origin/main` first if it moved). Standing order from the user; no need to ask.
 
@@ -26,7 +26,7 @@ This repo converts Spacewar! 3.1 into **pure** RUNS. The conversion is a reorgan
 2. **The compiler** (`tools/runsc.py`), only when no pure shape compiles. It is the one PDP-1 back end for every PDP-1 game. A change is a rule a second PDP-1 program uses, and its decisions row names the idiom and that program.
 3. Neither works: stop and report the shapes tried and the evidence.
 
-**There is no binding.** What used to be called the binding is the PDP-1 package's declarations (`pdp1/*.toml`): the half of the PDP-1 platform code that never runs. It records the 1962 programmer's arbitrary choices about where the game's data lives and how routines are called, nothing the game computes, and a port leaves it behind with the PDP-1 presentation. Presentation Processors touch only interface Records; declarations may name game Records because they never run. They are not a place to solve hard text: `tools/check_declarations.py` fails any commit that adds a line, and only the user raises the count in `pdp1/DECLARATIONS`, with the decisions row quoting the user. A commit that removes lines lowers it. The code still says `Bindings` and `BindError`; read them as the declarations.
+**There is no binding.** What used to be called the binding is the PDP-1 package's declarations (`pdp1/*.toml`): the half of the PDP-1 platform code that never runs. It records the 1962 programmer's arbitrary choices about where the game's data lives and how routines are called, nothing the game computes, and a port leaves it behind with the PDP-1 presentation. Presentation Processors touch only interface Records; declarations may name game Records because they never run. They are not a place to solve hard text: `tools/check_declarations.py` fails any commit that adds an entry (a value, or a name added to an existing list, counts the same as a new line), and only the user raises the count in `pdp1/DECLARATIONS`, with the decisions row quoting the user. A commit that removes entries lowers it. The code still says `Bindings` and `BindError`; read them as the declarations.
 
 Purity is fixed. When a pure shape will not compile to the original image, the shape stays pure and the work stops for a report.
 

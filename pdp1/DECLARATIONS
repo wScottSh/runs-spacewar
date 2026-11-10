@@ -1,5 +1,6 @@
-469
+443
 
-Lines of PDP-1 declarations, blank lines and comments aside (tools/check_declarations.py).
-A commit that removes lines lowers this number. Only the user raises it, and the
-decisions row of that commit quotes the user.
+Entries of PDP-1 declarations (tools/check_declarations.py): every scalar value
+and every list element of pdp1/*.toml and programs/*/pdp1/*.toml, an empty table
+or list one. A commit that removes entries lowers this number. Only the user
+raises it, and the decisions row of that commit quotes the user.
