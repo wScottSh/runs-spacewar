@@ -22,8 +22,10 @@ enum calc_routine
   in_hyperspace             # hp1: does not collide
   breakout                  # hp3
 
-# The object table (mtb): two spaceships, then 22 torpedoes.
-record objects[030]
+# The object table (mtb): two spaceships, then 22 torpedoes. It is the
+# interface: the game writes it, and the drawing reads what each object is,
+# where it is, and an explosion's size.
+interface record objects[030]
   routine: calc_routine = none
   x: word = 0               # nx1: position
   y: word = 0               # ny1
@@ -45,7 +47,7 @@ record ships[2]
   recharge: word = 0            # nh3: hyperfield generator recharge, counting up
   uncertainty: word = 0         # nh4: hyperspatial uncertainty
 
-record random
+interface record random
   number: word = 0          # ran
 
 # The frame's instruction budget. It is pacing: the spare-time loop burns
@@ -63,7 +65,7 @@ game record frame
 # words, and the first game reads them before it sets them, so the first
 # match starts from whatever core held at power-on. They come in at the
 # boundary: no initial value.
-record score
+interface record score
   first: word               # 1sc
   second: word              # 2sc
   games_left: word          # gct: counting up; 0 when no match is on
@@ -74,7 +76,7 @@ enum switch
   on
 
 # What the operator and the players set at the console. It comes in.
-record console
+interface record console
   test_word: word           # the test word switches: the controls when started at 5, the
                             # match's setup, and whether to halt and show the scores
   control_boxes: word       # the control boxes' buttons
@@ -91,7 +93,7 @@ enum control_source
   test_word                 # mg2
   control_boxes             # cwr, the control word routine: the boxes, or the operator's own
 
-record controls
+interface record controls
   source: control_source    # cwg: set at the start, before any frame reads it
 
 # Program flags 1 and 2 light on the console for the ship that survived a
@@ -100,13 +102,13 @@ enum light
   off
   on
 
-record lights
+interface record lights
   first_survived: light     # program flag 1
   second_survived: light    # program flag 2
 
 # The scores, shown on the console lights while the machine waits between
 # games. They leave the game; the top Networks' contracts declare them.
-stream scoreboard
+presentation stream scoreboard
   first: word               # AC
   second: word              # IO
 
@@ -238,7 +240,7 @@ record explosion_cloud
   scatter: word = 0         # mi1: places the scl built from a random number shifts this dot
 
 # The integer square root's own words.
-record square_root_call
+game record square_root_call
   entry: word = 0           # sqt: jda leaves the argument here; it doubles as the remainder
   passes_left: word = 0     # sq1
   root: word = 0            # sq2: the result
@@ -246,13 +248,13 @@ record square_root_call
 # The multiply subroutines' own words (mpy, imp). The second factor is the
 # word after the call (`jda mpy / lac b`); no caller names a word the
 # routine writes, so reading it once or each time gives the same value.
-record multiply_call
+game record multiply_call
   entry: word = 0           # mpy: jda leaves the first factor here
   factor: word = 0          # the second factor
   partial: word = 0         # mp2: |factor|, then the product's high half, AC at return
   low: word = 0             # IO at return: the product's low half
 
-record integer_multiply_call
+game record integer_multiply_call
   entry: word = 0           # imp: jda leaves the first factor here
   factor: word = 0          # the second factor
   product: word = 0         # AC at return: the product's low 17 bits and its sign
@@ -265,7 +267,7 @@ enum division
 
 # The divide subroutines' own words (dvd, idv). The divisor is the word after
 # the call, like multiply's second factor.
-record divide_call
+game record divide_call
   high: word = 0            # dvd: jda leaves the dividend's high half here; the remainder at return
   low: word = 0             # IO: the dividend's low half
   divisor: word = 0
@@ -273,21 +275,21 @@ record divide_call
   result: word = 0          # AC at return: the quotient, or |divisor| signed like one on overflow
   outcome: division = overflows
 
-record integer_divide_call
+game record integer_divide_call
   dividend: word = 0        # idv: jda leaves the dividend here
   low: word = 0             # IO on entry: its sign lands in the low half's lowest bit
   divisor: word = 0
 
 # The sine-cosine subroutine's own words (sin, cos). The series keeps its
 # working values in the two entry words.
-record sine_call
+game record sine_call
   angle: word = 0           # sin: jda leaves the angle here, binary point right of bit 3
   x: word = 0               # sin, later: the angle reduced to [0, pi/2], times 2/pi
   x_squared: word = 0       # cos, later
   answer: word = 0          # cos, last: the series' answer
   result: word = 0          # AC at return, binary point right of bit 0
 
-record cosine_call
+game record cosine_call
   angle: word = 0           # cos: jda leaves the angle here
 
 # The spaceship calc routine's own words, handed from one of its rules to the
@@ -296,7 +298,7 @@ enum rocket
   off
   firing
 
-record spaceship
+game record spaceship
   controls: word = 0        # scw: this ship's control word, its four bits at the top
   rocket: rocket = off      # program flag 6: the rocket fires this frame
   sine: word = 0            # sn: the sine of the heading
@@ -348,7 +350,7 @@ game record breakout_check
   margin: word = 0          # AC at hp5's spa
 
 # A new torpedo's slot: the first free one of the object table.
-record launch
+game record launch
   slot: word = 0            # sr1: kept in the search's cursor
 
 # Values the original hands from one rule to the next in AC and IO. Each is a
