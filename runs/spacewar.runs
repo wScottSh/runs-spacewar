@@ -304,11 +304,16 @@ enum rocket
   off
   firing
 
+# The ship's heading as the game computes it this turn. Both sides need
+# it: the game aims thrust and torpedoes with it, the presentation aims the
+# outline and the exhaust flame.
+interface record heading
+  sine: word = 0            # sn
+  cosine: word = 0          # cs
+
 game record spaceship
   controls: word = 0        # scw: this ship's control word, its four bits at the top
   rocket: rocket = off      # program flag 6: the rocket fires this frame
-  sine: word = 0            # sn: the sine of the heading
-  cosine: word = 0          # cs
   gravity_x: word = 0       # bx: the star's pull this frame
   gravity_y: word = 0       # by
   operand: word = 0         # t1: a scaled coordinate, then the squared distance, then the

@@ -47,7 +47,7 @@ spec.loader.exec_module(shipref)
 
 NEG = lambda v: v ^ runs.MASK
 JMP = 0o600000
-RECORDS = ["objects", "ships", "random", "spaceship", "pen"]
+RECORDS = ["objects", "ships", "random", "spaceship", "heading", "pen"]
 # The arithmetic routines' own words that have a place in core.
 SCRATCH = [(rec, fld) for rec, fld in pdp1.FIELDS
            if rec in ("square_root_call", "multiply_call", "integer_multiply_call", "divide_call", "sine_call")]
@@ -127,7 +127,7 @@ def a_state(m: runs.Machine, rng: random.Random, outlines: Outlines) -> tuple[st
     sh["jumps_left"][slot] = runs.W(rng.choice([0, runs.MASK, NEG(1), NEG(0o10), rng.randrange(1 << 18)]))
     sh["recharge"][slot] = runs.W(rng.choice([NEG(1), runs.MASK, 0, NEG(0o200), rng.randrange(1 << 18)]))
     st["random"]["number"] = runs.W(rng.randrange(1 << 18))
-    for rec in ["spaceship", "pen"] + sorted({r for r, _ in SCRATCH}):
+    for rec in ["spaceship", "heading", "pen"] + sorted({r for r, _ in SCRATCH}):
         for f, (typ, _) in m.prog.records[rec].fields.items():
             if typ == "word":
                 st[rec][f] = runs.W(rng.randrange(1 << 18))

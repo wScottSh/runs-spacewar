@@ -46,8 +46,8 @@ processor steer(slot)                                       # sc1
 
 processor take_sine                                         # dac \sn; dzm \bx; dzm \by
   reads: sine_call
-  writes: spaceship
-  set spaceship.sine = sine_call.result
+  writes: spaceship, heading
+  set heading.sine = sine_call.result
   set spaceship.gravity_x = 0
   set spaceship.gravity_y = 0
 
@@ -128,9 +128,9 @@ processor check_fuel(slot)                                  # cla; sad i \mfu; c
 
 processor aim_thrust_y                                      # dac \cs; sar 9s
   reads: sine_call
-  writes: spaceship, handoff
-  set spaceship.cosine = sine_call.result
-  set handoff.thrust_direction = spaceship.cosine >> 9
+  writes: handoff, heading
+  set heading.cosine = sine_call.result
+  set handoff.thrust_direction = heading.cosine >> 9
 
 processor push_y                                            # szf i 6; cla; add \by
   reads: spaceship
@@ -141,9 +141,9 @@ processor push_y                                            # szf i 6; cla; add 
   set handoff.acceleration = push + spaceship.gravity_y
 
 processor aim_thrust_x                                      # lac \sn; sar 9s
-  reads: spaceship
+  reads: heading
   writes: handoff
-  set handoff.thrust_direction = spaceship.sine >> 9
+  set handoff.thrust_direction = heading.sine >> 9
 
 processor push_x                                            # cma; szf i 6; cla; add \bx
   reads: spaceship
@@ -156,22 +156,22 @@ processor push_x                                            # cma; szf i 6; cla;
 # The outline starts at the tip, a 32nd of the heading ahead, and a torpedo
 # starts as far again.
 processor aim_nose(slot)                                    # sp1, sp2
-  reads: objects
+  reads: objects, heading
   writes: spaceship
-  set spaceship.nose_step_x = spaceship.sine >> 5
-  set spaceship.nose_step_y = spaceship.cosine >> 5
+  set spaceship.nose_step_x = heading.sine >> 5
+  set spaceship.nose_step_y = heading.cosine >> 5
   set spaceship.nose_x = objects.x[slot] - spaceship.nose_step_x
   set spaceship.torpedo_x = spaceship.nose_x - spaceship.nose_step_x
   set spaceship.nose_y = objects.y[slot] + spaceship.nose_step_y
   set spaceship.torpedo_y = spaceship.nose_y + spaceship.nose_step_y
 
 processor aim_outline                                       # .. sp5
-  reads: spaceship
+  reads: spaceship, heading
   writes: pen
   set pen.x = spaceship.nose_x
   set pen.y = spaceship.nose_y
-  set pen.down_x = spaceship.sine >> 9
-  set pen.down_y = spaceship.cosine >> 9
+  set pen.down_x = heading.sine >> 9
+  set pen.down_y = heading.cosine >> 9
   set pen.out_y = pen.down_x
   set pen.out_down_x = pen.out_y + pen.down_y
   set pen.in_down_y = pen.out_down_x
@@ -264,7 +264,7 @@ processor draw_outline(slot)                                # sp5, jmp .
 # the tail, each burning a unit of fuel. The count and the fuel are the
 # game; the dots are presentation.
 processor exhaust(slot)                                     # sq6
-  reads: random
+  reads: random, heading
   writes: spaceship, pen, ships, display
   let dots = random.number >> 13
   if dots >= 0:
@@ -275,8 +275,8 @@ processor exhaust(slot)                                     # sq6
   if controls >= 0:                                         # not firing: no flame
     return
   loop at most 040:                                         # sq7
-    set pen.down_x = spaceship.sine >> 8
-    set pen.down_y = spaceship.cosine >> 8
+    set pen.down_x = heading.sine >> 8
+    set pen.down_y = heading.cosine >> 8
     set ships.fuel[slot] = ships.fuel[slot] + 1
     if ships.fuel[slot] >= 0:                               # out of fuel
       set ships.fuel[slot] = 0
@@ -318,18 +318,18 @@ processor next_slot
   set launch.slot = launch.slot + 1
 
 processor place_torpedo                                     # sr2
-  reads: launch, spaceship
+  reads: launch, spaceship, heading
   writes: objects, handoff
   set objects.routine[launch.slot] = torpedo
   set objects.x[launch.slot] = spaceship.torpedo_x
   set objects.y[launch.slot] = spaceship.torpedo_y
-  set handoff.torpedo_direction = spaceship.sine
+  set handoff.torpedo_direction = heading.sine
 
 processor take_torpedo_dx(slot)
-  reads: launch, spaceship
+  reads: launch, heading
   writes: objects, handoff
   set objects.dx[launch.slot] = -handoff.torpedo_velocity + objects.dx[slot]
-  set handoff.torpedo_direction = spaceship.cosine
+  set handoff.torpedo_direction = heading.cosine
 
 processor take_torpedo_dy(slot)
   reads: launch, handoff

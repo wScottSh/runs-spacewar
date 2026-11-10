@@ -3,7 +3,7 @@
 # the blocks they jump through. Every block that runs off its end leaves
 # through the shared exit, srt, which returns to the main loop.
 replaces = "lift/spaceship.c"
-pool = ["spaceship.controls", "spaceship.sine", "spaceship.cosine", "spaceship.gravity_x",
+pool = ["spaceship.controls", "heading.sine", "heading.cosine", "spaceship.gravity_x",
         "spaceship.gravity_y", "spaceship.operand", "spaceship.x_squared", "spaceship.torpedo_x",
         "spaceship.torpedo_y", "spaceship.flame",
         "spaceship.nose_step_x", "spaceship.nose_step_y", "spaceship.nose_x", "spaceship.nose_y",
