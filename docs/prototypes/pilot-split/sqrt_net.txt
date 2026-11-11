@@ -1,0 +1,67 @@
+processor square_root_start                                 # law i 23; dac sq1; dzm; lio; dzm
+  out passes_left: word
+  out root: word
+  inout entry: word
+  out input_bits: word
+  set passes_left = -023
+  set root = 0
+  set input_bits = entry
+  set entry = 0
+
+processor increment                                         # idx
+  inout value: word
+  set value = value + 1
+
+processor double                                            # ral 1s
+  inout value: word
+  set value = value << 1
+
+processor take_two_bits                                     # lac; rcl 2s
+  in from: word
+  inout bits: word
+  out next: word
+  set next = from
+  set (next, bits) = rcl(next, bits, 2)
+
+processor trial                                             # lac; ral 1s; add (1; sub
+  in root: word
+  in remainder: word
+  out next: word
+  set next = (root << 1) + 1 - remainder
+
+network square_root                                         # sqt
+  writes: square_root_call
+  owns input_bits: word
+  owns next: word
+  run square_root_start
+    passes_left: square_root_call.passes_left
+    root: square_root_call.root
+    entry: square_root_call.entry
+  loop at most 023:
+    run increment
+      value: square_root_call.passes_left
+    if square_root_call.passes_left >= 0:
+      break                                                 # the loop ends the Network: sqt's return
+    run double
+      value: square_root_call.root
+    run take_two_bits
+      from: square_root_call.entry
+      bits: input_bits
+    if next == 0:
+      continue
+    run copy
+      source: next
+      target: square_root_call.entry
+    run trial
+      root: square_root_call.root
+      remainder: square_root_call.entry
+    if next > 0:
+      continue
+    if next < 0:
+      run negate
+        value: next
+    run copy
+      source: next
+      target: square_root_call.entry
+    run increment
+      value: square_root_call.root

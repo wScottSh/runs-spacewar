@@ -40,6 +40,41 @@ network inertia                                             # diff
   run drift
 """
 
+INERTIA_OWNED = """processor sum                                               # add
+  in augend: word
+  in addend: word
+  out total: word
+  set total = augend + addend
+
+processor pass                                              # dac
+  in source: word
+  out target: word
+  set target = source
+
+processor drift                                             # sar 3s; add; dac
+  in velocity: word
+  inout position: word
+  out moved: word
+  set moved = (velocity >> 3) + position
+  set position = moved
+
+network inertia                                             # diff
+  in acceleration: word
+  inout velocity: word
+  inout position: word
+  out moved: word
+  owns v: word                                              # the new velocity, kept in AC
+  run sum
+    augend: acceleration
+    addend: velocity
+    total: v
+  run pass
+    source: v
+    target: velocity
+  run drift
+    velocity: v
+"""
+
 def sub(text, old, new):
     assert old in text, old[:60]
     return text.replace(old, new)
@@ -51,7 +86,8 @@ def cut(tmp: Path, name: str) -> None:
     t = prim.read_text()
     if name in ("inertia", "inertia_split"):
         if name == "inertia_split":
-            t = sub(t, cps.TEMPLATE, INERTIA_SPLIT)
+            import os
+            t = sub(t, cps.TEMPLATE, INERTIA_OWNED if os.environ.get("OWNED") else INERTIA_SPLIT)
             import os
             decl = os.environ.get("DECL", "network")
             toml = tmp / "pdp1/objects.toml"
@@ -73,10 +109,19 @@ def cut(tmp: Path, name: str) -> None:
         t = t[:start] + SINE_ATOMS + SINE_KEEP + t[end:]
         net = re.search(r"network sine  .*?run sine_answer\n", t, re.S)
         t = t[:net.start()] + SINE_NET2 + t[net.end():]
-    elif name == "multiply_net":
+    elif name in ("multiply_net", "arith_net", "sqrt_net"):
+        here = Path(__file__).parent
         start = t.index("processor multiply  ")
         end = t.index("# BBN integer multiply (imp)")
-        t = t[:start] + SINE_ATOMS + Path(__file__).with_name("multiply_net.txt").read_text() + "\n" + t[end:]
+        t = t[:start] + (here / "atoms.txt").read_text() + (here / "multiply_net.txt").read_text() + "\n" + t[end:]
+        if name in ("sqrt_net", "arith_net"):
+            start = t.index("processor square_root  ")
+            end = t.index("# Sine and cosine")
+            t = t[:start] + (here / "sqrt_net.txt").read_text() + "\n" + t[end:]
+        if name == "arith_net":
+            start = t.index("processor divide  ")
+            end = t.index("# BBN integer divide (idv)")
+            t = t[:start] + (here / "divide_net.txt").read_text() + "\n" + t[end:]
     prim.write_text(t)
 
 SINE_ATOMS = """processor copy                                              # lac; dac

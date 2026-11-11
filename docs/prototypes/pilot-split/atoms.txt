@@ -1,0 +1,43 @@
+processor copy                                              # lac; dac
+  in source: word
+  out target: word
+  set target = source
+
+processor add                                               # add
+  in augend: word
+  in addend: word
+  out sum: word
+  set sum = augend + addend
+
+processor subtract                                          # sub
+  in minuend: word
+  in subtrahend: word
+  out difference: word
+  set difference = minuend - subtrahend
+
+processor negate                                            # cma
+  inout value: word
+  set value = -value
+
+processor magnitude                                         # spa; cma
+  in value: word
+  out magnitude: word
+  let m = value
+  if m < 0:
+    set m = -m
+  set magnitude = m
+
+processor exclusive_or                                      # xor
+  in a: word
+  in b: word
+  out result: word
+  set result = a ^ b
+
+processor negate_double                                     # cma; rcr 9s; rcr 9s; cma; rcr 9s; rcr 9s
+  inout high: word
+  inout low: word
+  set high = -high
+  set (high, low) = rcr(high, low, 18)
+  set high = -high
+  set (high, low) = rcr(high, low, 18)
+

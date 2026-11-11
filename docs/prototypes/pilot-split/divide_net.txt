@@ -1,0 +1,70 @@
+processor divide_steps                                      # dis x 022; add
+  inout high: word
+  inout low: word
+  in divisor: word
+  for step in 1 .. 022:
+    set (high, low) = dis(high, low, divisor)
+  set high = high + divisor                                 # restore the last step's remainder
+
+processor remainder_bit                                     # cli; rcr 1s
+  inout high: word
+  out low: word
+  set low = 0
+  set (high, low) = rcr(high, low, 1)
+
+processor fits                                              # idx: the skip return
+  out outcome: division
+  set outcome = fits
+
+processor overflows
+  out outcome: division
+  set outcome = overflows
+
+network divide                                              # dvd
+  writes: divide_call
+  owns high: word
+  run overflows
+    outcome: divide_call.outcome
+  run magnitude                                             # dv1
+    value: divide_call.divisor
+    magnitude: divide_call.quotient
+  run copy
+    source: divide_call.high
+    target: high
+  if high < 0:
+    run negate_double
+      low: divide_call.low
+  run subtract                                              # dv2
+    minuend: high
+    subtrahend: divide_call.quotient
+    difference: high
+  if high < 0:
+    run divide_steps
+      low: divide_call.low
+      divisor: divide_call.quotient
+    run copy
+      source: divide_call.low
+      target: divide_call.quotient
+    run remainder_bit
+      low: divide_call.low
+    run copy
+      source: divide_call.high
+      target: divide_call.low
+    if divide_call.low < 0:                                 # the remainder takes the dividend's sign
+      run negate
+        value: high
+    run copy
+      source: high
+      target: divide_call.high
+    run exclusive_or                                        # negative when the quotient is
+      a: divide_call.divisor
+      b: divide_call.high
+      result: divide_call.low
+    run fits
+      outcome: divide_call.outcome
+  run copy                                                  # dve
+    source: divide_call.quotient
+    target: divide_call.result
+  if divide_call.low < 0:
+    run negate
+      value: divide_call.result

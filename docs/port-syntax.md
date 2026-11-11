@@ -56,9 +56,10 @@ network explosion                                           # mex
 
 `owns name: kind` declares one field of scratch, as a Port line declares one field
 (#53). The Evaluator keeps one copy of it for the Network, shared by every wiring of
-the Network; no name in the text reaches it from outside. `runsc` does not compile it
-yet: a program with one is a BindError ("owned scratch not compiled yet"), since no
-declaration gives the field a word and the declarations do not grow.
+the Network; no name in the text reaches it from outside. `runsc` compiles it as a
+local of the routine the Network compiles into, declared once, so pdp1cc keeps it in
+AC or IO with no declaration (#51; until then it was refused). A declaration names it
+as it names a `let` (`io = ["input_bits"]`).
 
 ## How the tools read it (#53)
 

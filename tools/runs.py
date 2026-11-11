@@ -567,7 +567,7 @@ def port_of(c: Line) -> Port:
 def owned_record(network: str) -> str:
     """The Record of a Network's scratch: its name is no name the text can
     write, so nothing outside the Network touches it."""
-    return f"{network}.owns"
+    return f"{network}$owns"
 
 
 def substitute_names(tree, names: dict):
@@ -811,7 +811,7 @@ def load(paths: list[Path]) -> Program:
     return prog
 
 
-NETWORK_OPS = {"if", "for", "match", "run", "stop", "unreachable", "loop", "break", "wait"}
+NETWORK_OPS = {"if", "for", "match", "run", "stop", "unreachable", "loop", "break", "continue", "wait"}
 FIRING_OPS = {"run", "stop", "match", "wait"}
 
 

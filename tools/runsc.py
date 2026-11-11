@@ -633,8 +633,6 @@ class Bindings:
         self.compiled: list[tuple] = []         # (Function, its statements as run) of every routine compiled
         self.inverse_skips: dict[str, str] = {} # sign-tested field -> the block its failure jumps to
         self.inverse_skipped: dict[str, set] = {}  # such a field -> where the test it names stands
-        if owned := sorted(r.owner for r in prog.records.values() if r.owner):
-            raise BindError(f"network {owned[0]}: owned scratch not compiled yet: no declaration gives it a word")
         self.device_file(next((p for p in paths if p.name == DEVICES), None))
         for path, spec in self.specs.items():
             for section in ("place", "inline"):
@@ -1060,9 +1058,12 @@ class Bindings:
         return (f"{r}.{f}" for r, rec in self.prog.records.items() for f in rec.fields)
 
     def locals_of(self, name: str, bound: set[str]) -> set[str]:
-        """The locals of a bound routine's RUNS: its parameters, and every
-        name a let or a counted loop of the routines it compiles binds."""
-        return set().union(*(routine_locals(self.prog.routines[r]) for r in own_routines(self.prog, name, bound)))
+        """The locals of a bound routine's RUNS: its parameters, every name a
+        let or a counted loop of the routines it compiles binds, and the
+        scratch those routines own."""
+        mine = list(own_routines(self.prog, name, bound))
+        return set().union(*(routine_locals(self.prog.routines[r]) for r in mine),
+                           *(rec.fields for rec in self.prog.records.values() if rec.owner in mine))
 
     def check_field(self, path: Path, dotted: str):
         if not _field(dotted):
@@ -1752,7 +1753,7 @@ class Unit:
                 out.append(("slots", var, lo, hi, self.flat_body(body, r, True), where))
             elif op == "match":
                 out.append(self.dispatch(s))
-            elif op in ("break", "wait", "stop"):
+            elif op in ("break", "continue", "wait", "stop"):
                 out.append(s)
             elif op == "run":
                 name, args = s[1], s[2]
@@ -2219,6 +2220,10 @@ class Function:
     def own_result_local(self, dotted: str) -> bool:
         """A result held only in AC: a C local of this function."""
         return dotted in self.b.result and not self.binds.stored(dotted) and dotted not in self.binds.io_fields
+
+    def owned(self, dotted: str) -> bool:
+        """Scratch a Network owns: a local of the routine that compiles it."""
+        return self.binds.prog.records[dotted.split(".")[0]].owner is not None
 
     def place(self, dotted: str) -> str:
         text = self.where_is(dotted)
@@ -3830,10 +3835,11 @@ class Function:
             return 2 if nxt is not None else 1
         name = self.place(dotted) if dotted else self.alias.get(target[1], target[1])
         if dotted and name == leaf(dotted) and name not in self.own.values() and not self.declared(name):
-            kind = "register word" if dotted in self.binds.io_fields else "word"
+            kind = "register word" if dotted in self.binds.io_fields or self.owned(dotted) and name in self.b.io else "word"
             kind = "word *" if dotted in self.binds.pointers else kind + " "
-            if self.has_table:
-                # the arms of a jump table lie apart and share their locals: declared at the top
+            if self.has_table or self.owned(dotted):
+                # the arms of a jump table lie apart and share their locals, and a Network's scratch is
+                # one field through all its lines: declared at the top
                 self.declare_top(f"{kind}{name};")
                 self.scopes[0].add(name)
                 self.emit(depth, f"{name} = {value};")
