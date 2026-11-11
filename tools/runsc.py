@@ -1753,7 +1753,7 @@ class Unit:
                 out.append(("slots", var, lo, hi, self.flat_body(body, r, True), where))
             elif op == "match":
                 out.append(self.dispatch(s))
-            elif op in ("break", "continue", "wait", "stop"):
+            elif op in ("break", "wait", "stop"):
                 out.append(s)
             elif op == "run":
                 name, args = s[1], s[2]

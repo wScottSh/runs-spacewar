@@ -114,7 +114,7 @@ def cut(tmp: Path, name: str) -> None:
         start = t.index("processor multiply  ")
         end = t.index("# BBN integer multiply (imp)")
         t = t[:start] + (here / "atoms.txt").read_text() + (here / "multiply_net.txt").read_text() + "\n" + t[end:]
-        if name in ("sqrt_net", "arith_net"):
+        if name == "sqrt_net":
             start = t.index("processor square_root  ")
             end = t.index("# Sine and cosine")
             t = t[:start] + (here / "sqrt_net.txt").read_text() + "\n" + t[end:]

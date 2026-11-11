@@ -811,7 +811,7 @@ def load(paths: list[Path]) -> Program:
     return prog
 
 
-NETWORK_OPS = {"if", "for", "match", "run", "stop", "unreachable", "loop", "break", "continue", "wait"}
+NETWORK_OPS = {"if", "for", "match", "run", "stop", "unreachable", "loop", "break", "wait"}
 FIRING_OPS = {"run", "stop", "match", "wait"}
 
 
