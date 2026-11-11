@@ -29,7 +29,7 @@ network drift                                               # cla; diff
   inout velocity: word
   inout position: word
   out moved: word
-  owns: acceleration                                        # scratch: only drift touches it
+  owns acceleration: word                                   # scratch: only drift touches it
   run clear
     value: acceleration
   run inertia
@@ -54,7 +54,29 @@ network explosion                                           # mex
   ...
 ```
 
-How `owns:` declares the Record's fields and kind is left to #53.
+`owns name: kind` declares one field of scratch, as a Port line declares one field
+(#53). The Evaluator keeps one copy of it for the Network, shared by every wiring of
+the Network; no name in the text reaches it from outside. `runsc` does not compile it
+yet: a program with one is a BindError ("owned scratch not compiled yet"), since no
+declaration gives the field a word and the declarations do not grow.
+
+## How the tools read it (#53)
+
+The loader (`runs.load`) expands Ports before any tool sees the program. Each `run`
+of a routine with Ports fires a copy of it: its text with each Port replaced by the
+field the run wires to it, by reference, as the original's `diff` macro was expanded
+once an axis. One copy a distinct wiring (`inertia_1`, `inertia_2`); a Network's Port
+wired on to an inner `run` resolves to the field of the Network that runs it. A copy
+takes the names its wires' slots use (`slot`) from the routine that runs it. The
+Program keeps the templates (`templates`) and each copy's template and wiring
+(`copies`); the purity report judges the copies by the Records they touch.
+
+A PDP-1 declaration that names a template declares every copy of it: `[[inline]]
+routine = "inertia"` lays out both axes' copies. A called routine (`[[place]]`, JDA or
+JSP) is one subroutine, so all its runs must share one wiring; more is a BindError that
+names the wirings. Minskytron's `keep` (six wirings, laid out inline) is the second
+PDP-1 program; `tools/check_ports_scratch.py` builds Spacewar with one ported
+`inertia` and prints the original's `MATCH`.
 
 ## The rules
 

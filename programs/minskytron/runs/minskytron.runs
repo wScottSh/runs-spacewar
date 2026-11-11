@@ -67,17 +67,29 @@ network minskytron                                          # started at 500
   reads: console
   run read_test_word                                        # lat; rcl 9s; rcl 9s
   run pick_shift                                            # m1: jsp gsh
-  run keep_ya                                               # dac sh0
+  run keep                                                  # dac sh0
+    value: shift_pick.count
+    kept: shifts.ya
   run pick_shift
-  run keep_xa                                               # dac sh1
+  run keep                                                  # dac sh1
+    value: shift_pick.count
+    kept: shifts.xa
   run pick_shift
-  run keep_yb                                               # dac sh2
+  run keep                                                  # dac sh2
+    value: shift_pick.count
+    kept: shifts.yb
   run pick_shift
-  run keep_xb                                               # dac sh3
+  run keep                                                  # dac sh3
+    value: shift_pick.count
+    kept: shifts.xb
   run pick_shift
-  run keep_yc                                               # dac sh4
+  run keep                                                  # dac sh4
+    value: shift_pick.count
+    kept: shifts.yc
   run pick_shift
-  run keep_xc                                               # dac sh5
+  run keep                                                  # dac sh5
+    value: shift_pick.count
+    kept: shifts.xc
   run start_points                                          # m2
 
 # One pass: each point steps, and is plotted. The machine runs it again

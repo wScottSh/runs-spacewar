@@ -15,35 +15,12 @@ processor pick_shift
   set (high, shift_pick.bits) = rcl(high, shift_pick.bits, 3)
   set shift_pick.count = shift_table.count[high]            # add gsc; dap .+1; lac .
 
-processor keep_ya
-  reads: shift_pick
-  writes: shifts
-  set shifts.ya = shift_pick.count
-
-processor keep_xa
-  reads: shift_pick
-  writes: shifts
-  set shifts.xa = shift_pick.count
-
-processor keep_yb
-  reads: shift_pick
-  writes: shifts
-  set shifts.yb = shift_pick.count
-
-processor keep_xb
-  reads: shift_pick
-  writes: shifts
-  set shifts.xb = shift_pick.count
-
-processor keep_yc
-  reads: shift_pick
-  writes: shifts
-  set shifts.yc = shift_pick.count
-
-processor keep_xc
-  reads: shift_pick
-  writes: shifts
-  set shifts.xc = shift_pick.count
+# Keep the count just picked: the start keeps one for each step's shift
+# (dac sh0 ... dac sh5).
+processor keep
+  in value: word
+  out kept: word
+  set kept = value
 
 processor start_points                                      # m2
   reads: start
