@@ -1,5 +1,7 @@
 # Coverage is branch-completeness of Ground Truth; the instrument follows the region
 
+**Amended 2026-11-11.** The section "Instruments attach at the original's own seams" lets the original's structure drive the decomposition. It puts Processor boundaries at the 1962 `jda` and dispatch seams and refuses a finer split the source does not support. The EGS vision makes decomposition a convention, not a rule of compliance, and that convention pulls toward splitting each body into sub-Processors until atomic, composed on what they compute rather than on what any part was originally meant for (`../.github/CONTEXT.md` 117-129). This ADR's "Realization" is the rewrite under test, not the Realization region of `../.github/CONTEXT.md` 138-157. The vision governs.
+
 Status: superseded by ADR-0017. Previously: accepted (organizing spine; supersedes ADR-0002; recasts ADR-0004 as its
 consequence; reframes the Vector/Trace roles in CONTEXT.md and the sanity gate of ADR-0009)
 

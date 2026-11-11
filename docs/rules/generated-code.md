@@ -1,6 +1,6 @@
 # Rule under test: code generated from a command table
 
-Written 2026-11-09, before reading any PDP-1 program other than Spacewar! 3.1. It states a compiler rule in PDP-1 terms, with no name from Spacewar, so that other programs can test it. It goes into `runsc` only if it fits programs other than Spacewar unchanged, with only binding data differing.
+Written 2026-11-09, before reading any PDP-1 program other than Spacewar! 3.1. It states a compiler rule in PDP-1 terms, with no name from Spacewar, so that other programs can test it. It goes into `runsc` only if it fits programs other than Spacewar unchanged, with only declaration data differing.
 
 ## The idiom
 
@@ -74,6 +74,6 @@ A path that runs only on input the census did not give is not seen. The static p
 | DDT (static) | `lio (jda tr`, `dio i bk1`: a breakpoint written into the user's program | a debugger patching another program |
 | `possible`, multi-segment tapes | words written by a loader in the program | loading, not generation |
 
-**Verdict: NOT VERIFIED.** No program outside Spacewar's lineage builds a buffer of code from a command list. A compiler rule for it would be used by one program, which the standing orders forbid.
+**Verdict: REFUTED.** No program outside Spacewar's lineage builds a buffer of code from a command list. A compiler rule for it would be used by one program, which the standing orders forbid.
 
 **What the census found instead.** At least four programs outside Spacewar choose an instruction from data at one stage and run it at a later stage: Minskytron, the music player, Expensive Typewriter and the Desk Calculator. Spacewar's outline compiler is the sequence form of the same thing: it chooses one instruction run per command and lays the runs one after another. That idiom is general enough to test. The next test is to state it as a rule and compile Minskytron from pure RUNS with it, to its original words.

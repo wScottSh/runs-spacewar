@@ -36,7 +36,7 @@ The run form has one program, Spacewar's lineage, as the census found. It is the
 ### Why a C template, and not another design
 
 - **A second selector in `runsc`** (the rejected `tools/staged.py`) translated the walker's statements into instruction words by matching their shape. It duplicated `pdp1cc`'s selection for one routine, so an arm `pdp1cc` would compile differently, or a statement it handles that the matcher does not, fails silently or not at all. A C template has one selector: the arm compiles to exactly what the same statements compile to anywhere else.
-- **Hand-kept machine text in the declarations** (the rejected binding substitution) puts instruction words in `pdp1/`, which holds layout, never logic.
+- **Hand-kept machine text in the declarations** (the rejected substitution in the declarations) puts instruction words in `pdp1/`, which holds layout, never logic.
 - **Lay the walker out as a routine and copy its words at run time.** The image does not hold the arms as code anywhere; it holds their words only as literal constants, which the stores read. A copy loop would add words the original lacks.
 - **The template in C** keeps the division of labor the build already has: `runsc` decides what each RUNS statement means for the PDP-1 (registers, flags, pool words, the display's pulse), and `pdp1cc` decides the words. The stores are dialect statements, so every peephole `pdp1cc` already has applies to them unchanged (`idx` leaves the cursor in AC, so `dap` and `add (k` after a store need no load).
 

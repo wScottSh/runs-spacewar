@@ -4,4 +4,4 @@
 - `dpys5.mac`: the same text with CR turned into LF, which `macro1` reads.
 - `minskytron.mac`: Minskytron alone, lines 257–364 of `dpys5.mac` verbatim (from `/ start at 500` to `sh5`), with a title and `start 500`.
 
-`build/macro1 -r minskytron.mac` gives 99 words at 500–642, each equal to the word `dpys5.mac` assembles at the same address, and `minskytron.rim` with sha256 `3181d84bb8f363bd166398fc18f2ccefb82c8bce36d06a636314673dc2fbcc62`. That image is the target: the RUNS text in `../runs`, compiled by `tools/runsc.py` with the binding in `../pdp1`, rebuilds it.
+`build/macro1 -r minskytron.mac` gives 99 words at 500–642, each equal to the word `dpys5.mac` assembles at the same address, and `minskytron.rim` with sha256 `3181d84bb8f363bd166398fc18f2ccefb82c8bce36d06a636314673dc2fbcc62`. That image is the target: the RUNS text in `../runs`, compiled by `tools/runsc.py` with the declarations in `../pdp1`, rebuilds it.

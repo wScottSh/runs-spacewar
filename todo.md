@@ -189,3 +189,25 @@ The hardest compile sites after it: the outline (logic kept as instructions in a
 - [x] The Network's form: settled (runs-spec README "The order is in the text"); the only form the constraints allow.
 - [x] `jump`: impure in every program; a general compiler emits code-as-data from pure RUNS.
 - [ ] The viewer lays the net out with its own grouping; it becomes a transcription once the Network's form is settled.
+
+## Round 13 (autonomous): bring every doc in line with the EGS vision
+
+The user, 2026-11-11: the org's `.github/CONTEXT.md` is correct, and every doc that strays from it gets fixed, unattended. It supersedes Round 12's "The riskiest part: the Network's form (settled)": the vision's Network is the explicit bipartite wiring of Records to Processors, a graph whose order is derived from the wiring, never authored (EGS CONTEXT.md 162-227). This also reverses decisions row 240 ("asking was deferring to an org document that is wrong for exact conversions"): the vision's answer to two Processors writing one Record is a threaded chain of values (EGS CONTEXT.md 194-196), not an authored order.
+
+Playbook (autonomous run), verbatim:
+- [x] 1. State the exit condition as a checkable predicate before the first iteration (tests green, repro fixed, all N PRs merged, pixel-diff zero).
+- skip: 2. Pick the wake mechanism (loop skill): every agent and check notifies on completion; no external event to watch
+- [x] 3. Each iteration makes the smallest change the evidence justifies, verifies it against the predicate, commits if it advanced, discards changes that didn't help.
+- [x] 4. Mid-run discoveries are yours.
+- [x] 5. Checkpoint every iteration via the show-me-your-work skill.
+- [ ] 6. Stop when the predicate is met.
+
+Predicate: every Markdown doc of runs-spec, runs-spacewar, and the RUNS statements of the org's other repos audited against CONTEXT.md, each stray fixed or listed as an open design question; an independent reviewer on a second model finds no contradiction with CONTEXT.md, no invented design, and no claim that today's tools meet the vision where they do not; the vocabulary greps are clean (no "Port" for a Processor's inputs and outputs in prose, no "a line break is a place", no Network `continue`); runs-spec `check_examples.py` all ok; runsc MATCH 8744e9c9 and `check_all.sh` pass on the `continue` revert; the map re-charted; both repos pushed.
+
+- [x] `continue` reverted from the language, runsc and the spec (EGS CONTEXT.md 344-347: no `break`, `continue` or early return)
+- [x] Audit and fix: runs-spec (3 agents), INTENT, standing docs, pdp1 README and rules, ADRs, c-lift history, other repos
+- [x] Independent review of every diff (four reviewers on a second model, four fix agents, one verifier)
+- [x] Vocabulary greps, check_examples, gate (check_all passed in 359s; MATCH 8744e9c9; purity 0 new; declarations 331/331)
+- [x] Map re-charted: destination and notes to the vision, open designs as fog or tickets
+- [ ] Open (for the user): the designs the vision needs that nobody has decided, on map 45's Not yet specified: the Network as a literal graph and its file, threading the shared Records, loops inside a tick, guards as a partition, one file per Processor, the text's keywords against the vision's, a check that measures the vision
+- [ ] Open: `CLAUDE.md` says a `run` passes only which slot, the user's standing order; the input/output syntax (#52) passes wires instead. The user settles which stands.

@@ -1,15 +1,16 @@
 # Standing orders: the Spacewar conversion
 
-This repo converts Spacewar! 3.1 into **pure** RUNS. The conversion is a reorganization of the existing program (the PDP-1 assembly, and the C lift that builds the same image), never a port and never a rewrite of behavior. The RUNS text, compiled with the PDP-1 declarations, builds the original image at every commit.
+This repo converts Spacewar! 3.1 into **pure** RUNS. The conversion is a reorganization of the existing program (the PDP-1 assembly, and the C lift that builds the same image), never a re-vibe and never a rewrite of behavior. The RUNS text, compiled with the PDP-1 declarations, builds the original image at every commit.
 
 ## Pure
 
 - A **Record** holds data and nothing else: named fields with values. A Record that holds instructions the game runs (`insn`, `jump`) holds logic and is impure.
-- A **Processor** holds no state. It takes values from the Records it declares and gives values to the Records it declares.
-- Every Record is a `game`, `interface`, or `presentation` Record. A Processor touches game and interface Records, or presentation and interface Records. Removing every presentation Processor leaves the game's Records the same at every step.
-- The **Network** is one net: the game's Petri net, Records as places and Processors as transitions. It states the original's order, one line after another, and each line break is a place that passes the turn. A guard only tests values Records hold; a value it needs is computed by a Processor into a Record first. A `run` passes only which slot. (`../runs-spec/README.md`, "The order is in the text".)
+- The vision writes a Record once and never overwrites it; a change is a fresh value in a fresh place (`../.github/CONTEXT.md` 90-92). Today's text updates Records in place, a gap.
+- A **Processor** holds no state. In the vision it names no Records: it takes values on its inputs and gives values on its outputs, and the Network wires a Record Field to each (`../.github/CONTEXT.md` 166-169). Today every Processor in `runs/` still declares the Records it reads and writes (`reads:`, `writes:`), and none has an input or output line yet, a gap.
+- Every Record is a `game`, `interface`, or `presentation` Record: the Rules region, a boundary Record, or the Realization region. That split is the enduring-games pattern, a convention and not a RUNS primitive (`../.github/CONTEXT.md` 131-135, 158-160); this project enforces it as its own rule. A Processor touches game and interface Records, or presentation and interface Records. Removing every presentation Processor leaves the game's Records the same at every step.
+- The **Network** is one net: the game's colored Petri net, Records as places and Processors as transitions. In the vision it is the explicit bipartite wiring of Records to Processors, and execution order is derived from that wiring, never authored (`../.github/CONTEXT.md` 162-170, 188-199). Today's Network text is structured code (`if`, `loop`, `break`) that states the original's order line by line; it falls short of the graph. A guard only tests values Records hold; a value it needs is computed by a Processor into a Record first. The vision's guards also form a complete partition, exactly one true, with an explicit `else` for an open-typed value (`../.github/CONTEXT.md` 351-358); today's text has `if` with no `else`, a gap. A `run` passes only which slot.
 
-`INTENT.md` holds the model and the reasons; read its first two sections before you design anything.
+`INTENT.md` holds the model and the reasons; read its first two sections before you design anything. The EGS vision is `../.github/CONTEXT.md`; where a doc here disagrees with it, the vision governs.
 
 ## Every commit
 
@@ -36,7 +37,7 @@ Purity is fixed. When a pure shape will not compile to the original image, the s
 
 1. Read the original for it: `source/spacewar3.1_complete.txt`, the lift in `lift/`, and the current RUNS.
 2. Name its data as Records, each with a kind, and its rules as Processors, each pure.
-3. Wire them into the Network in the original's order.
+3. Wire them into the Network. Today's Network text states them in the original's order (see Pure).
 4. Compile. On `MATCH`, run the checks of every commit. Otherwise try the next shape, then a general compiler rule, in the order above.
 5. Done when the interaction is pure, the image matches, `check_all.sh` passes, and the purity count fell.
 

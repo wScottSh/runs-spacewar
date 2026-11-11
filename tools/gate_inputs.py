@@ -5,7 +5,8 @@ committed or not, untracked ones included. Read by the checks: the game's
 data (the RUNS text, the declarations, the original source and its lift,
 the oracle vectors, the second program) and every file under tools/ that
 check_all.sh reaches by name, directly or through a file it reaches. A new
-script that nothing names is not read, and neither is anything in docs/.
+script that nothing names is not read, and neither is anything in docs/ or any
+Markdown file under the data folders (pdp1/README.md): no check reads them.
 
 Prints one changed input per line; prints nothing when no check reads any
 change. `--spec DIR` prints the spec's changed files instead, for its
@@ -55,7 +56,8 @@ def main() -> int:
     else:
         root = Path(__file__).resolve().parent.parent
         tools = reached_tools(root)
-        inputs = {f for f in changed(root) if f.startswith(DATA) or f in PROJECT or f in tools}
+        inputs = {f for f in changed(root)
+                  if f.startswith(DATA) and not f.endswith(".md") or f in PROJECT or f in tools}
     for f in sorted(inputs):
         print(f)
     return 0
