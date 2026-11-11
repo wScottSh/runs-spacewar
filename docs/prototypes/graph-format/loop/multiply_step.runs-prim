@@ -1,0 +1,5 @@
+processor multiply_step                                     # mus
+  inout low: word
+  in multiplicand: word
+  inout high: word
+  set (high, low) = mus(high, low, multiplicand)

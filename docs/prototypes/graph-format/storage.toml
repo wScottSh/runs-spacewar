@@ -1,0 +1,5 @@
+# PDP-1 only: the places that share a word with a field of multiply_call.
+# Every other place is a register value (AC or IO), or shares its word with
+# the place it replaces through a Processor's inout.
+"multiply_work.factor_magnitude" = "multiply_call.partial"
+"multiply_work.saved_high" = "multiply_call.partial"

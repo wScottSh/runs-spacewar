@@ -1,0 +1,65 @@
+# multiply (mpy). Places are Record fields; each transition is a Processor
+# and its wires: input <- place, output -> place, and `when` for a guard.
+# The blocks may come in any order.
+
+network multiply
+  place multiply_call.entry
+  place multiply_call.factor
+  place multiply_call.partial
+  place multiply_call.low
+  place multiply_work.entry_magnitude
+  place multiply_work.factor_magnitude
+  place multiply_work.high
+  place multiply_work.low
+  place multiply_work.saved_high
+  place multiply_work.signs
+  place multiply_work.reloaded_high
+  place multiply_work.negated_high
+
+  transition magnitude_of_entry: magnitude
+    value <- multiply_call.entry
+    magnitude -> multiply_work.entry_magnitude
+
+  transition magnitude_of_factor: magnitude
+    value <- multiply_call.factor
+    magnitude -> multiply_work.factor_magnitude
+
+  transition steps: multiply_steps
+    low <- multiply_work.entry_magnitude
+    multiplicand <- multiply_work.factor_magnitude
+    high -> multiply_work.high
+    low -> multiply_work.low
+
+  transition save_high: copy
+    source <- multiply_work.high
+    target -> multiply_work.saved_high
+
+  transition sign_of_product: exclusive_or
+    a <- multiply_call.factor
+    b <- multiply_call.entry
+    result -> multiply_work.signs
+
+  transition reload_high: copy
+    when multiply_work.signs < 0
+    source <- multiply_work.saved_high
+    target -> multiply_work.reloaded_high
+
+  transition negate: negate_double
+    high <- multiply_work.reloaded_high
+    low <- multiply_work.low
+    high -> multiply_work.negated_high
+    low -> multiply_call.low
+
+  transition give_negated_high: copy
+    source <- multiply_work.negated_high
+    target -> multiply_call.partial
+
+  transition give_high: copy
+    when multiply_work.signs else
+    source <- multiply_work.saved_high
+    target -> multiply_call.partial
+
+  transition give_low: copy
+    when multiply_work.signs else
+    source <- multiply_work.low
+    target -> multiply_call.low

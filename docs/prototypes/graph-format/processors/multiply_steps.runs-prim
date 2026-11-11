@@ -1,0 +1,7 @@
+processor multiply_steps                                    # cla; mus x 021
+  inout low: word
+  in multiplicand: word
+  out high: word
+  set high = 0
+  for step in 1 .. 021:
+    set (high, low) = mus(high, low, multiplicand)

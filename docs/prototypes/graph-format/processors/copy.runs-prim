@@ -1,0 +1,4 @@
+processor copy                                              # lac; dac
+  in source: word
+  out target: word
+  set target = source
