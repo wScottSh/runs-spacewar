@@ -1,0 +1,55 @@
+processor magnitude                                         # spa; cma
+  in value: word
+  out magnitude: word
+  set magnitude = value
+  if magnitude < 0:
+    set magnitude = -magnitude
+
+processor multiply_steps                                    # cla; mus x 021
+  inout low: word
+  in multiplicand: word
+  out high: word
+  set high = 0
+  for step in 1 .. 021:
+    set (high, low) = mus(high, low, multiplicand)
+
+processor exclusive_or                                      # xor
+  in a: word
+  in b: word
+  out result: word
+  set result = a ^ b
+
+processor negate_double                                     # cma; rcr 9s; rcr 9s; cma; rcr 9s; rcr 9s
+  inout high: word
+  inout low: word
+  set high = -high
+  set (high, low) = rcr(high, low, 18)
+  set high = -high
+  set (high, low) = rcr(high, low, 18)
+
+network multiply                                            # mpy
+  writes: multiply_call
+  owns high: word
+  owns signs: word
+  run magnitude
+    value: multiply_call.entry
+    magnitude: multiply_call.low
+  run magnitude
+    value: multiply_call.factor
+    magnitude: multiply_call.partial
+  run multiply_steps
+    low: multiply_call.low
+    multiplicand: multiply_call.partial
+  run copy
+    source: high
+    target: multiply_call.partial
+  run exclusive_or
+    a: multiply_call.factor
+    b: multiply_call.entry
+    result: signs
+  if signs < 0:
+    run negate_double
+      low: multiply_call.low
+    run copy
+      source: high
+      target: multiply_call.partial

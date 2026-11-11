@@ -1,0 +1,6 @@
+# The series' coefficients, as the original's constant words.
+game record sine_constants
+  c7: word = -021674        # (756103
+  c5: word = 0121312        # (121312
+  c3: word = -0245266       # (532511
+  c1: word = 0144417        # (144417
