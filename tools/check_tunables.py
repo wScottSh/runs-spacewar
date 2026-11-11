@@ -21,6 +21,7 @@ import tomllib
 
 import pdp1
 import runs
+import runsc
 from oracle_check import edges, oracle_symbols, seeded
 from pdp1cc.gate import simh
 from pdp1cc.gate.simh import Inputs
@@ -35,30 +36,30 @@ SYMBOLS = {"torpedo_supply": "tno", "torpedo_velocity": "tvl", "torpedo_reload_t
            "hyperspatial_velocity": "hr2"}
 
 
-def calls_for(place: dict, n: int) -> tuple[list[Inputs], str]:
-    if "io_param" in place:
+def calls_for(b: runsc.Bound, n: int) -> tuple[list[Inputs], str]:
+    if b.io_param:
         e = edges()
         return [Inputs(a, i) for a in e for i in e] + \
             [Inputs(a, i) for a, i in zip(seeded(n, N), seeded(n + 1, N))], f"{len(e) ** 2} edge pairs + {N} seeded"
-    if "ac_param" in place:
+    if b.ac_param:
         return [Inputs(a, i) for a, i in zip(range(1 << 18), seeded(n, 1 << 18))], "every AC word"
     return [Inputs(a, i) for a, i in zip(seeded(n, 1000), seeded(n + 1, 1000))], "1000 seeded AC:IO pairs"
 
 
-def check_routine(prog: runs.Program, sym: dict, place: dict, n: int) -> int:
-    name = place["routine"]
-    calls, domain = calls_for(place, n)
+def check_routine(prog: runs.Program, sym: dict, b: runsc.Bound, n: int) -> int:
+    name = b.name
+    calls, domain = calls_for(b, n)
     want = simh.run_jda(pdp1.SIMH, pdp1.ORACLE, sym[SYMBOLS[name]], calls, op="xct", timeout=3600)
     m = runs.Machine(prog)
     h = m.state["handoff"]
-    inputs = [place.get("ac_param"), place.get("io_param")]
+    inputs = [b.ac_param, b.io_param]
     differ = 0
     for c, w in zip(calls, want):
         for f, v in zip(inputs, (c.ac, c.io)):
             if f:
                 h[f.split(".")[1]] = runs.W(v)
         m.run(name)
-        got = [h[f.split(".")[1]].v for f in place["result"]]
+        got = [h[f.split(".")[1]].v for f in b.result]
         bad = [f"{reg} simh {x:06o} runs {r:06o}" for reg, x, r in zip(("AC", "IO"), (w.ac, w.io), got) if x != r]
         if w.returned_past:
             bad.append(f"returned past {w.returned_past}")
@@ -91,8 +92,10 @@ def main() -> int:
     sym = oracle_symbols()
     places = tomllib.loads(BINDING.read_text())["place"]
     failed = check_numbers(prog, sym, places)
+    # what each XCT routine takes and leaves in AC and IO, as runsc derives it from the text
+    bound = runsc.Bindings(prog, sorted(runsc.BINDINGS.glob("*.toml"))).bound
     for n, place in enumerate(p for p in places if p.get("convention") == "XCT"):
-        failed |= check_routine(prog, sym, place, n)
+        failed |= check_routine(prog, sym, bound[place["routine"]], n)
     return failed
 
 

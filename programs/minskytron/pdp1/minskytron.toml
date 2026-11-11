@@ -23,8 +23,6 @@ convention = "BLOCK"
 [[place]]
 routine = "pick_shift"
 convention = "JSP"
-io_param = "shift_pick.bits"
-result = ["shift_pick.count", "shift_pick.bits"]
 # The pick adds its index to gsc and reads the count through the sum.
 homes = { high = "pointer" }
 

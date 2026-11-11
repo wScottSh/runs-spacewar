@@ -520,7 +520,7 @@ SCHEMA = {
     "stray": {"after": _field, "cursor": _name},
     "table": {"at": _name, "clear": _name},
     "routine": {"routine": _name, "convention": _one_of("JDA", "JSP", "XCT", "BLOCK"), "entry": _field,
-                "ac_param": _field, "io_param": _field, "byname": _field, "result": _list(_field),
+                "io_param": _field, "byname": _field, "result": _list(_field),
                 "io": _list(_LOCAL), "cells": _list(_field), "skips": lambda v: _list(_TEXT, 2)(v) and _field(v[0]) and _name(v[1]),
                 "block": _name, "block_takes_entry": _BOOL, "loops": _one_of("exit first"),
                 "shifts": _one_of("xct"), "pool": _list(_LOCAL), "spill": _list(_name), "inline": _field,
@@ -528,7 +528,7 @@ SCHEMA = {
                 "flags": _dict(_name, _int), "homes": _dict(_name, _one_of("pointer")),
                 "into": _dict(_name, _field), "arms": _one_of("apart"), "exit_after": _name, "pulse": _BOOL,
                 "tails": _one_of("shared")},
-    "inline": {"routine": _name, "ac_param": _field, "result": _list(_field), "shifts": _one_of("xct")},
+    "inline": {"routine": _name, "shifts": _one_of("xct")},
     "code": {"routine": _name, "pulse": _BOOL, "io": _list(_LOCAL)},
     "store": {"store": _field, "loaded": _name},
     "fields": {"fields": _list(_field)},
@@ -704,8 +704,55 @@ class Bindings:
             self.table["records"] = [r for r in self.prog.records if r in walked]
         self.registers |= {name for name, r in self.prog.records.items() if r.count is None and not r.stream
                            and not any(self.has_word(f"{name}.{f}") for f in r.fields)}
+        self.register_passing()
         self.spell_by_default()
         self.check_names()
+
+    def register_passing(self):
+        """What a called Processor with no entry word takes and gives in AC
+        and IO (XCT, INLINE, JSP): its parameters are the register fields it
+        reads before it writes them, its results the register fields it
+        writes, AC's then IO's. A field lives in IO when the routine says so
+        (io) or when the text sets it as the second half of a pair, as the
+        machine's AC:IO pair is (set (high, low) = scl(high, low, 9)); a
+        field it reads and writes arrives where it leaves. Minskytron's pick
+        does the same: rcl takes the bits in IO, and the count comes back in
+        AC (gsh: rcl 3s ... lac .)."""
+        for name, b in self.bound.items():
+            r = self.prog.routines[name]
+            if r.kind != "processor" or b.entry or b.convention not in ("XCT", "INLINE", "JSP"):
+                continue
+            spec = next(p for p in self.specs[b.unit].get("place", []) + self.specs[b.unit].get("inline", [])
+                        if p.get("routine") == name)
+            if said := {"ac_param", "io_param", "result"} & set(spec):
+                raise BindError(f"{b.unit.name}: {name}: {sorted(said)} come from the text: the register fields "
+                                f"it reads before it writes them, and those it writes")
+            inputs, outputs, second = [], [], set()
+
+            def read(tree):
+                for n in every_node(tree):
+                    d = dotted_of(n) if n[0] == "field" else None
+                    if d and self.in_register(d, b.unit) and d not in outputs and d not in inputs:
+                        inputs.append(d)
+            for st in walk(r.body):
+                if st[0] in ("set", "let"):
+                    read(st[2])
+                    for k, t in enumerate(st[1][1] if st[1][0] == "tuple" else [st[1]]):
+                        d = dotted_of(t) if t[0] == "field" else None
+                        if d and self.in_register(d, b.unit):
+                            outputs += [d] if d not in outputs else []
+                            second |= {d} if k == 1 else set()
+                elif st[0] == "if":
+                    read([g for g, _ in st[1]])
+            in_io = {d for d in inputs + outputs if d in second or d in b.io}
+            ac = [d for d in inputs if d not in in_io]
+            io = [d for d in inputs if d in in_io]
+            if len(ac) > 1 or len(io) > 1:
+                raise BindError(f"{name}: AC and IO carry one parameter each, not {ac + io}")
+            b.ac_param, b.io_param = (ac or [None])[0], (io or [None])[0]
+            b.result = [d for d in outputs if d not in in_io] + [d for d in outputs if d in in_io]
+            if b.io_param:
+                self.io_fields.add(b.io_param)
 
     def derive_cursors(self):
         """The cursors, from the text. A walk is a Network's loop over the

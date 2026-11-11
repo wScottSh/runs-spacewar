@@ -20,10 +20,10 @@ A `[[place]]` with `fields` lays out those Record fields as data words, with the
 
 - `convention`: `JDA`, `JSP`, `XCT`, as the lift's dialect spells it (`tools/pdp1cc/include/pdp1.h`). An `[[inline]]` entry takes the same keys and binds a macro: the routine is laid out at each run, as a `static inline` function of each unit that runs it, whichever binding binds it.
 - `entry`: the field that is the JDA entry word, where the call leaves AC.
-- `ac_param`: the field that arrives in AC, for a routine with no entry word (`XCT`).
 - `byname`: the field that is the word after the call, executed each time it is read.
 - `result`: the fields that hold the result when the routine returns: AC, then IO.
 - `io_param`: the field that arrives in IO.
+- A called Processor with no entry word (`XCT`, `INLINE`, `JSP`) declares none of `io_param` and `result`: `runsc` takes them from the text. Its parameters are the register fields it reads before it writes them, its results the register fields it writes, AC's then IO's. A field lives in IO when `io` names it or the text sets it as the second half of a pair (`set (handoff.jump_high, handoff.jump_low) = scl(...)`, the machine's AC:IO pair); a field it reads and writes arrives where it leaves. Minskytron's pick does the same: `rcl` takes the bits in IO, and the count comes back in AC (`gsh`).
 - `io`: locals and fields that live in IO. The rest live in AC or in a word of their own. A local set from a value already in IO is that value, with no move.
 - `cells`: other fields that live in the routine's entry word.
 - `skips`: a field and a member: the routine returns one word further when the field holds the member.
@@ -36,7 +36,7 @@ A `[[place]]` with `fields` lays out those Record fields as data words, with the
 - `inline`: the field that is the constant word after the call (`jda oc / ot1`).
 - `io_reads`: fields a guard of the routine reads into IO, because AC holds a value the routine still needs (`lio ddd`, `lio i \mfu`). IO has only a sign test (`spi`), so it applies to a guard that tests the sign, of a field or of a field at a slot.
 - `spill`: AC locals kept in a pool word from their last set on, and read from there (`dac \mt1`).
-- `result` with the field in `io`, for `JSP`: the routine returns in IO (`io_word`).
+- A `JSP` Processor whose result field is in `io` returns in IO (`io_word`).
 
 A `[[code]]` entry binds a walker over a collection held as a run of code (`held_as_code` on a collection field of an enum, below): a Processor whose body is `let at = <slot>`, then a loop that takes the slot's member (`let m = L.f[at]`), runs that member's arm of an if-chain, and steps on (`set at = at + 1`) (`draw_outline` over `outline_code.stroke`). It has no code of its own: each slot's words are its member's arm. Its run is a jump to the words of the slot it starts from, and the run the RUNS text makes right after it is where a `break` of an arm jumps, so that run compiles to nothing. An arm goes on only to the next slot (it runs off its end into the next member's code) or from a place a held field of the slot holds (`set at = L.g[at]; continue`, the jump held there). It is a calling convention. `io` names the walk's locals and register fields that live in IO; the rest live in AC.
 

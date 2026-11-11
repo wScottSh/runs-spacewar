@@ -15,23 +15,18 @@ machine = "start vectors"
 [[place]]
 routine = "torpedo_supply"
 convention = "XCT"
-result = ["handoff.torpedo_supply"]
 
 [[place]]
 routine = "torpedo_velocity"
 convention = "XCT"
-ac_param = "handoff.torpedo_direction"
-result = ["handoff.torpedo_velocity"]
 
 [[place]]
 routine = "torpedo_reload_time"
 convention = "XCT"
-result = ["handoff.reload_time"]
 
 [[place]]
 routine = "torpedo_life"
 convention = "XCT"
-result = ["handoff.torpedo_life"]
 
 [[place]]
 fields = ["tunables.fuel_supply", "tunables.angular_acceleration"]
@@ -39,8 +34,6 @@ fields = ["tunables.fuel_supply", "tunables.angular_acceleration"]
 [[place]]
 routine = "spaceship_acceleration"
 convention = "XCT"
-ac_param = "handoff.thrust_direction"
-result = ["handoff.thrust"]
 
 [[place]]
 fields = ["tunables.star_capture_radius", "tunables.collision_radius", "tunables.collision_radius_half",
@@ -49,42 +42,30 @@ fields = ["tunables.star_capture_radius", "tunables.collision_radius", "tunables
 [[place]]
 routine = "torpedo_space_warpage"
 convention = "XCT"
-ac_param = "handoff.coordinate"
-result = ["handoff.acceleration"]
 
 [[place]]
 routine = "hyperspace_shots"
 convention = "XCT"
-result = ["handoff.hyperspace_shots"]
 
 [[place]]
 routine = "time_before_breakout"
 convention = "XCT"
-result = ["handoff.hyperspace_time"]
 
 [[place]]
 routine = "breakout_time"
 convention = "XCT"
-result = ["handoff.breakout_time"]
 
 [[place]]
 routine = "hyperfield_recharge_time"
 convention = "XCT"
-result = ["handoff.recharge_time"]
 
 [[place]]
 routine = "hyperspatial_displacement"
 convention = "XCT"
-ac_param = "handoff.jump_high"
-io_param = "handoff.jump_low"
-result = ["handoff.jump_high", "handoff.jump_low"]
 
 [[place]]
 routine = "hyperspatial_velocity"
 convention = "XCT"
-ac_param = "handoff.jump_high"
-io_param = "handoff.jump_low"
-result = ["handoff.jump_high", "handoff.jump_low"]
 
 [[place]]
 fields = ["tunables.hyperspatial_uncertainty", "random.number"]

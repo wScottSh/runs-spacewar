@@ -26,14 +26,10 @@ display = "dpy"
 
 [[inline]]
 routine = "inertia_x"
-ac_param = "handoff.acceleration"
-result = ["handoff.position"]
 shifts = "xct"
 
 [[inline]]
 routine = "inertia_y"
-ac_param = "handoff.acceleration"
-result = ["handoff.position"]
 shifts = "xct"
 
 [[place]]

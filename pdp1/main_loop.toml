@@ -91,13 +91,11 @@ io_reads = ["outline_setting.separate_outlines"]
 [[place]]
 routine = "read_control_boxes"
 convention = "JSP"
-result = ["handoff.control_word"]
 io = ["handoff.control_word"]
 
 [[place]]
 routine = "read_test_word"
 convention = "JSP"
-result = ["handoff.control_word"]
 io = ["handoff.control_word"]
 
 # |dx| is kept in a pool word (mt1) while AC computes |dy|.
