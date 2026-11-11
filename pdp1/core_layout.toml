@@ -14,6 +14,6 @@ machine = "variables"
 machine = "patch space"
 reserve = 0o200
 
-# The object table (mtb): pdp1/main_loop.toml, [table].
+# The object table (mtb), laid out field after field (pdp1/README.md).
 [[place]]
 table = true

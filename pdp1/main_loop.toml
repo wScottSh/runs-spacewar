@@ -21,13 +21,6 @@ repeat = "frame"
 [into]
 "ship_outlines.outline" = "outline_code.stroke"
 
-# The object table: field after field, each field's slots together, from
-# object_table (core_layout.c). Its Records are those whose fields have
-# cursors, in the text's order. The clearing loop's cursor is homed in its dzm.
-[table]
-at = "object_table"
-clear = "clearing"
-
 # The walk over the slots. The cursors are set after begin_frame; the
 # routine word's cursor is the index. A cursor homed here lives in the
 # address field of the first instruction of this unit that reads or writes

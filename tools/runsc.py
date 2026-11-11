@@ -510,7 +510,7 @@ SCHEMA = {
              "spell": _dict(_name, _dict(_name, _SPELLED)), "flags": _dict(_field, _int),
              "homes": _dict(_field, _one_of("table", "pointer")), "held_as_code": _list(_field),
              "code_words": _dict(_field, _int),
-             "addresses": _dict(_field, _one_of("after table")), "table": _SECTION,
+             "addresses": _dict(_field, _one_of("after table")),
              "walk": _SECTION,
              "streams": _dict(_name, _one_of("dpy", "hlt"))},
     "devices": {"console": _dict(_field, _DEVICE), "lights": _dict(_field, _int), "start": _PLACES},
@@ -518,7 +518,6 @@ SCHEMA = {
     "walk": {"set_after": _name, "index": _field, "homes": _list(_field), "home_in": _dict(_field, _name),
              "carry": _list(_name), "stray": _SECTION},
     "stray": {"after": _field, "cursor": _name},
-    "table": {"at": _name, "clear": _name},
     "routine": {"routine": _name, "convention": _one_of("JDA", "JSP", "XCT", "BLOCK"), "entry": _field,
                 "io_param": _field, "byname": _field, "result": _list(_field),
                 "io": _list(_LOCAL), "cells": _list(_field), "skips": lambda v: _list(_TEXT, 2)(v) and _field(v[0]) and _name(v[1]),
@@ -543,7 +542,7 @@ SCHEMA = {
 }
 # The keys each must hold.
 REQUIRED = {"unit": {"place"}, "inline": {"routine"}, "code": {"routine"},
-            "slots": {"range"}, "jsp_slot": {"at", "jump"}, "table": {"at"},
+            "slots": {"range"}, "jsp_slot": {"at", "jump"},
             "store": {"loaded"},
             "stray": {"after", "cursor"}, "start": {"at", "network"}}
 
@@ -567,8 +566,6 @@ def check_schema(path: Path, spec: dict):
     check_keys(path, spec.get("walk", {}), "walk", "[walk]")
     if "stray" in spec.get("walk", {}):
         check_keys(path, spec["walk"]["stray"], "stray", "[walk] stray")
-    if "table" in spec:
-        check_keys(path, spec["table"], "table", "[table]")
     for section in ("place", "inline", "code"):
         for p in spec.get(section, []):
             kind = section if section != "place" else next(
@@ -676,7 +673,9 @@ class Bindings:
             for f, where in spec.get("addresses", {}).items():
                 self.check_field(path, f)
                 self.addresses[f] = where
-            self.table |= spec.get("table", {})
+            if any(p.get("table") is True for p in spec.get("place", [])):
+                # the table's array and its clearing loop's cursor: C words only, never in the image
+                self.table |= {"at": "table_words", "clear": "table_clear"}
             for p in spec.get("place", []):
                 if "jsp_slot" in p:
                     self.jsp_slots[p["jsp_slot"]] = p
