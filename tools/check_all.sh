@@ -36,6 +36,8 @@ checks=(
   'PYTHONPATH=tools uv run -q python "$here/check_frame.py" 300 alone | grep -v fired'
   'PYTHONPATH=tools uv run -q python "$here/check_game.py" 3000 3000'
   'PYTHONPATH=tools uv run -q python "$here/check_minskytron.py" | tail -1'
+  # The spec states every decision; its examples must run on this evaluator.
+  'uv run -q python "${RUNS_SPEC:-$here/../../runs-spec}/tools/check_examples.py" "${RUNS_SPEC:-$here/../../runs-spec}" . | tail -1'
 )
 
 # Runs each command at once, then prints each one's output and time in order;

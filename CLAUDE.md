@@ -20,7 +20,7 @@ A commit that changes only Markdown files and `docs/` runs none of checks 1-4: n
 3. The purity report gains no line: `PYTHONPATH=tools uv run -q python tools/check_purity.py --against HEAD` exits 0. It allows a new line only where a Record just got its kind and revealed an impurity already there; the decisions row lists those.
 4. The PDP-1 declarations do not grow: `uv run -q python tools/check_declarations.py` exits 0. It counts entries, not lines: every scalar value and every list element of the TOML (`pdp1/DECLARATIONS`, below).
 5. A row in `docs/decisions.tsv` for each decision: what, why, evidence, result.
-6. Push each verified commit to main: `git push origin HEAD:main`, fast-forward only (rebase on `origin/main` first if it moved). Standing order from the user; no need to ask.
+6. Push each verified commit to main: `git push origin HEAD:main`, fast-forward only (rebase on `origin/main` first if it moved). Standing order from the user; no need to ask. The same holds for `../runs-spec` (`enduring-game-standard/runs-spec`): push each verified spec commit to its main without asking (user, 2026-11-11: "it's a general rule").
 
 ## Where a change goes
 
