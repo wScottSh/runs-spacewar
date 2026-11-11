@@ -12,17 +12,14 @@ held_as_code = ["explosion_cloud.scatter"]
 [homes]
 "explosion_cloud.spread" = "table"
 
-# The routine word: the calc routine's address, with the sign bit when the
-# object does not collide. The torpedo's is taken from a constant word
-# (lac (tcr); the others without the sign bit are built by law.
+# The routine word: the calc routine's address (the routine calc's match
+# runs for the member), with the sign bit when the object does not
+# collide. The torpedo's is taken from a constant word (lac (tcr); the
+# others without the sign bit are built by law.
 [spell.calc_routine]
-none = 0
-explosion = { routine = "explosion", sign = true }
-in_hyperspace = { routine = "in_hyperspace", sign = true }
-breakout = { routine = "breakout" }
-torpedo = { routine = "torpedo", literal = true }
-first_spaceship = { routine = "first_spaceship" }
-second_spaceship = { routine = "second_spaceship" }
+explosion = { sign = true }
+in_hyperspace = { sign = true }
+torpedo = { literal = true }
 
 [streams]
 display = "dpy"

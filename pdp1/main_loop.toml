@@ -79,12 +79,7 @@ stray = { after = "ship_flight.angle", cursor = "stray_cursor" }
 "objects.counter" = "other_counter_slot"
 "objects.cycles" = "other_cycles_slot"
 
-[spell.light]
-off = 0
-on = 1
-
 [spell.control_source]
-test_word = { routine = "read_test_word" }
 control_boxes = { routine = "control_word_routine" }
 
 [streams]

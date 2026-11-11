@@ -23,18 +23,6 @@ pool = ["spaceship.controls", "heading.sine", "heading.cosine", "spaceship.gravi
 "spaceship.rocket" = 6
 "pen.side" = 5
 
-[spell.rocket]
-off = 0
-firing = 1
-
-[spell.side]
-other = 0
-first = 1
-
-[spell.switch]
-off = 0
-on = 1
-
 # Cursors homed in this unit: the first instruction that reads or writes
 # the field (mom, mth, mco).
 [walk]

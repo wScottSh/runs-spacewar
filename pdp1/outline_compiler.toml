@@ -15,10 +15,6 @@ held_as_code = ["outline_code.stroke", "outline_code.back", "outline_compiler.st
 [flags]
 "outline_compiler.six" = 6
 
-[spell.six_code]
-store = 0
-restore = 1
-
 # The outline word the compiler reads is kept in the address field of the
 # instruction that reads it (ocg, lio .).
 [homes]

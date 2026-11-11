@@ -14,14 +14,6 @@ pool = ["central_star.slope_x", "central_star.slope_y"]
 [into]
 "magnitudes.cursor" = "star_catalog.words"
 
-[spell.half]
-first = 0
-mirrored = 1
-
-[spell.scan]
-looking = 0
-plotted = 1
-
 [[place]]
 routine = "central_star"
 convention = "JSP"

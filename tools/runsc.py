@@ -672,7 +672,7 @@ class Bindings:
                 if "store" in p:
                     self.check_field(path, p["store"])
                     self.stores[p["store"]] = {**p, "unit": path}
-            self.spelled |= spec.get("spell", {})
+            self.spelled |= {e: dict(ms) for e, ms in spec.get("spell", {}).items()}
             self.streams |= spec.get("streams", {})
             for f, n in spec.get("flags", {}).items():
                 self.check_field(path, f)
@@ -707,7 +707,34 @@ class Bindings:
             self.table["records"] = [r for r in self.prog.records if r in walked]
         self.registers |= {name for name, r in self.prog.records.items() if r.count is None and not r.stream
                            and not any(self.has_word(f"{name}.{f}") for f in r.fields)}
+        self.spell_by_default()
         self.check_names()
+
+    def spell_by_default(self):
+        """The word of each enum member no declaration spells. A member a
+        match runs a routine for is that routine's address: every match is a
+        jump through the field's word (dispatch), as hc1d's state word holds
+        the routine it goes on to (sett pfu, s1 / govia pfu). Any other is
+        its index in the enum, so a two-member enum is 0 and 1, as DDT holds
+        its typing state in program flag 1 (clf 1 / stf 1 / szf 1)."""
+        arms: dict[str, dict[str, str]] = {}
+        for r in self.prog.routines.values():
+            for s in walk(r.body):
+                if s[0] == "match":
+                    for member, body in s[2].items():
+                        if len(body) == 1 and body[0][0] == "run":
+                            enum = resolve(self.prog, member, field_type(self.prog, s[1]), s[3])
+                            arms.setdefault(enum, {})[member] = body[0][1]
+        for enum, members in self.prog.enums.items():
+            spelled = self.spelled.setdefault(enum, {})
+            for k, m in enumerate(members):
+                how, run = spelled.get(m), arms.get(enum, {}).get(m)
+                if how is None:
+                    spelled[m] = {"routine": run} if run else k
+                elif isinstance(how, dict) and "routine" not in how:
+                    if not run:
+                        raise BindError(f"spell.{enum}.{m}: no match runs a routine for it, so no routine spells it")
+                    spelled[m] = {"routine": run, **how}
 
     def has_word(self, dotted: str) -> bool:
         """The declarations give the field a place: a word, an entry word, a
@@ -788,9 +815,10 @@ class Bindings:
                     if m not in self.prog.enums[enum]:
                         raise BindError(f"{path.name}: spell.{enum}: {m!r} is no member of {enum}")
                     if isinstance(how, dict):
-                        if set(how) - {"routine", "sign", "literal"} or "routine" not in how:
+                        if set(how) - {"routine", "sign", "literal"}:
                             raise BindError(f"{path.name}: spell.{enum}.{m}: a routine, sign, literal")
-                        if how["routine"] not in self.prog.routines and how["routine"] not in self.jsp_slots:
+                        if "routine" in how and how["routine"] not in self.prog.routines \
+                                and how["routine"] not in self.jsp_slots:
                             raise BindError(f"{path.name}: spell.{enum}.{m}: {how['routine']!r} is no routine")
                     elif not isinstance(how, int):
                         raise BindError(f"{path.name}: spell.{enum}.{m}: a number or a routine")
