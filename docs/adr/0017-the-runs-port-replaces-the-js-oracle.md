@@ -1,6 +1,6 @@
 # The RUNS port and its compiler replace the JS Oracle harness
 
-**Amended 2026-11-11.** This ADR calls the RUNS text "the RUNS port", the PDP-1 declarations "a PDP-1 binding", and `tools/runs.py` "a reference evaluator". In EGS terms the RUNS text is a conversion, not a Port, which swaps Realization Processors under an untouched Rules region (`../.github/CONTEXT.md` 313-339); "binding" is retired for the declarations (`CONTEXT.md`, Declarations); and a reference implementation is a body blessed by ID on the commons (`../.github/CONTEXT.md` 479-487). Its decision is unchanged. The vision governs.
+**Amended 2026-11-11.** This ADR calls the RUNS text "the RUNS port", the PDP-1 declarations "a PDP-1 binding", and `tools/runs.py` "a reference evaluator". In EGS terms the RUNS text is a conversion, not a Port, which swaps Realization Processors under an untouched Rules region (`../.github/CONTEXT.md` 313-339); "binding" is retired for the declarations (`CONTEXT.md`, Declarations); and a reference implementation is a body blessed by ID on the commons (`../.github/CONTEXT.md` 466-474). Its decision is unchanged. The vision governs.
 
 Status: accepted (supersedes ADR-0009, ADR-0012, ADR-0013, ADR-0015 and ADR-0016; amends ADR-0001, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0008, ADR-0010, ADR-0011 and ADR-0014)
 

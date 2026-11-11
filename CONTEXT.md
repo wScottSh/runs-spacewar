@@ -87,8 +87,8 @@ _Avoid_: Substrate (EGS keeps the word for the RUNS source itself, `../.github/C
 _Avoid_: compiler
 
 **Evaluator**:
-The program that parses the RUNS source, checks it statically, then runs it: a runtime in the sense of `../.github/CONTEXT.md` 474-476, not a hand-compilation.
-_Avoid_: interpreter, emulator, reference implementation (`../.github/CONTEXT.md` 479-487 keeps that for a blessed body)
+The program that parses the RUNS source, checks it statically, then runs it: a runtime in the sense of `../.github/CONTEXT.md` 461-463, not a hand-compilation.
+_Avoid_: interpreter, emulator, reference implementation (`../.github/CONTEXT.md` 466-474 keeps that for a blessed body)
 
 **Compiler**:
 `runsc`. It turns the RUNS source and the Declarations into the Compiled image, by way of the lift's C dialect (`docs/c-lift/README.md`).
