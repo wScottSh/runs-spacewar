@@ -31,17 +31,31 @@ network frame                                               # ml0
   # The restart checks: while both ships fly on their own calc routines and
   # one still has torpedoes, the restart delay is held; otherwise it counts
   # down, and then the survivors score.
-  if objects.routine[0] == first_spaceship and objects.routine[1] == second_spaceship and (1 + ship_flight.torpedoes[0] < 0 or 1 + ship_flight.torpedoes[1] < 0):
-    run torpedo_life                                        # md1: xct tlf
-    run hold_restart
+  if objects.routine[0] == first_spaceship and objects.routine[1] == second_spaceship:
+    run torpedoes_left(0)                                   # law 1; add ntr
+    if handoff.torpedoes_left < 0:
+      run hold_restart_for_torpedoes
+    else:
+      run torpedoes_left(1)                                 # law 1; add ntr 1
+      if handoff.torpedoes_left < 0:
+        run hold_restart_for_torpedoes
+      else:
+        run restart_countdown
+  else:
+    run restart_countdown
+
+network hold_restart_for_torpedoes                          # md1
+  run torpedo_life                                          # xct tlf
+  run hold_restart
+  run object_loop
+
+network restart_countdown                                   # mdn
+  run count_down_restart                                    # count \ntd, ml1
+  if frame.restart_delay < 0:
     run object_loop
   else:
-    run count_down_restart                                  # mdn: count \ntd, ml1
-    if frame.restart_delay < 0:
-      run object_loop
-    else:
-      run score_survivors
-      run between_games
+    run score_survivors
+    run between_games
 
 # The object loop (ml1): each active object that can collide is tested
 # against every later one that can, then its calc routine runs and its time

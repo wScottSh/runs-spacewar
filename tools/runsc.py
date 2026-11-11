@@ -512,7 +512,7 @@ SCHEMA = {
              "code_words": _dict(_field, _int),
              "addresses": _dict(_field, _one_of("after table")),
              "walk": _SECTION,
-             "streams": _dict(_name, _one_of("dpy", "hlt"))},
+             "streams": _dict(_name, _one_of("dpy", "hlt")), "inverse_skip": _dict(_field, _name)},
     "devices": {"console": _dict(_field, _DEVICE), "lights": _dict(_field, _int), "start": _PLACES},
     "start": {"at": _int, "network": _name, "tape": _BOOL},
     "walk": {"set_after": _name, "index": _field, "homes": _list(_field), "home_in": _dict(_field, _name),
@@ -631,6 +631,8 @@ class Bindings:
         self.bases: dict[str, Path] = {}        # collection field -> the unit laying out a word of its address
         self.shared: dict[str, str] = {}        # field -> the field whose word it lives in
         self.compiled: list[tuple] = []         # (Function, its statements as run) of every routine compiled
+        self.inverse_skips: dict[str, str] = {} # sign-tested field -> the block its failure jumps to
+        self.inverse_skipped: dict[str, set] = {}  # such a field -> where the test it names stands
         self.device_file(next((p for p in paths if p.name == DEVICES), None))
         for word in ("constants", "variables"):
             # a program with no literal constant, or no pool word, has none
@@ -648,6 +650,11 @@ class Bindings:
                 self.check_field(path, other)
                 self.shared[f] = other
             self.registers |= set(spec.get("registers", []))
+            for f, block in spec.get("inverse_skip", {}).items():
+                self.check_field(path, f)
+                if block not in self.prog.routines:
+                    raise BindError(f"{path.name}: inverse_skip {f}: {block!r} is no routine")
+                self.inverse_skips[f] = block
             self.carried |= set(spec.get("walk", {}).get("carry", []))
             for f in spec.get("pool", []):
                 self.check_field(path, f)
@@ -3285,6 +3292,16 @@ class Function:
         the first arm jumps to them. A guard of and and or is laid out as
         jumps. When an arm ends in a jump, what follows the if is its else."""
         _, arms, other, where = s
+        if first is None and (field := self.inverse_skip(s)) is not None:
+            # declared (inverse_skip): the test jumps to the else when it
+            # fails, with its own skip and the i bit flipped, and falls into the arm
+            before = dict(self.known)
+            self.emit(depth, f"if (SKIPNOT({self.cond(arms[0][0], negate=True)}))")
+            self.body(other, depth)
+            self.known = dict(before)
+            self.block(arms[0][1], depth)
+            self.binds.inverse_skipped.setdefault(field, set()).add(where)
+            return
         if len(arms) == 1 and other and (merged := self.shared_tail(other, arms[0][1])) is not None:
             label, rest = merged
             self.emit(depth, f"if ({first or self.cond(arms[0][0])})")
@@ -3311,6 +3328,25 @@ class Function:
             self.body(other, depth)
             ends.append(self.known)
         self.known = {f: v for f, v in before.items() if all(end.get(f) == v for end in ends)}
+
+    def inverse_skip(self, s) -> str | None:
+        """The field of the declared inverse skip that names this if: its
+        guard reads the field, and its else runs the declared block. It must
+        be one sign test of that field whose else is that one jump, and
+        whose arm ends in a jump."""
+        _, arms, other, where = s
+        for f, block in self.binds.inverse_skips.items():
+            if not (other and other[0][0] in ("call", "goto") and other[0][1] == block
+                    and any(self.mentions_field(c, f) for c, _ in arms)):
+                continue
+            c = arms[0][0]
+            if not (len(arms) == 1 and c[0] == "bin" and c[1] in ("<", ">=") and c[3] == ("num", 0)
+                    and dotted_of(c[2]) == f and len(other) == 1 and self.ends_in_jump(other)
+                    and self.ends_in_jump(arms[0][1])):
+                raise BindError(f"{where}: inverse_skip {f} = {block!r} names a test that is not one sign "
+                                f"test of {f} whose else is one jump to {block} and whose arm ends in a jump")
+            return f
+        return None
 
     def ends_in_jump(self, stmts: list) -> bool:
         """Control cannot run past the statements: they end in a return, a
@@ -4468,6 +4504,10 @@ def write_tree(prog: runs.Program, out: Path) -> Path:
         units.append(f'[[unit]]\nc = "{u["c"]}"\nprefix = "{u["prefix"]}"\n')
     if bound:
         raise BindError(f"bindings replace no lift unit: {sorted(bound)}")
+    if unused := sorted(set(binds.inverse_skips) - set(binds.inverse_skipped)):
+        raise BindError(f"inverse_skip {unused}: names no test the RUNS compiles")
+    if many := sorted(f for f, tests in binds.inverse_skipped.items() if len(tests) > 1):
+        raise BindError(f"inverse_skip {many}: names one test, not {sorted(binds.inverse_skipped[many[0]])}")
     SharedWords(binds, binds.compiled).check()
     toml = out / "lift.toml"
     head = "".join(f'{k} = "{ROOT / v if k in ("macro1", "macro1_src", "oracle_listing") else v}"\n'

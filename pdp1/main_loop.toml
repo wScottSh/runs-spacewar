@@ -9,6 +9,12 @@ pool = ["pacing.spare_time", "frame.restart_delay", "frame.objects_seen",
 # The Network the PDP-1 runs again whenever a firing ends: the host's loop.
 repeat = "frame"
 
+# The second restart check's torpedo test (md1 - 2) jumps to mdn when the
+# ship has none left, spelled spa i, not the sma a test falling into its
+# arm takes: the 1962 programmer's choice of word for the same condition.
+[inverse_skip]
+"handoff.torpedoes_left" = "restart_countdown"
+
 # The outlines' code lies in the free core right after the table (nnn),
 # up to the star catalog.
 [addresses]

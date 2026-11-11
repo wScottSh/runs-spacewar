@@ -10,6 +10,13 @@ processor hold_restart                                      # md1: twice a torpe
   writes: frame
   set frame.restart_delay = handoff.torpedo_life << 1
 
+# Whether a ship has a torpedo left to fire: 1 + its count, which counts
+# up, is below 0 while it has.
+processor torpedoes_left(ship)
+  reads: ship_flight
+  writes: handoff
+  set handoff.torpedoes_left = 1 + ship_flight.torpedoes[ship]
+
 processor count_down_restart
   writes: frame
   set frame.restart_delay = frame.restart_delay + 1
