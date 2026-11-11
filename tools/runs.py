@@ -7,6 +7,10 @@ The evaluator enforces the paradigm, not just the syntax. The topology is a
 Petri net: Records are places, Processors are transitions.
 - a processor reads only the Records it declares (reads or writes), and
   writes only the ones it declares under writes; it fires no other routine;
+- a processor or network with Ports (in, out, inout) names no Record: each
+  run wires every Port to one field, and the run fires a copy of the
+  routine with each Port replaced by its field, one copy a wiring. A
+  network's scratch (owns) is one field only it touches;
 - a network writes nothing: it only fires processors and networks, chooses
   with guards that read Records, and loops with a bound and a guarded exit;
 - nothing calls a routine from an expression. The only calls are the word's
@@ -418,6 +422,17 @@ def statement(line: Line):
             c.take()
             args.append(expr(c))
         return ("emit", t[1], args, where)
+    if head == "run" and line.children:
+        if len(t) > 2:
+            raise RunsError(f"{where}: a run passes wires, one a line, and nothing after its routine's name")
+        wires = {}
+        for w in line.children:
+            if len(w.toks) < 3 or w.toks[1] != ":":
+                raise RunsError(f"{w.where}: a wire is port: field")
+            if w.toks[0] in wires:
+                raise RunsError(f"{w.where}: {t[1]}'s {w.toks[0]} is wired twice")
+            wires[w.toks[0]] = whole(w.toks[2:], w.where)
+        return ("wire", t[1], wires, where)
     if head == "run":
         c = Cursor(t[2:], where)
         args = []
@@ -451,6 +466,17 @@ class Record:
     fields: dict[str, tuple[str, object]]          # name: (type, initial expr)
     stream: bool = False
     side: str | None = None                        # game, interface or presentation
+    owner: str | None = None                       # the Network whose scratch it is (owns)
+
+
+@dataclass(frozen=True)
+class Port:
+    """One value of a Processor's or Network's contract: the Network that
+    runs it wires the Port to one field. `owns` is a Network's scratch."""
+    direction: str                                 # in, out, inout, owns
+    name: str
+    type: str                                      # word, an enum, insn
+    count: int | None = None                       # word[N]: the whole field of a collection
 
 
 @dataclass
@@ -462,6 +488,8 @@ class Routine:
     reads: set[str] = field(default_factory=set)
     writes: set[str] = field(default_factory=set)
     requires: list = field(default_factory=list)
+    ports: dict[str, Port] = field(default_factory=dict)
+    owns: dict[str, Port] = field(default_factory=dict)
 
 
 @dataclass
@@ -471,6 +499,8 @@ class Program:
     routines: dict[str, Routine] = field(default_factory=dict)
     instructions: set[str] = field(default_factory=set)     # type insn: the instructions the game reaches
     display: str | None = None                              # type insn: the stream dpy plots on
+    templates: dict[str, Routine] = field(default_factory=dict)    # the routines with Ports, as written
+    copies: dict[str, tuple[str, tuple]] = field(default_factory=dict)  # copy -> (template, its wiring)
 
     def member(self, name: str) -> str | None:
         return next((e for e, ms in self.enums.items() if name in ms), None)
@@ -522,6 +552,217 @@ def initial(c: Line, count: int | None):
 
 
 SIDES = ("game", "interface", "presentation")
+PORT_HEADERS = ("in", "out", "inout", "owns")
+
+
+def port_of(c: Line) -> Port:
+    t = c.toks
+    if len(t) == 4:
+        return Port(t[0], t[1], t[3])
+    if len(t) == 7 and t[4] == "[" and t[6] == "]" and t[5].isdigit():
+        return Port(t[0], t[1], t[3], int(t[5], 8) if t[5].startswith("0") else int(t[5]))
+    raise RunsError(f"{c.where}: a Port is `direction name: kind`, the kind a type or type[N]")
+
+
+def owned_record(network: str) -> str:
+    """The Record of a Network's scratch: its name is no name the text can
+    write, so nothing outside the Network touches it."""
+    return f"{network}.owns"
+
+
+def substitute_names(tree, names: dict):
+    if isinstance(tree, tuple):
+        if len(tree) == 2 and tree[0] == "name" and tree[1] in names:
+            return names[tree[1]]
+        return tuple(substitute_names(x, names) for x in tree)
+    if isinstance(tree, list):
+        return [substitute_names(x, names) for x in tree]
+    if isinstance(tree, dict):
+        return {k: substitute_names(v, names) for k, v in tree.items()}
+    return tree
+
+
+def map_runs(tree, f):
+    """The tree with each run and wire statement replaced by f of it."""
+    if isinstance(tree, tuple) and tree[:1] in (("run",), ("wire",)):
+        return f(tree)
+    if isinstance(tree, tuple):
+        return tuple(map_runs(x, f) for x in tree)
+    if isinstance(tree, list):
+        return [map_runs(x, f) for x in tree]
+    if isinstance(tree, dict):
+        return {k: map_runs(v, f) for k, v in tree.items()}
+    return tree
+
+
+def text_of(e) -> str:
+    if e[0] == "name":
+        return e[1]
+    if e[0] == "num":
+        return str(e[1])
+    if e[0] == "field":
+        return f"{text_of(e[1])}.{e[2]}"
+    if e[0] == "index":
+        return f"{text_of(e[1])}[{text_of(e[2])}]"
+    if e[0] == "bin":
+        return f"{text_of(e[2])} {e[1]} {text_of(e[3])}"
+    return repr(e)
+
+
+def kind_text(typ: str, count: int | None) -> str:
+    return typ if count is None else f"{typ}[{count:o}]"
+
+
+def wired_kind(prog: Program, e) -> tuple[str, int | None] | None:
+    """The kind of the field a wire names: one slot, or the one word of a
+    single Record, is its type; a whole field of a collection is type[N].
+    None: no field."""
+    base = e[1] if e[0] == "index" else e
+    if not (base[0] == "field" and base[1][0] == "name" and base[1][1] in prog.records):
+        return None
+    rec = prog.records[base[1][1]]
+    if rec.stream or base[2] not in rec.fields or e[0] == "index" and rec.count is None:
+        return None
+    return rec.fields[base[2]][0], None if e[0] == "index" else rec.count
+
+
+def base_name(e) -> str | None:
+    """The Port a wire or a target names, whole or at a slot."""
+    if e[0] == "index":
+        e = e[1]
+    return e[1] if e[0] == "name" else None
+
+
+def check_template(prog: Program, t: Routine) -> None:
+    """A routine with Ports names no Record: its Ports are its contract."""
+    if t.reads or t.writes:
+        raise RunsError(f"{t.name}: its Ports are its contract; it declares no reads: or writes:")
+    if t.params:
+        raise RunsError(f"{t.name}: a routine with Ports takes no slot; its wires choose the field")
+    if named := sorted(mentions([t.body, t.requires], set(prog.records))):
+        raise RunsError(f"{t.name} names the Record {named[0]}; a routine with Ports touches only its Ports")
+    own = set(t.ports) | set(t.owns)
+    for s in walk_statements(t.body):
+        if s[0] == "for" and s[1] in own:
+            raise RunsError(f"{s[-1]}: {s[1]} is a Port of {t.name}, not a local")
+        if s[0] in ("let", "set"):
+            for x in s[1][1] if s[1][0] == "tuple" else [s[1]]:
+                name = base_name(x)
+                if s[0] == "let" and name in own:
+                    raise RunsError(f"{s[-1]}: {name} is a Port of {t.name}, not a local")
+                if s[0] == "set" and name in t.ports and t.ports[name].direction == "in":
+                    raise RunsError(f"{s[-1]}: {t.name} sets {name}, an in Port")
+
+
+def expand_ports(prog: Program) -> None:
+    """Each run of a routine with Ports runs a copy of it: its text with each
+    Port replaced by the field the run wires to it, as the original's macros
+    were expanded at each use (`diff` once an axis). One copy a distinct
+    wiring; a Network's Ports wired on to its runs resolve to the fields of
+    the Network that runs it. A copy takes the names its wires' slots use
+    (slot) from the routine that runs it."""
+    for r in prog.routines.values():
+        if r.owns and r.kind != "network":
+            raise RunsError(f"{r.name}: only a Network owns scratch")
+        for p in [*r.ports.values(), *r.owns.values()]:
+            if p.name in prog.records:
+                raise RunsError(f"{r.name}: its {p.direction} {p.name} has a Record's name")
+            if p.type not in ("word", "insn") and p.type not in prog.enums:
+                raise RunsError(f"{r.name}: {p.name}: no kind {p.type}")
+            if p.direction == "owns" and p.count is not None:
+                raise RunsError(f"{r.name}: owns {p.name}: scratch is one field, not {kind_text(p.type, p.count)}")
+        if r.owns:
+            rec = owned_record(r.name)
+            prog.records[rec] = Record(rec, None, {p.name: (p.type, None) for p in r.owns.values()}, owner=r.name)
+    prog.templates = {n: r for n, r in prog.routines.items() if r.ports}
+    for t in prog.templates.values():
+        check_template(prog, t)
+    prog.routines = {n: r for n, r in prog.routines.items() if not r.ports}
+    keys: dict[str, str] = {}
+    taken = set(prog.routines) | set(prog.templates)
+
+    def fill(owner: Routine, s):
+        """A run of a routine with Ports, every Port wired: an omitted wire
+        is the Port or scratch of the same name of the routine that runs it."""
+        where = s[-1]
+        t = prog.templates.get(s[1])
+        if t is None:
+            if s[0] == "wire":
+                raise RunsError(f"{where}: {s[1]} has no Ports to wire")
+            return s
+        if s[0] == "run" and s[2]:
+            raise RunsError(f"{where}: {t.name} has Ports: a run wires them and passes no slot")
+        given = s[2] if s[0] == "wire" else {}
+        if unknown := sorted(set(given) - set(t.ports)):
+            raise RunsError(f"{where}: {t.name} has no Port {unknown[0]}")
+        wires = {}
+        for name, port in t.ports.items():
+            if name in given:
+                wires[name] = given[name]
+            elif name in owner.ports or name in owner.owns:
+                wires[name] = ("name", name)
+            else:
+                raise RunsError(f"{where}: run {t.name}: its Port {name} is not wired, and {owner.name} "
+                                f"has no Port or scratch {name}")
+            outer = owner.ports.get(base_name(wires[name]))
+            if outer is not None and outer.direction == "in" and port.direction != "in":
+                raise RunsError(f"{where}: run {t.name}: {name} is {port.direction}, wired to {owner.name}'s "
+                                f"in Port {outer.name}")
+        return ("wire", t.name, wires, where)
+
+    def made(s, stack: tuple):
+        if s[0] == "run":
+            return s
+        _, name, wires, where = s
+        t = prog.templates[name]
+        for p, e in wires.items():
+            port = t.ports[p]
+            got = wired_kind(prog, e)
+            if got is None:
+                raise RunsError(f"{where}: run {name}: {p} is wired to {text_of(e)}, which is no field")
+            if got != (port.type, port.count):
+                raise RunsError(f"{where}: run {name}: {p} is {kind_text(port.type, port.count)}, "
+                                f"wired to {text_of(e)}, {kind_text(*got)}")
+        free = []
+        for e in wires.values():
+            for n in sorted(names_read(e) - set(prog.records)):
+                if n not in free and prog.member(n) is None:
+                    free.append(n)
+        key = repr((name, sorted(wires.items())))
+        if key not in keys:
+            if name in stack:
+                raise RunsError(f"{name} fires itself: a recursion is a stack Record and a bounded Network loop")
+            if clash := sorted(set(free) & (names_read(t.body) - set(t.ports))):
+                raise RunsError(f"{where}: run {name}: its wires name {clash[0]}, which {name} names itself")
+            k = 1
+            while f"{name}_{k}" in taken:
+                k += 1
+            copy = f"{name}_{k}"
+            taken.add(copy)
+            keys[key] = copy
+            prog.copies[copy] = (name, tuple(wires.items()))
+            r = Routine(t.kind, copy, free, expanded(t, t.body, wires, stack + (name,)),
+                        requires=substitute_names(t.requires, wires))
+            if r.kind == "processor":
+                read, written = touches(prog, r)
+                r.reads, r.writes = read - written, written
+            prog.routines[copy] = r
+        return ("run", keys[key], [("name", n) for n in free], where)
+
+    def expanded(owner: Routine, body: list, wires: dict, stack: tuple) -> list:
+        names = {**wires, **{o: ("field", ("name", owned_record(owner.name)), o) for o in owner.owns}}
+        body = substitute_names(map_runs(body, lambda s: fill(owner, s)), names)
+        return map_runs(body, lambda s: made(s, stack))
+
+    for r in list(prog.routines.values()):
+        r.body = expanded(r, r.body, {}, (r.name,))
+    for rec in prog.records.values():
+        if rec.owner is not None:
+            touching = [r.reads | r.writes for r in prog.routines.values()
+                        if r.kind == "processor" and rec.name in r.reads | r.writes]
+            shown = touching and all(any(prog.records[x].side == "presentation" for x in t) for t in touching)
+            rec.side = "presentation" if shown else "game"
+
 
 
 def load(paths: list[Path]) -> Program:
@@ -548,7 +789,12 @@ def load(paths: list[Path]) -> Program:
                 body = []
                 headers = ("reads", "writes", "requires")
                 for c in line.children:
-                    if c.toks[0] in headers and c.toks[1:2] == [":"]:
+                    if c.toks[0] in PORT_HEADERS and c.toks[2:3] == [":"]:
+                        port = port_of(c)
+                        if port.name in r.ports or port.name in r.owns:
+                            raise RunsError(f"{c.where}: {r.name} names {port.name} twice")
+                        (r.owns if port.direction == "owns" else r.ports)[port.name] = port
+                    elif c.toks[0] in headers and c.toks[1:2] == [":"]:
                         if c.toks[0] == "requires":
                             r.requires.append(whole(c.toks[2:], c.where))
                         else:
@@ -561,6 +807,7 @@ def load(paths: list[Path]) -> Program:
                 prog.routines[r.name] = r
             else:
                 raise RunsError(f"{where}: unknown declaration {kind!r}")
+    expand_ports(prog)
     return prog
 
 
@@ -1114,7 +1361,7 @@ def check_inputs(prog: Program, n: Routine, inside: set[str]) -> None:
     """A field with no initial value comes in from outside the game: a top
     Network whose routines read its Record declares it under reads:."""
     unknown = {name for name, r in prog.records.items()
-               if not r.stream and any(e is None for _, e in r.fields.values())}
+               if not r.stream and r.owner is None and any(e is None for _, e in r.fields.values())}
     for name in sorted(inside):
         r = prog.routines[name]
         for rec in sorted(reads_of(r.body, unknown) - n.reads):

@@ -633,7 +633,13 @@ class Bindings:
         self.compiled: list[tuple] = []         # (Function, its statements as run) of every routine compiled
         self.inverse_skips: dict[str, str] = {} # sign-tested field -> the block its failure jumps to
         self.inverse_skipped: dict[str, set] = {}  # such a field -> where the test it names stands
+        if owned := sorted(r.owner for r in prog.records.values() if r.owner):
+            raise BindError(f"network {owned[0]}: owned scratch not compiled yet: no declaration gives it a word")
         self.device_file(next((p for p in paths if p.name == DEVICES), None))
+        for path, spec in self.specs.items():
+            for section in ("place", "inline"):
+                if section in spec:
+                    spec[section] = [q for p in spec[section] for q in self.copies_of(path, section, p)]
         for word in ("constants", "variables"):
             # a program with no literal constant, or no pool word, has none
             if sum(p.get("machine") == word for s in self.specs.values() for p in s.get("place", [])) > 1:
@@ -719,6 +725,20 @@ class Bindings:
             p["returns"] = "io" if self.bound[p["jump"]].returns() == "io_word" else "ac"
         self.spell_by_default()
         self.check_names()
+
+    def copies_of(self, path: Path, section: str, p: dict) -> list[dict]:
+        """A declaration that names a routine with Ports declares each copy of
+        it. One laid out at each run (inline) lays out every copy; a called
+        subroutine is one routine, so all its runs share one wiring."""
+        name = p.get("routine")
+        if name not in self.prog.templates:
+            return [p]
+        copies = [c for c, (t, _) in self.prog.copies.items() if t == name]
+        if section == "place" and len(copies) != 1:
+            wirings = [", ".join(f"{port}: {runs.text_of(e)}" for port, e in self.prog.copies[c][1]) for c in copies]
+            raise BindError(f"{path.name}: {name} is one called routine, but its runs wire it "
+                            f"{len(copies)} ways: {wirings}")
+        return [{**p, "routine": c} for c in copies]
 
     def register_passing(self):
         """What a called Processor with no entry word takes and gives in AC

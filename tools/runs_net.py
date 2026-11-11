@@ -56,7 +56,8 @@ def main() -> int:
             continue
         touched = {kinds.get(x) for x in r.reads | r.writes}
         out["processors"].append({
-            "name": n, "file": home.get(n), "params": r.params,
+            "name": n, "file": home.get(prog.copies[n][0] if n in prog.copies else n), "params": r.params,
+            "template": prog.copies[n][0] if n in prog.copies else None,
             "side": ("presentation" if n in shown else "game") if any(kinds.values()) else None,
             "mixed": {"game", "presentation"} <= touched,
             "reads": sorted(r.reads - r.writes), "writes": sorted(r.writes)})
