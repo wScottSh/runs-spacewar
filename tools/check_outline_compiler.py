@@ -1,5 +1,5 @@
 """The outline compiler of outlines.runs against SIMH running the oracle
-image's oc, word for word: the strokes it decodes, each spelled as the
+image's oc, word for word: the strokes it decodes, each encoded as the
 words its member's arm of draw_outline compiles to (its TEMPLATE).
 
 1. One outline at a time: the needle and the wedge from the tape, and

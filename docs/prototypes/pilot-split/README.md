@@ -10,7 +10,7 @@ Networks share.
 | `multiply_net` | `multiply` a Network: `magnitude` x2, `multiply_steps`, `copy` x2, `exclusive_or`, `negate_double`; owns `high`, `signs` | `check_multiply` 21453/21453 mpy and imp | MATCH |
 | `arith_net` | also `divide` a Network: `overflows`, `magnitude`, `copy` x6, `negate_double`, `subtract`, `divide_steps`, `remainder_bit`, `negate` x2, `exclusive_or`, `fits`; owns `high` | `check_divide` 27224/27224 dvd (13799 overflow, 13425 fit), 27227/27227 idv | MATCH |
 | `inertia_split`, `OWNED=1 DECL=drift` | `inertia` a Network: `sum`, `pass`, `drift`; owns `v` | | MATCH |
-| `sqrt_net` | `multiply_net`, and `square_root` a Network over a loop with `break` and nested `if`s, no `continue`: `square_root_start`, `increment` x2, `double`, `take_two_bits`, `copy` x2, `trial`, `negate`; owns `input_bits` (IO), `next` | not rerun on this text | differs at 00276: want 600255, got 600303 |
+| `sqrt_net` | `multiply_net`, and `square_root` a Network over a loop with `break` and nested `if`s, no `continue`: `square_root_start`, `increment` x2, `double`, `take_two_bits`, `copy` x2, `trial`, `negate`; owns `input_bits` (IO), `next` | not rerun on this source | differs at 00276: want 600255, got 600303 |
 | `sine_copies` | the series' moves as one `copy`, 6 wirings | | MATCH |
 | `sine_atoms` | also the coefficients through one `add`, read from a constant Record | | refused: `sine_constants.c1 has no data word` |
 | `inertia_split`, `DECL=pieces` | `accumulate` + `drift`, no scratch: `drift` rereads the velocity | | 1 word longer a use (6 uses +6, 2 uses +2) |
@@ -30,7 +30,7 @@ the top of the routine (the first build declared `word next` three times, shadow
 and still built the image).
 
 Square root does not build the image today. A third change let a Network loop
-`continue`, as the original jumps back to `sq3` mid-body; that text built MATCH, and
+`continue`, as the original jumps back to `sq3` mid-body; that source built MATCH, and
 the change was reverted, because a bounded loop has no `break` or `continue`
 (`../../../../.github/CONTEXT.md` 344-347). `sqrt_net.txt` now nests the rest of the body under the opposite
 guards, with `if` only. It builds an image that differs at 00276 (want 600255, got
@@ -39,13 +39,13 @@ the original jumps straight to the loop head at `sq3`. Matching it needs a layou
 in runsc (the nested test jumping back to the head) that no second program in the
 repo's sources shows.
 
-The text has to say what the original did. Two first drafts differed from the image,
+The source has to say what the original did. Two first drafts differed from the image,
 and both were wiring mistakes, not compiler gaps. `magnitude` negated its output in
 place, where the original negates in AC and stores once. `negate_double` negated `high`
 after the sign test's xor had taken AC, where the original reloads the partial
 product. Inertia's reload was the same kind of mistake: the new velocity is scratch.
 
-Planted defects: square root's `if next > 0` made `>= 0`, on the earlier text with
+Planted defects: square root's `if next > 0` made `>= 0`, on the earlier source with
 `continue`, gives 29967 of 65536 differing; multiply's second `magnitude` wired to `entry` gives 1496 of 1653
 calls differing; divide's remainder-sign guard flipped gives 7346 of 7727 differing in
 the Evaluator, and the image differs at 00366 (`spi i` became `spi`).

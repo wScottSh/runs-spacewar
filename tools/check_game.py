@@ -119,7 +119,7 @@ class Game:
         return "ex " + ",".join(f"{p[3]:o}" for p in self.places) + ",PF,AC,IO"
 
     def decode(self, values: dict) -> dict:
-        """SIMH's core as Records. A word no member spells (cwg before the
+        """SIMH's core as Records. A word no member encodes (cwg before the
         start sets it) is unknown."""
         state: dict = {}
         for rec, fld, slot, at in self.places:

@@ -10,7 +10,7 @@ pool = ["pacing.spare_time", "frame.restart_delay", "frame.objects_seen",
 repeat = "frame"
 
 # The second restart check's torpedo test (md1 - 2) jumps to mdn when the
-# ship has none left, spelled spa i, not the sma a test falling into its
+# ship has none left, encoded spa i, not the sma a test falling into its
 # arm takes: the 1962 programmer's choice of word for the same condition.
 [inverse_skip]
 "handoff.torpedoes_left" = "restart_countdown"
@@ -47,7 +47,7 @@ home_in = { "objects.cycles" = "charge_time" }
 carry = ["draw_outline"]
 stray = { after = "ship_flight.angle", cursor = "stray_cursor" }
 
-[spell.control_source]
+[encoding.control_source]
 control_boxes = { routine = "control_word_routine" }
 
 [streams]

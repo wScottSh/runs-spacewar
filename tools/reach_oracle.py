@@ -253,7 +253,7 @@ TESTS = {"SZA", "SMA", "SPA", "SAD", "SAS"}
 def arithmetic(op: str, s: Step, operand: int | None, after: int, site: int, seen: Seen) -> None:
     """The word's machine behavior at one instruction: where the PDP-1's
     result is not the integer result, or depends on how a negative number
-    is spelled in bits. Also checks the tool's model of the instruction
+    is encoded in bits. Also checks the tool's model of the instruction
     against the AC SIMH shows after it."""
     kinds = seen.arithmetic[site]
     a = runs.W(s.ac)

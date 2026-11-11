@@ -7,11 +7,11 @@ Spacewar! 3.1 (MIT, 1962) written in RUNS, verbatim: the exact game over every s
 ## Layout
 
 - `runs/` is the game. Records and Networks are in `*.runs`, Processors in `*.runs-prim`.
-- `pdp1/` holds the PDP-1 declarations, the half of the PDP-1 package that never runs: how the PDP-1 stores and calls what the RUNS text states. They hold only choices that play cannot observe. `pdp1/README.md` states the contract.
+- `pdp1/` holds the PDP-1 declarations, the half of the PDP-1 package that never runs: how the PDP-1 stores and calls what the RUNS source states. They hold only choices that play cannot observe. `pdp1/README.md` states the contract.
 - `tools/runs.py` is the Evaluator. It parses RUNS, checks it, and runs it.
-- `tools/runsc.py` compiles the RUNS text and the declarations back to the original tape image, byte for byte. It emits the lift's C dialect, and `tools/pdp1cc` compiles that.
+- `tools/runsc.py` compiles the RUNS source and the declarations back to the original tape image, byte for byte. It emits the lift's C dialect, and `tools/pdp1cc` compiles that.
 - `tools/check_*.py` compare each RUNS routine, run by the evaluator, with the original running in the SIMH PDP-1 simulator.
-- `tools/check_compiled.py` changes the RUNS text and the declarations one edit at a time. Each edit must change the image, be refused, or be shown to leave the game the same.
+- `tools/check_compiled.py` changes the RUNS source and the declarations one edit at a time. Each edit must change the image, be refused, or be shown to leave the game the same.
 - `lift/` is the C lift: Spacewar hand-lifted into a C dialect that `tools/pdp1cc` compiles to the original image. RUNS now generates every unit of it, so `lift/` is the reference the checks and notes cite. `docs/c-lift/README.md` describes it, and `tools/check-*-reference.py`, `tests/` and `ref/` are its checks.
 - `oracle/` holds input and output vectors recorded from the original, which some checks read. `source/` is the original listing and Norbert Landsteiner's "Inside Spacewar!" notes.
 

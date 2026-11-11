@@ -16,7 +16,7 @@ held_as_code = ["explosion_cloud.scatter"]
 # runs for the member), with the sign bit when the object does not
 # collide. The torpedo's is taken from a constant word (lac (tcr); the
 # others without the sign bit are built by law.
-[spell.calc_routine]
+[encoding.calc_routine]
 explosion = { sign = true }
 in_hyperspace = { sign = true }
 torpedo = { literal = true }

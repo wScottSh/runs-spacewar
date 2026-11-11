@@ -1,5 +1,5 @@
 """The PDP-1 binding of the Records: where each field lives in core and how
-a value is spelled as a word. It is what a RUNS-to-PDP-1 compiler would
+a value is encoded as a word. It is what a RUNS-to-PDP-1 compiler would
 place by, and what the checks use to read Ground Truth's core as Records.
 
 The binding holds only choices that play cannot observe. Where play reads

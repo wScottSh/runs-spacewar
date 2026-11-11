@@ -1,7 +1,7 @@
 """Native reference build: g++ with pdp1.h gives `word` PDP-1 semantics, so
 the dialect C runs on the host with the meaning the binary must have.
 
-Two dialect storage facts have no spelling a header macro can give, so the
+Two dialect storage facts have no encoding a header macro can give, so the
 build binds them in a copy of each C file before compiling it:
 
 - A JDA function's entry word is one cell, `pdp1_cell_<f>`. The call stores
@@ -84,7 +84,7 @@ def cell(fn: str) -> str:
 
 @dataclass(frozen=True)
 class Rewrite:
-    """One storage fact: its spelling in the C, its g++ form, and the
+    """One storage fact: its encoding in the C, its g++ form, and the
     attribute the front end sees after preprocessing."""
     hint: str
     shape: str

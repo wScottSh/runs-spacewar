@@ -13,7 +13,7 @@ Network on the same Records.
 The routine runs whole, through its outline. The outlines are compiled
 once, into the free core after the table by the original's own outline
 compiler in SIMH, and decoded into strokes (outline_code) by the RUNS one
-in the evaluator; the strokes, each spelled as its member's words, must be
+in the evaluator; the strokes, each encoded as its member's words, must be
 SIMH's words. The evaluator walks the strokes (draw_outline). So every
 point is compared, the outline's included.
 
@@ -67,7 +67,7 @@ class Outlines:
     """The two outlines, compiled one after the other from the start of the
     free core: in SIMH by the original's compiler, after the table, and in
     the evaluator decoded by the RUNS one into strokes, outline_code. `at`
-    is where each starts, a slot of outline_code; the strokes, each spelled
+    is where each starts, a slot of outline_code; the strokes, each encoded
     as its member's words (pdp1.Binding.lay_out_code), must be SIMH's
     words."""
 

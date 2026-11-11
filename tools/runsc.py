@@ -495,7 +495,7 @@ _BOOL = lambda v: isinstance(v, bool)               # noqa: E731
 _TRUE = lambda v: v is True                         # noqa: E731
 _TEXT = lambda v: isinstance(v, str)                # noqa: E731
 _LOCAL = _either(_name, _field)
-_SPELLED = _either(_int, _dict(_one_of("routine", "sign", "literal"), _either(_name, _BOOL)))
+_ENCODED = _either(_int, _dict(_one_of("routine", "sign", "literal"), _either(_name, _BOOL)))
 _DEVICE = _either(_name, _dict(_one_of("read", "or_into_io", "sense"), _either(_name, _BOOL, _int)))
 _SECTION = lambda v: isinstance(v, dict)            # noqa: E731
 _PLACES = _list(_SECTION)
@@ -507,7 +507,7 @@ SCHEMA = {
     "unit": {"registers": _list(_name), "pool": _list(_field), "repeat": _name,
              "place": _PLACES, "inline": _PLACES, "code": _PLACES,
              "share": _dict(_field, _field), "into": _dict(_field, _field),
-             "spell": _dict(_name, _dict(_name, _SPELLED)), "flags": _dict(_field, _int),
+             "encoding": _dict(_name, _dict(_name, _ENCODED)), "flags": _dict(_field, _int),
              "homes": _dict(_field, _one_of("table", "pointer")), "held_as_code": _list(_field),
              "code_words": _dict(_field, _int),
              "addresses": _dict(_field, _one_of("after table")),
@@ -615,7 +615,7 @@ class Bindings:
         self.code_words: dict[str, int] = {}    # a collection held as a run of code -> the words it takes
         self.walks: dict[str, Walk] = {}        # a collection held as a run of code -> the walk that runs it
         self.stores: dict[str, dict] = {}       # such a collection -> its store routine's place
-        self.spelled: dict[str, dict] = {}      # enum -> member -> how its word is spelled
+        self.encoded: dict[str, dict] = {}      # enum -> member -> how its word is encoded
         self.streams: dict[str, str] = {}       # stream -> the instruction that takes it (dpy, hlt)
         self.devices: dict[str, dict] = {}      # field -> the device instruction that reads it
         self.flags: dict[str, int] = {}         # field -> the program flag that holds it
@@ -676,7 +676,7 @@ class Bindings:
                 if "store" in p:
                     self.check_field(path, p["store"])
                     self.stores[p["store"]] = {**p, "unit": path}
-            self.spelled |= {e: dict(ms) for e, ms in spec.get("spell", {}).items()}
+            self.encoded |= {e: dict(ms) for e, ms in spec.get("encoding", {}).items()}
             self.streams |= spec.get("streams", {})
             for f, n in spec.get("flags", {}).items():
                 self.check_field(path, f)
@@ -721,7 +721,7 @@ class Bindings:
             if p["jump"] not in self.bound:
                 raise BindError(f"jsp_slot {p['jsp_slot']}: jump {p['jump']!r} is no bound routine")
             p["returns"] = "io" if self.bound[p["jump"]].returns() == "io_word" else "ac"
-        self.spell_by_default()
+        self.encode_by_default()
         self.check_names()
 
     def copies_of(self, path: Path, section: str, p: dict) -> list[dict]:
@@ -881,8 +881,8 @@ class Bindings:
                 raise BindError(f"the cursors on the slot {held} holds are homed in one unit, not {sorted(units)}")
             self.slot_cursor_unit[held] = units.pop()
 
-    def spell_by_default(self):
-        """The word of each enum member no declaration spells. A member a
+    def encode_by_default(self):
+        """The word of each enum member no declaration encodes. A member a
         match runs a routine for is that routine's address: every match is a
         jump through the field's word (dispatch), as hc1d's state word holds
         the routine it goes on to (sett pfu, s1 / govia pfu). Any other is
@@ -897,15 +897,15 @@ class Bindings:
                             enum = resolve(self.prog, member, field_type(self.prog, s[1]), s[3])
                             arms.setdefault(enum, {})[member] = body[0][1]
         for enum, members in self.prog.enums.items():
-            spelled = self.spelled.setdefault(enum, {})
+            encoded = self.encoded.setdefault(enum, {})
             for k, m in enumerate(members):
-                how, run = spelled.get(m), arms.get(enum, {}).get(m)
+                how, run = encoded.get(m), arms.get(enum, {}).get(m)
                 if how is None:
-                    spelled[m] = {"routine": run} if run else k
+                    encoded[m] = {"routine": run} if run else k
                 elif isinstance(how, dict) and "routine" not in how:
                     if not run:
-                        raise BindError(f"spell.{enum}.{m}: no match runs a routine for it, so no routine spells it")
-                    spelled[m] = {"routine": run, **how}
+                        raise BindError(f"encoding.{enum}.{m}: no match runs a routine for it, so no routine encodes it")
+                    encoded[m] = {"routine": run, **how}
 
     def has_word(self, dotted: str) -> bool:
         """The declarations give the field a place: a word, an entry word, a
@@ -979,20 +979,20 @@ class Bindings:
                     raise BindError(f"{path.name}: registers {r!r} is no Record")
             if "repeat" in spec:
                 routine(spec["repeat"], "repeat")
-            for enum, members in spec.get("spell", {}).items():
+            for enum, members in spec.get("encoding", {}).items():
                 if enum not in self.prog.enums:
-                    raise BindError(f"{path.name}: spell.{enum}: no enum {enum}")
+                    raise BindError(f"{path.name}: encoding.{enum}: no enum {enum}")
                 for m, how in members.items():
                     if m not in self.prog.enums[enum]:
-                        raise BindError(f"{path.name}: spell.{enum}: {m!r} is no member of {enum}")
+                        raise BindError(f"{path.name}: encoding.{enum}: {m!r} is no member of {enum}")
                     if isinstance(how, dict):
                         if set(how) - {"routine", "sign", "literal"}:
-                            raise BindError(f"{path.name}: spell.{enum}.{m}: a routine, sign, literal")
+                            raise BindError(f"{path.name}: encoding.{enum}.{m}: a routine, sign, literal")
                         if "routine" in how and how["routine"] not in self.prog.routines \
                                 and how["routine"] not in self.jsp_slots:
-                            raise BindError(f"{path.name}: spell.{enum}.{m}: {how['routine']!r} is no routine")
+                            raise BindError(f"{path.name}: encoding.{enum}.{m}: {how['routine']!r} is no routine")
                     elif not isinstance(how, int):
-                        raise BindError(f"{path.name}: spell.{enum}.{m}: a number or a routine")
+                        raise BindError(f"{path.name}: encoding.{enum}.{m}: a number or a routine")
             for stream in spec.get("streams", {}):
                 if stream not in self.prog.records or not self.prog.records[stream].stream:
                     raise BindError(f"{path.name}: streams: {stream!r} is no stream")
@@ -1263,18 +1263,18 @@ class Unit:
         self.local_base: dict[str, str] = {}   # a copy's own local -> the Processor's local
         self.slot_data: dict[str, dict[int, str]] = {}   # field -> slot -> its data word, laid out in code
         self.home_kinds: dict[str, str] = {}   # a homed local -> the instruction its home is ("LIO")
-        self.spellings: dict[str, str] = {}    # a data local -> the instruction it is spelled as
+        self.encodings: dict[str, str] = {}    # a data local -> the instruction it is encoded as
         self.home_laid_out: set[str] = set()   # those whose home is laid out already
 
     def pool_word(self, f: str) -> str:
         """A pool word's declaration. One that holds a member of an enum
-        whose members are spelled as routines holds a routine's address: a
+        whose members are encoded as routines holds a routine's address: a
         pointer to the routines' type, which the enum names."""
         rec, fld = f.split(".")
         enum = self.prog.records[rec].fields[fld][0]
-        spelled = self.binds.spelled.get(enum, {})
-        routines = [how["routine"] for how in spelled.values() if isinstance(how, dict) and "routine" in how]
-        if enum not in self.prog.enums or not routines or len(routines) != len(spelled):
+        encoded = self.binds.encoded.get(enum, {})
+        routines = [how["routine"] for how in encoded.values() if isinstance(how, dict) and "routine" in how]
+        if enum not in self.prog.enums or not routines or len(routines) != len(encoded):
             return f"POOL word {self.binds.c_name(f)};"
         kinds = set()
         for r in routines:
@@ -1315,8 +1315,8 @@ class Unit:
         for name, base in sorted(self.local_base.items()):
             if base in self.current_homes():
                 out.append(f"HOMED word *{name} = 0;")
-            elif name in self.spellings:
-                out.append(f"insn {name} = {self.spellings[name]}(0);")
+            elif name in self.encodings:
+                out.append(f"insn {name} = {self.encodings[name]}(0);")
             else:
                 raise BindError(f"{self.path.name}: {name} is a data word compared with no home")
         for d, slots in sorted(self.slot_data.items()):
@@ -1479,7 +1479,7 @@ class Unit:
         for f in self.binds.table_fields():
             rec, fld = f.split(".")
             e = self.prog.records[rec].fields[fld][1]
-            if not (e == ("num", 0) or e[0] == "name" and self.binds.spelled.get(
+            if not (e == ("num", 0) or e[0] == "name" and self.binds.encoded.get(
                     resolve(self.prog, e[1], self.prog.records[rec].fields[fld][0], f), {}).get(e[1]) == 0):
                 raise BindError(f"{self.path.name}: {f} is not on the tape, so it starts at its zero word")
         after = [f"RESERVE word {self.binds.c_name(d)}"
@@ -1836,7 +1836,7 @@ class Unit:
         return body + [("data_here", data, where)] if data else body
 
     def dispatch(self, s) -> tuple:
-        """A match over a field whose members are spelled as the routines its
+        """A match over a field whose members are encoded as the routines its
         arms run: a jump through the field's word. The jump passes the
         scrutinee's slot (the cursors point at it), so each arm's run passes
         exactly that."""
@@ -1844,7 +1844,7 @@ class Unit:
         passed = [e[2]] if e[0] == "index" else []
         for member, body in arms.items():
             enum = resolve(self.prog, member, field_type(self.prog, e), where)
-            how = self.binds.spelled.get(enum, {}).get(member)
+            how = self.binds.encoded.get(enum, {}).get(member)
             if body and body[0][0] == "unreachable" and how == 0:
                 continue
             named = how.get("routine") if isinstance(how, dict) else None
@@ -1939,7 +1939,7 @@ class Unit:
     def zero(self, e) -> bool:
         if e == ("num", 0):
             return True
-        return e[0] == "member" and self.binds.spelled.get(e[1], {}).get(e[2]) == 0
+        return e[0] == "member" and self.binds.encoded.get(e[1], {}).get(e[2]) == 0
 
     def arguments(self, stmts: list) -> list:
         """The sets of a callee's parameter fields just before its call are
@@ -2395,10 +2395,10 @@ class Function:
         return False
 
     def member(self, enum: str, name: str) -> str:
-        """An enum member as the word that spells it."""
-        how = self.binds.spelled.get(enum, {}).get(name)
+        """An enum member as the word that encodes it."""
+        how = self.binds.encoded.get(enum, {}).get(name)
         if how is None:
-            raise BindError(f"{self.b.name}: the binding spells no word for {enum} {name}")
+            raise BindError(f"{self.b.name}: the binding encodes no word for {enum} {name}")
         if isinstance(how, int):
             return octal(how)
         self.unit.named.add(how["routine"])
@@ -2455,7 +2455,7 @@ class Function:
         binding keeps in an instruction's address field, or in a data word,
         or by a field that holds an address. A homed local is compared as
         its home instruction (I_LIO(p), I_LIO(++p) when the step just before
-        is taken here), a data local as the word it is, spelled as that
+        is taken here), a data local as the word it is, encoded as that
         instruction; a place by number as the same instruction at its
         address, or as its address against a field."""
         _, o, a, b = e
@@ -2463,29 +2463,29 @@ class Function:
         kinds = [self.place_kind(x) for x in sides]
         if all(k is None or k == "number" for k in kinds):
             return None
-        spelled = next((self.home_kind(x[1]) for x, k in zip(sides, kinds) if k == "homed"), None)
+        encoded = next((self.home_kind(x[1]) for x, k in zip(sides, kinds) if k == "homed"), None)
         data = [x[1] for x, k in zip(sides, kinds) if k == "data"]
         for name in data:
-            if spelled:
-                if self.unit.spellings.setdefault(name, spelled) != spelled:
+            if encoded:
+                if self.unit.encodings.setdefault(name, encoded) != encoded:
                     raise BindError(f"{self.b.name}: {name} is compared as two instructions")
-            spelled = self.unit.spellings.get(name)
-            if spelled is None:
-                raise BindError(f"{self.b.name}: {name} is compared before the home it is spelled as")
+            encoded = self.unit.encodings.get(name)
+            if encoded is None:
+                raise BindError(f"{self.b.name}: {name} is compared before the home it is encoded as")
         texts = []
         for x, k in zip(sides, kinds):
             if k == "homed":
                 step = "++" if self.preinc == x[1] else ""
                 if step:
                     self.preinc = None
-                texts.append(f"{spelled}({step}{x[1]})")
+                texts.append(f"{encoded}({step}{x[1]})")
             elif k == "data":
                 texts.append(x[1])
             elif k == "number":
                 coll = next(self.b.into[self.base(y[1])] if y[0] == "name" else self.binds.into[dotted_of(y[1])]
                             for y, j in zip(sides, kinds) if j not in (None, "number"))
                 text = self.unit.address(coll, self.fold(x))
-                texts.append(f"{spelled}({text})" if spelled else text)
+                texts.append(f"{encoded}({text})" if encoded else text)
             else:
                 texts.append(self.expr(x))
         return f"{texts[0]} {o} {texts[1]}"
@@ -2544,9 +2544,9 @@ class Function:
 
     def flag_word(self, e, held: str) -> int:
         """The bit a member held in a sense switch or a program flag is."""
-        how = self.binds.spelled.get(e[1], {}).get(e[2]) if e[0] == "member" else None
+        how = self.binds.encoded.get(e[1], {}).get(e[2]) if e[0] == "member" else None
         if how not in (0, 1):
-            raise BindError(f"{self.b.name}: {held} holds a member spelled 0 or 1, not {e!r}")
+            raise BindError(f"{self.b.name}: {held} holds a member encoded 0 or 1, not {e!r}")
         return how
 
     def cond(self, e, negate: bool = False) -> str:
@@ -3219,7 +3219,7 @@ class Function:
                     member = None
                     if s[0] == "dispatch":
                         enum = field_type(prog, plain(s[1]))
-                        member = next((m for m, how in self.binds.spelled.get(enum, {}).items()
+                        member = next((m for m, how in self.binds.encoded.get(enum, {}).items()
                                        if isinstance(how, dict) and how.get("routine") == t), None)
                     e = s[1] if s[0] == "dispatch" else None
                     if not any(pos < here and all(g in guards or (g[0] is not None and value(g[0], e, member) == g[1])
@@ -3394,9 +3394,9 @@ class Function:
     def enum_test(self, c):
         """A guard on one enum field that the words of its members decide by
         sign and zero alone: (the field, the C test of its word against 0).
-        `!= m` for every member spelled 0 is `!= 0`; for every member
-        spelled with the sign bit, `>= 0`; for both, `> 0`. `== m` for the
-        member spelled 0 is `== 0`."""
+        `!= m` for every member encoded 0 is `!= 0`; for every member
+        encoded with the sign bit, `>= 0`; for both, `> 0`. `== m` for the
+        member encoded 0 is `== 0`."""
         terms, stack = [], [c]
         while stack:
             t = stack.pop()
@@ -3410,9 +3410,9 @@ class Function:
             if t[0] != "bin" or t[1] not in ("==", "!=") or t[2] != place or t[3][0] != "member":
                 return None
             enum = t[3][1]
-        spelled = self.binds.spelled.get(enum, {})
-        zero = {m for m, how in spelled.items() if how == 0}
-        sign = {m for m, how in spelled.items() if isinstance(how, dict) and how.get("sign")}
+        encoded = self.binds.encoded.get(enum, {})
+        zero = {m for m, how in encoded.items() if how == 0}
+        sign = {m for m, how in encoded.items() if isinstance(how, dict) and how.get("sign")}
         members = {t[3][2] for t in terms}
         if len(terms) == 1 and terms[0][1] == "==":
             return (place, "== 0") if members == zero else None
@@ -3422,7 +3422,7 @@ class Function:
                 frozenset(zero | sign): (place, "> 0")}.get(frozenset(members))
 
     def xor_test(self, c):
-        """`field == m` or `!=` for a member spelled as an address: (the
+        """`field == m` or `!=` for a member encoded as an address: (the
         field, the member's word, the C test of their xor against 0)."""
         if c[0] != "bin" or c[1] not in ("==", "!=") or c[3][0] != "member" or self.switch_test(c) is not None:
             return None
@@ -3779,7 +3779,7 @@ class Function:
         return text
 
     def flag(self, held: str, e, depth: int) -> int:
-        """A field or a local held in a program flag: the member spelled 1 sets it."""
+        """A field or a local held in a program flag: the member encoded 1 sets it."""
         how = self.flag_word(e, held)
         n = self.b.flags[held] if held in self.b.flags else self.binds.flags[held]
         self.emit(depth, f"{'stf' if how else 'clf'}({n});")

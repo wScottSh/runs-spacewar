@@ -209,5 +209,5 @@ Predicate: every Markdown doc of runs-spec, runs-spacewar, and the RUNS statemen
 - [x] Independent review of every diff (four reviewers on a second model, four fix agents, one verifier)
 - [x] Vocabulary greps, check_examples, gate (check_all passed in 359s; MATCH 8744e9c9; purity 0 new; declarations 331/331)
 - [x] Map re-charted: destination and notes to the vision, open designs as fog or tickets
-- [ ] Open (for the user): the designs the vision needs that nobody has decided, on map 45's Not yet specified: the Network as a literal graph and its file, threading the shared Records, loops inside a tick, guards as a partition, one file per Processor, the text's keywords against the vision's, a check that measures the vision
+- [ ] Open (for the user): the designs the vision needs that nobody has decided, on map 45's Not yet specified: the Network as a literal graph and its file, threading the shared Records, loops inside a tick, guards as a partition, one file per Processor, the source's keywords against the vision's, a check that measures the vision
 - [ ] Open: `CLAUDE.md` says a `run` passes only which slot, the user's standing order; the input/output syntax (#52) passes wires instead. The user settles which stands.

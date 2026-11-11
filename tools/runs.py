@@ -1396,7 +1396,7 @@ def impurities(prog: Program) -> list[str]:
             for r in prog.records.values() if r.stream and r.side not in (None, "presentation")]
     out += [f"{r.name}.{f}: a Record holds data; instructions a Processor runs are logic"
             for r in prog.records.values() for f, (typ, _) in r.fields.items() if typ == "insn"]
-    out += [f"processor {r.name}: runs instructions from a Record (jump); its logic belongs in its own text"
+    out += [f"processor {r.name}: runs instructions from a Record (jump); its logic belongs in a Processor of its own"
             for r in prog.routines.values()
             if r.kind == "processor" and any(s[0] == "jump" for s in walk_statements(r.body))]
     of = lambda names, s: sorted(n for n in names if side.get(n) == s)

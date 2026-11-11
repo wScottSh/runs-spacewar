@@ -1,12 +1,12 @@
 # Syntax for inputs, outputs and their wiring
 
 Decided with the user, 2026-11-11, in "Syntax for Ports and their wiring in the RUNS
-text" (#52). The spec text and a runnable example land with "Ports in the Evaluator
+text" (#52). The spec's wording and a runnable example land with "Ports in the Evaluator
 and runsc" (#53), when the Evaluator reads this syntax.
 
 The issues and this file's name say Port for a Routine's input or output.
 EGS keeps Port for the same game on other hardware, made by swapping its Realization
-Processors (`../../.github/CONTEXT.md` 313-339). The text below says input and output.
+Processors (`../../.github/CONTEXT.md` 313-339). The rest of this file says input and output.
 
 ## The syntax
 
@@ -62,7 +62,7 @@ network explosion                                           # mex
 
 `owns name: kind` declares one field of scratch, as an input or output line declares one field
 (#53). The Evaluator keeps one copy of it for the Network, shared by every wiring of
-the Network; no name in the text reaches it from outside. `runsc` compiles it as a
+the Network; no name in the source reaches it from outside. `runsc` compiles it as a
 local of the routine the Network compiles into, declared once, so pdp1cc keeps it in
 AC or IO with no declaration (#51; until then it was refused). A declaration names it
 as it names a `let` (`io = ["input_bits"]`).
@@ -71,7 +71,7 @@ as it names a `let` (`io = ["input_bits"]`).
 
 The loader (`runs.load`) expands inputs and outputs (`expand_ports`) before any tool
 sees the program. Each `run` of a routine with inputs and outputs fires a copy of it:
-its text with each replaced by the field the run wires to it, by reference, as the
+its source with each replaced by the field the run wires to it, by reference, as the
 original's `diff` macro was expanded once an axis. One copy a distinct wiring
 (`inertia_1`, `inertia_2`); a Network's input or output wired on to an inner `run`
 resolves to the field of the Network that runs it. A copy takes the names its wires'
@@ -98,7 +98,7 @@ PDP-1 program; `tools/check_ports_scratch.py` builds Spacewar with one
    Tested on Doom (`P_ZMovement`'s float block, `P_AproxDistance`) and OoT (Player's
    file statics: `sSavedCurrentMask` is scratch, `sPrevFloorProperty` is state).
 3. **One input or output, one field; never a whole Record.** The purest: the Network holds every
-   wire, and a reader 1000 years on reads what touches what from the text alone,
+   wire, and a reader 1000 years on reads what touches what from the source alone,
    with no tool. Folding long wirings is the viewer's job.
 4. **`slot` leaves every Network but the one that walks the slots.** A bundle gets
    `objects.x[slot]` already chosen, as the original's `mx1` pointers gave each
