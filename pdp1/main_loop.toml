@@ -30,28 +30,6 @@ moves = "swap"
 at = "object_table"
 clear = "clearing"
 
-# A Record field indexed by a slot the main loop's cursors point at is the
-# word the cursor points at. The objects unit's calc routines use them
-# too.
-[cursors]
-"objects.routine" = "routine_slot"
-"objects.x" = "x_slot"
-"objects.y" = "y_slot"
-"objects.counter" = "counter_slot"
-"objects.cycles" = "cycles_slot"
-"objects.dx" = "dx_slot"
-"objects.dy" = "dy_slot"
-"ship_flight.angular_momentum" = "angular_momentum_slot"
-"ship_flight.angle" = "angle_slot"
-"ship_flight.fuel" = "fuel_slot"
-"ship_flight.torpedoes" = "torpedoes_slot"
-"ship_outlines.outline" = "outline_slot"
-"ships.previous_control" = "previous_control_slot"
-"ships.saved_routine" = "saved_routine_slot"
-"ships.jumps_left" = "jumps_left_slot"
-"ships.recharge" = "recharge_slot"
-"ships.uncertainty" = "uncertainty_slot"
-
 # The walk over the slots. The cursors are set after begin_frame; the
 # routine word's cursor is the index. A cursor homed here lives in the
 # address field of the first instruction of this unit that reads or writes
@@ -71,13 +49,6 @@ homes = ["objects.routine", "objects.x", "objects.y", "objects.counter", "ship_o
 home_in = { "objects.cycles" = "charge_time" }
 carry = ["draw_outline"]
 stray = { after = "ship_flight.angle", cursor = "stray_cursor" }
-
-[walk.other]
-"objects.routine" = "other_routine_slot"
-"objects.x" = "other_x_slot"
-"objects.y" = "other_y_slot"
-"objects.counter" = "other_counter_slot"
-"objects.cycles" = "other_cycles_slot"
 
 [spell.control_source]
 control_boxes = { routine = "control_word_routine" }

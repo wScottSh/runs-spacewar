@@ -28,17 +28,6 @@ pool = ["spaceship.controls", "heading.sine", "heading.cosine", "spaceship.gravi
 [walk]
 homes = ["ship_flight.angular_momentum", "ship_flight.angle", "ships.previous_control"]
 
-# The cursors on the new torpedo's slot: the search's cursor (sr1) for the
-# routine word, the rest set from it in the table's order.
-[cursors."launch.slot"]
-"objects.routine" = "torpedo_routine_slot"
-"objects.x" = "torpedo_x_slot"
-"objects.y" = "torpedo_y_slot"
-"objects.counter" = "torpedo_counter_slot"
-"objects.cycles" = "torpedo_cycles_slot"
-"objects.dx" = "torpedo_dx_slot"
-"objects.dy" = "torpedo_dy_slot"
-
 [[place]]
 routine = "first_spaceship"
 convention = "JSP"

@@ -1,4 +1,4 @@
-407
+378
 
 Entries of PDP-1 declarations (tools/check_declarations.py): every scalar value
 and every list element of pdp1/*.toml and programs/*/pdp1/*.toml, an empty table

@@ -122,6 +122,9 @@ def every_node(tree):
     if isinstance(tree, (tuple, list)):
         for x in tree:
             yield from every_node(x)
+    elif isinstance(tree, dict):            # a match's arms
+        for x in tree.values():
+            yield from every_node(x)
 
 
 def substitute(tree, names: dict):
@@ -508,12 +511,12 @@ SCHEMA = {
              "homes": _dict(_field, _one_of("table", "pointer")), "held_as_code": _list(_field),
              "code_words": _dict(_field, _int),
              "addresses": _dict(_field, _one_of("after table")), "table": _SECTION,
-             "cursors": _dict(_field, _either(_name, _dict(_field, _name))), "walk": _SECTION,
+             "walk": _SECTION,
              "streams": _dict(_name, _one_of("dpy", "hlt"))},
     "devices": {"console": _dict(_field, _DEVICE), "lights": _dict(_field, _int), "start": _PLACES},
     "start": {"at": _int, "network": _name, "tape": _BOOL},
     "walk": {"set_after": _name, "index": _field, "homes": _list(_field), "home_in": _dict(_field, _name),
-             "carry": _list(_name), "stray": _SECTION, "other": _dict(_field, _name)},
+             "carry": _list(_name), "stray": _SECTION},
     "stray": {"after": _field, "cursor": _name},
     "table": {"at": _name, "clear": _name},
     "routine": {"routine": _name, "convention": _one_of("JDA", "JSP", "XCT", "BLOCK"), "entry": _field,
@@ -624,6 +627,7 @@ class Bindings:
         self.table: dict = Section("[table]")   # the Records laid out field after field in one array
         self.jsp_slots: dict[str, dict] = {}    # a JSP slot's name -> what it jumps to
         self.slot_cursors: dict[str, dict] = {} # a field holding a slot -> field -> the cursor on it
+        self.slot_cursor_unit: dict[str, Path] = {}   # such a field -> the unit that homes its cursors
         self.carried: set[str] = set()          # code routines whose jump's word a walk carries
         self.into: dict[str, str] = {}          # field -> the collection's field it holds a place in
         self.pieces: dict[str, list] = {}       # collection field -> (first slot, last slot, C name) laid out
@@ -647,14 +651,6 @@ class Bindings:
                 self.check_field(path, other)
                 self.shared[f] = other
             self.registers |= set(spec.get("registers", []))
-            for f, cursor in spec.get("cursors", {}).items():
-                self.check_field(path, f)
-                if isinstance(cursor, dict):
-                    for g in cursor:
-                        self.check_field(path, g)
-                    self.slot_cursors[f] = cursor
-                else:
-                    self.cursors[f] = cursor
             self.carried |= set(spec.get("walk", {}).get("carry", []))
             for f in spec.get("pool", []):
                 self.check_field(path, f)
@@ -702,6 +698,7 @@ class Bindings:
                 if "base" in p:
                     self.check_field(path, p["base"])
                     self.bases[p["base"]] = path
+        self.derive_cursors()
         if self.table:
             walked = {f.split(".")[0] for f in self.cursors}
             self.table["records"] = [r for r in self.prog.records if r in walked]
@@ -709,6 +706,66 @@ class Bindings:
                            and not any(self.has_word(f"{name}.{f}") for f in r.fields)}
         self.spell_by_default()
         self.check_names()
+
+    def derive_cursors(self):
+        """The cursors, from the text. A walk is a Network's loop over the
+        table's slots from 0; its cursors are the fields indexed by its slot
+        variable, or by a routine's parameter a run passes it in. A walk from
+        the slot after another's ([walk] other) has its own, the fields its
+        variable indexes. A field that holds a slot and indexes table fields
+        has a cursor on each, homed in the one unit whose routines index by
+        it. The music player does the same: its compile loop sets a pointer
+        for each voice field it reads at voice ij, in the layout's order
+        (pdp1m16 cc1: law b / add ij / add (n-b / dap c0n / add (t-n / dap
+        c0t ...), and none for the bar pointer it does not read there. A
+        cursor is named for its field and the variable; names never reach
+        the image."""
+        if not self.table:
+            return
+        todo, walks = [], {}
+        for name, r in self.prog.routines.items():
+            if r.kind != "network":
+                continue
+            for n in every_node(r.body):
+                if n[0] == "for" and n[2] == ("num", 0):
+                    todo.append((name, n[1], "outer"))
+                    walks["outer"] = n[1]
+                    for m in every_node(n[4]):
+                        if m[0] == "for" and m[2][0] == "bin" and m[2][1] == "+" and m[2][2] == ("name", n[1]):
+                            todo.append((name, m[1], "other"))
+                            walks["other"] = m[1]
+        indexed: dict[str, dict[str, None]] = {"outer": {}, "other": {}}
+        seen = set()
+        while todo:
+            name, var, walk = todo.pop()
+            if (name, var) in seen:
+                continue
+            seen.add((name, var))
+            for n in every_node(self.prog.routines[name].body):
+                if n[0] == "index" and n[2] == ("name", var):
+                    indexed[walk][dotted_of(n[1])] = None
+                elif n[0] == "run" and n[1] in self.prog.routines:
+                    params = self.prog.routines[n[1]].params
+                    todo += [(n[1], params[k], walk) for k, a in enumerate(n[2]) if a == ("name", var)]
+        self.cursors = {f: f"{f.replace('.', '_')}_{walks['outer']}" for f in indexed["outer"]}
+        if indexed["other"]:
+            spec = next((s for s in self.specs.values() if "index" in s.get("walk", {})), None)
+            if spec is None:
+                raise BindError("a walk from the slot after another's steps cursors a [walk] with an index sets")
+            spec["walk"]["other"] = {f: f"{f.replace('.', '_')}_{walks['other']}" for f in indexed["other"]}
+        table = {f.split(".")[0] for f in self.cursors}
+        users: dict[str, set[Path]] = {}
+        for b in self.bound.values():
+            for inner in own_routines(self.prog, b.name, set(self.bound) - {b.name}):
+                for n in every_node(self.prog.routines[inner].body):
+                    if n[0] == "index" and n[2][0] == "field" and dotted_of(n[1]).split(".")[0] in table:
+                        held, f = dotted_of(n[2]), dotted_of(n[1])
+                        self.slot_cursors.setdefault(held, {})[f] = f"{f.replace('.', '_')}_{held.replace('.', '_')}"
+                        users.setdefault(held, set()).add(b.unit)
+        for held, units in users.items():
+            if len(units) != 1:
+                raise BindError(f"the cursors on the slot {held} holds are homed in one unit, not {sorted(units)}")
+            self.slot_cursor_unit[held] = units.pop()
 
     def spell_by_default(self):
         """The word of each enum member no declaration spells. A member a
@@ -832,13 +889,13 @@ class Bindings:
                 routine(proc, "walk.home_in")
             for f in walk.get("homes", []) + list(walk.get("home_in", {})):
                 if f not in self.cursors:
-                    raise BindError(f"{path.name}: [walk] homes {f}, which has no cursor ([cursors])")
+                    raise BindError(f"{path.name}: [walk] homes {f}, which no walk's slot indexes: it has no cursor")
             if "set_after" in walk and "index" not in walk:
                 raise BindError(f"{path.name}: [walk] names the field whose cursor ends the walk (index)")
             if "index" in walk and (walk["index"] not in self.cursors
                                     or "other" in walk and walk["index"] not in walk["other"]):
                 raise BindError(f"{path.name}: [walk] index {walk['index']}, which has no cursor in each walk "
-                                f"([cursors], [walk.other])")
+                                f"(the fields each walk's slot indexes)")
             for f in [walk.get("index")] + walk.get("homes", []) + list(walk.get("home_in", {})) \
                     + list(walk.get("other", {})) + ([walk["stray"]["after"]] if "stray" in walk else []):
                 if f:
@@ -1065,8 +1122,8 @@ class Unit:
             self.homed[binds.cursors[f]] = proc
         for c in self.walk.get("other", {}).values():
             self.homed[c] = None
-        for f, cursors in self.spec.get("cursors", {}).items():
-            if isinstance(cursors, dict):       # the cursors on a slot a field holds: homed here
+        for f, cursors in binds.slot_cursors.items():
+            if binds.slot_cursor_unit[f] == path:   # the cursors on a slot a field holds: homed here
                 for c in cursors.values():
                     self.homed[c] = None
         self.home_kind: dict[str, str] = {}     # cursor -> its home's instruction ("LAC" in a guard), once laid out
@@ -2180,7 +2237,7 @@ class Function:
         order = self.table_order(cursors)
         done = self.chained.setdefault(held, [order[0]])
         if upto and upto not in order:
-            raise BindError(f"{self.b.name}: no cursor for {upto} on the slot {held} holds ([cursors.\"{held}\"])")
+            raise BindError(f"{self.b.name}: no cursor for {upto} on the slot {held} holds: no routine indexes it by {held}")
         last = order.index(upto) if upto else len(order) - 1
         for n in range(len(done), last + 1):
             count = octal(self.unit.prog.records[order[n - 1].split(".")[0]].count)
@@ -2979,7 +3036,7 @@ class Function:
         f = dotted_of(index[1])
         if f not in self.binds.cursors or self.binds.into.get(f) != w.field:
             raise BindError(f"{where}: {into} starts from {f}, which holds no place in {w.field} "
-                            f"the walk's cursors reach ([cursors], [into])")
+                            f"the walk's cursors reach ([into])")
         return f
 
     def check_carry(self, body: list, where: str):
