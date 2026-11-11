@@ -535,7 +535,7 @@ SCHEMA = {
     "slots": {"slots": _field, "range": _list(_int, 2), "reserve": _int},
     "machine": {"machine": _one_of("constants", "variables", "patch space", "sequence break",
                                    "sequence break flush", "start vectors"), "reserve": _int},
-    "jsp_slot": {"jsp_slot": _name, "at": _int, "returns": _one_of("io", "ac"), "jump": _name, "reserve": _int},
+    "jsp_slot": {"jsp_slot": _name, "at": _int, "jump": _name, "reserve": _int},
     "exit": {"exit": _name},
     "table place": {"table": _TRUE},
     "shifts": {"shifts": _field},
@@ -543,7 +543,7 @@ SCHEMA = {
 }
 # The keys each must hold.
 REQUIRED = {"unit": {"place"}, "routine": {"convention"}, "inline": {"routine"}, "code": {"routine"},
-            "slots": {"range"}, "jsp_slot": {"at", "returns", "jump"}, "table": {"at"},
+            "slots": {"range"}, "jsp_slot": {"at", "jump"}, "table": {"at"},
             "store": {"loaded"},
             "stray": {"after", "cursor"}, "start": {"at", "network"}}
 
@@ -705,6 +705,11 @@ class Bindings:
         self.registers |= {name for name, r in self.prog.records.items() if r.count is None and not r.stream
                            and not any(self.has_word(f"{name}.{f}") for f in r.fields)}
         self.register_passing()
+        for p in self.jsp_slots.values():
+            # the slot returns what it jumps to returns (return jump();), in the register that returns it
+            if p["jump"] not in self.bound:
+                raise BindError(f"jsp_slot {p['jsp_slot']}: jump {p['jump']!r} is no bound routine")
+            p["returns"] = "io" if self.bound[p["jump"]].returns() == "io_word" else "ac"
         self.spell_by_default()
         self.check_names()
 

@@ -76,7 +76,6 @@ fields = ["tunables.hyperspatial_uncertainty", "random.number"]
 [[place]]
 jsp_slot = "control_word_routine"
 at = 0o40
-returns = "io"
 jump = "read_control_boxes"
 reserve = 0o20
 
