@@ -29,11 +29,11 @@ One rule, stateless. It names no Records: its whole contract is its Ports, and t
 _Avoid_: function, subroutine (except for the original's `jda` routines)
 
 **Port**:
-One value a Routine takes in, gives out, or both, with the kind of value it is. At each use the Network wires it to one field of a Record, a single slot of that field by default, or the whole field when the Routine indexes it itself. Routines with the same Ports can be swapped.
-_Avoid_: parameter (that is a slot passed by `run`), argument, pin, binding (say the Network wires a field to a Port)
+One value a Routine takes in, gives out, or both, with the kind of value it is. At each use the Network wires it to one field of a Record, a single slot of that field by default, or the whole field when the Routine indexes it itself. Never a whole Record: one Port, one field, so every wire is written in the Network. Routines with the same Ports can be swapped.
+_Avoid_: parameter, argument, pin, binding (say the Network wires a field to a Port)
 
 **Network**:
-The game's skeleton. It fires Processors and other Networks in order, wires Records to their Ports, chooses with guards, iterates with bounds, and writes nothing. Only the Top Networks name Records; a Network below them has Ports of its own and passes them down.
+The game's skeleton. It fires Processors and other Networks in order, wires Records to their Ports, chooses with guards, iterates with bounds, and writes nothing. Only the Top Networks name the game's Records; a Network below them has Ports of its own and passes them down. A Network may also own Records that only it touches, each written before it is read in every firing (scratch, never memory). Only the Network that walks the slots holds slot numbers; a slot the game computes lives in a Record.
 _Avoid_: scheduler, main loop (when it means the Network, not the original's code)
 
 **Routine**:
