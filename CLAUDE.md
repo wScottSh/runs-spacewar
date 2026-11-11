@@ -13,7 +13,7 @@ This repo converts Spacewar! 3.1 into **pure** RUNS. The conversion is a reorgan
 
 ## Every commit
 
-A commit that changes only Markdown files and `docs/` runs none of checks 1-4: no tool reads them. It still gets its decisions row (5) and its push (6).
+Checks 1-4 exist to catch a change that breaks the image or the game; run them only when the commit changes something they read. `uv run -q python tools/gate_inputs.py` lists those changes: the RUNS text, the declarations, the sources, the oracle, and the tools `check_all.sh` reaches. Empty output (Markdown, `docs/`, a new report script nothing runs) means no check runs, and `check_all.sh` skips itself. A rule here that does nothing for its purpose in the case at hand is a defect to raise, not to follow. Every commit still gets its decisions row (5) and its push (6).
 
 1. `uv run -q python tools/runsc.py | tail -1` prints `MATCH` with sha256 `8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf`.
 2. `tools/check_all.sh` passes. It prints each step's time and its own total; run it in the background and edit nothing under `runs/`, `pdp1/` or `tools/` while it runs.

@@ -61,6 +61,23 @@ phase() {
 }
 
 total=$SECONDS
+# Only a change a check reads is worth checking (gate_inputs.py says which);
+# --all runs everything regardless.
+if [ "${1:-}" != --all ]; then
+  inputs=$(uv run -q python "$here/gate_inputs.py") || exit 1
+  spec=$(uv run -q python "$here/gate_inputs.py" --spec "${RUNS_SPEC:-$here/../../runs-spec}") || exit 1
+  if [ -z "$inputs" ]; then
+    if [ -z "$spec" ]; then
+      echo "== nothing the checks read changed; skipped (--all runs them anyway)"
+      exit 0
+    fi
+    echo "== only the spec changed:"; echo "$spec"
+    phase checks "${checks[-1]}" || exit 1
+    echo "== all passed in $((SECONDS - total))s"
+    exit 0
+  fi
+  echo "== changed inputs:"; echo "$inputs"
+fi
 phase builds "${builds[@]}" || exit 1
 phase checks "${checks[@]}" || exit 1
 echo "== all passed in $((SECONDS - total))s"
