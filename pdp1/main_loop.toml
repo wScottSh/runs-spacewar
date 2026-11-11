@@ -56,34 +56,27 @@ scoreboard = "hlt"
 
 [[place]]
 routine = "frame"
-convention = "BLOCK"
 io = ["budget"]
 
 [[place]]
 routine = "start_with_test_word"
-convention = "BLOCK"
 
 [[place]]
 routine = "start_with_control_boxes"
-convention = "BLOCK"
 
 [[place]]
 routine = "between_games"
-convention = "BLOCK"
 
 [[place]]
 routine = "show_scores"
-convention = "BLOCK"
 
 [[place]]
 routine = "new_match"
-convention = "BLOCK"
 
 # AC holds where the outlines go, so the guard on separate_outlines reads
 # it into IO (lio ddd).
 [[place]]
 routine = "new_game"
-convention = "BLOCK"
 io_reads = ["outline_setting.separate_outlines"]
 
 [[place]]
@@ -99,5 +92,4 @@ io = ["handoff.control_word"]
 # |dx| is kept in a pool word (mt1) while AC computes |dy|.
 [[place]]
 routine = "object_loop"
-convention = "BLOCK"
 spill = ["dx"]

@@ -12,11 +12,9 @@ display = "dpy"
 
 [[place]]
 routine = "minskytron"
-convention = "BLOCK"
 
 [[place]]
 routine = "circles"
-convention = "BLOCK"
 
 [[place]]
 routine = "pick_shift"

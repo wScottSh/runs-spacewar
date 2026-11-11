@@ -39,14 +39,12 @@ convention = "JSP"
 # The fuel is tested in IO: AC holds the turn (lio i \mfu).
 [[place]]
 routine = "spaceship"
-convention = "BLOCK"
 io = ["controls"]
 io_reads = ["ship_flight.fuel"]
 
 # The block the compiled outline jumps back to.
 [[place]]
 routine = "after_outline"
-convention = "BLOCK"
 io = ["handoff.rocket_button"]
 
 [[place]]
@@ -54,7 +52,6 @@ exit = "spaceship_done"
 
 [[place]]
 routine = "spaceship_in_star"
-convention = "BLOCK"
 
 # The walk over the outline's strokes: each slot's words are its member's
 # arm, entered by a jump through sp5, where the main loop carries

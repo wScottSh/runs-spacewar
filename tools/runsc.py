@@ -542,7 +542,7 @@ SCHEMA = {
     "base": {"base": _field},
 }
 # The keys each must hold.
-REQUIRED = {"unit": {"place"}, "routine": {"convention"}, "inline": {"routine"}, "code": {"routine"},
+REQUIRED = {"unit": {"place"}, "inline": {"routine"}, "code": {"routine"},
             "slots": {"range"}, "jsp_slot": {"at", "jump"}, "table": {"at"},
             "store": {"loaded"},
             "stray": {"after", "cursor"}, "start": {"at", "network"}}
@@ -698,6 +698,7 @@ class Bindings:
                 if "base" in p:
                     self.check_field(path, p["base"])
                     self.bases[p["base"]] = path
+        self.block_by_default()
         self.derive_cursors()
         if self.table:
             walked = {f.split(".")[0] for f in self.cursors}
@@ -758,6 +759,43 @@ class Bindings:
             b.result = [d for d in outputs if d not in in_io] + [d for d in outputs if d in in_io]
             if b.io_param:
                 self.io_fields.add(b.io_param)
+
+    def block_by_default(self):
+        """A bound routine that names no convention is a BLOCK when no code
+        calls it: every run of it is the last thing a bound routine does,
+        once the routines it runs inline are laid in, or nothing runs it and
+        the operator starts it or the machine repeats it. DDT's listen block
+        is entered only by jumps (jmp lse, a dozen of them) and its start
+        (start lis); Minskytron's start and its repeated pass are blocks.
+        Any other routine names its convention."""
+        tails: dict[str, list[bool]] = {}
+
+        def go(body: list, tail: bool, stack: tuple):
+            for i, s in enumerate(body):
+                last = tail and i == len(body) - 1
+                if s[0] == "run" and s[1] in self.bound:
+                    tails.setdefault(s[1], []).append(last)
+                elif s[0] == "run" and s[1] in self.prog.routines and s[1] not in stack:
+                    go(self.prog.routines[s[1]].body, last, stack + (s[1],))
+                elif s[0] == "if":
+                    for _, arm in s[1]:
+                        go(arm, last, stack)
+                    go(s[2], last, stack)
+                elif s[0] == "match":
+                    for arm in s[2].values():
+                        go(arm, last, stack)
+                elif s[0] in ("loop", "for"):
+                    go(s[-2], False, stack)
+        for name in self.bound:
+            go(self.prog.routines[name].body, True, (name,))
+        started = {v["network"] for v in self.starts} | {s["repeat"] for s in self.specs.values() if "repeat" in s}
+        for name, b in self.bound.items():
+            if b.convention is None:
+                ends = tails.get(name, [])
+                if not (all(ends) and (ends or name in started)):
+                    raise BindError(f"{b.unit.name}: {name}: name its convention; it is no BLOCK, for a run of it "
+                                    f"has code after it, or nothing runs or starts it")
+                b.convention = "BLOCK"
 
     def derive_cursors(self):
         """The cursors, from the text. A walk is a Network's loop over the
@@ -1017,7 +1055,7 @@ class Bindings:
         if p.get("code"):
             w = Walk.of(self.prog, self.prog.routines[name], self.held)
             self.walks[w.field] = w
-        b = Bound(name, path, p["convention"], p.get("entry"), p.get("ac_param"), p.get("io_param"),
+        b = Bound(name, path, p.get("convention"), p.get("entry"), p.get("ac_param"), p.get("io_param"),
                   p.get("byname"), p.get("result", []), p.get("block"), p.get("block_takes_entry", False),
                   tuple(p["skips"]) if "skips" in p else None, set(p.get("io", [])), p.get("cells", []),
                   p.get("loops"), p.get("shifts"), set(p.get("pool", [])), set(p.get("spill", [])),
