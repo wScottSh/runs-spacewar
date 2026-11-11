@@ -8,8 +8,6 @@ pool = ["pacing.spare_time", "frame.restart_delay", "frame.objects_seen",
         "score.first", "score.second", "score.games_left", "controls.source"]
 # The Network the PDP-1 runs again whenever a firing ends: the host's loop.
 repeat = "frame"
-# A value moves from AC to IO by the swap macro (rcl 9s, rcl 9s).
-moves = "swap"
 
 # The outlines' code lies in the free core right after the table (nnn),
 # up to the star catalog.

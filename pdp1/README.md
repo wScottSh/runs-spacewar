@@ -69,7 +69,6 @@ The keys that hold for a whole unit:
 - The cursors on the slot a field holds, not on a routine's own slot (`launch.slot`: the free slot a new torpedo takes). Each is homed in the first instruction of the unit that uses it. Setting the field to 0 sets the first cursor to the table's start (`init sr1, mtb`). The rest are set in the table's order, each from the one before (`law nob / add sr1 / dap ss3`, then `add (nob / dap ss4`).
 - `[spell.<enum>]` with `literal = true` on a routine member: its word is taken from a constant (`lac (tcr`) where the others are built by `law`. The two are the same word; which the original wrote is an encoding.
 - `[walk] homes` also serves a unit that holds no walk: the cursors the main loop steps whose homes are in this unit's instructions (`mom`, `mth`, `mco`).
-- `moves = "swap"`: a value moves from AC to IO by the `swap` macro.
 - `[into]`: a field that holds a place in a collection (`outline_call.code`, a slot of `outline_code`) holds that place's address; for a collection held as a run of code, the address of the slot's code. The C dialect types it as a pointer. A number set into it is the address of that slot; reading the collection at the field is reading through it, and stepping the field steps the pointer (`idx`). It is storage.
 - `[homes]` with `"pointer"`: an `[into]` field held in the address field of the first instruction that reads through it (`ocg, lio .`).
 - `[addresses]` with a collection's field: the collection lies at an address the layout fixes, not at a place of its own. `"after table"`: from the first word after the object table (`outline_code`, nnn). `runsc` reserves the collection's RUNS count of words there, or for a collection held as a run of code its `[code_words]`, so the units after it lie past them: the star catalog lies at `6077/` because `outline_code` takes 02105 words, and a different count builds a different image.
@@ -89,6 +88,7 @@ The keys that hold for a whole unit:
 
 `runsc` lays code out by rules of its own, from the shape of the RUNS text, the same for every program's declarations:
 
+- A value moves from AC to IO by the `swap` macro, `rcl 9s` twice (`SWAP`): Spacewar's (`swap`) and Minskytron's own (`rcl 9s / rcl 9s` before `jsp gsh`).
 - A loop whose last statement is `if c: break` tests at the bottom and jumps back to the top while `c` fails (`count \mxc, mz1`). A break before it jumps past the loop, as a rotated loop's does (`dzm i \mfu / jmp sq9`, then `count \src, sq7`); a break of a loop that is the routine's last statement is its return.
 - `set x = x + 1` followed by a test of `x` against 0 is one index-and-skip (`isp`).
 - When an `if`'s else arm ends in an `if` whose arm ends with the statements of the first arm, those statements are laid out once, at the end of the inner arm, and the first arm jumps to them (`count i ma1, hp6`).

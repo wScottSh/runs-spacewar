@@ -505,7 +505,7 @@ _PLACES = _list(_SECTION)
 # a number, a flag, or one of a few words.
 SCHEMA = {
     "unit": {"registers": _list(_name), "pool": _list(_field), "repeat": _name,
-             "moves": _one_of("swap"), "place": _PLACES, "inline": _PLACES, "code": _PLACES,
+             "place": _PLACES, "inline": _PLACES, "code": _PLACES,
              "share": _dict(_field, _field), "into": _dict(_field, _field),
              "spell": _dict(_name, _dict(_name, _SPELLED)), "flags": _dict(_field, _int),
              "homes": _dict(_field, _one_of("table", "pointer")), "held_as_code": _list(_field),
@@ -3371,9 +3371,7 @@ class Function:
         if nxt == 0 and body[0][0] == "dispatch":
             self.held[key] = (local, "ac")
         elif nxt is not None and body[nxt][0] == "if":
-            if self.unit.spec.get("moves") != "swap":
-                raise BindError(f"{self.b.name}: the binding moves no value from AC to IO")
-            head.append(f"register word {local}_io = SWAP({local});")
+            head.append(f"register word {local}_io = SWAP({local});")   # rcl 9s, rcl 9s
             self.held[key] = (f"{local}_io", "io")
         return f"{local} {against}"
 
@@ -3727,8 +3725,6 @@ class Function:
         into_io = dotted in self.binds.io_fields or (target[0] == "name" and target[1] in self.b.io)
         if device and into_io and not device.get("or_into_io"):
             # the device reads into AC: move it to IO
-            if self.unit.spec.get("moves") != "swap":
-                raise BindError(f"{self.b.name}: the binding moves no value from AC to IO")
             value = f"SWAP({value})"
         if dotted and self.own_result_local(dotted) and (last or (nxt is not None and nxt[0] == "return")) \
                 and not (device and device.get("or_into_io")):

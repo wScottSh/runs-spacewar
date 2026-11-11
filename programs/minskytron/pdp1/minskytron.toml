@@ -1,8 +1,6 @@
 # The Minskytron (dpys5.mac lines 257-364): the start at 500, which picks
 # the shifts from the test word, then the pass the machine runs forever.
 repeat = "circles"
-# A value moves from AC to IO by the swap macro (rcl 9s, rcl 9s).
-moves = "swap"
 
 # Fields held as the code of their use (docs/rules/held-as-code.md): each
 # count is the shift by it, laid out as a data word and run by xct.
