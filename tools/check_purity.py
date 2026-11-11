@@ -1,6 +1,6 @@
 """The purity report: every place the RUNS text is not yet pure, one line
-each, then the count. The conversion is done when the count is 0; from then
-on runs.check refuses every impurity of kind.
+each, then the count. runs.check refuses a text with any of them; this
+report reads it anyway, so a conversion sees what is left.
 
 With --against REF (a commit, such as HEAD), it also compares with the
 report at REF and fails on any line REF did not have, unless the line names

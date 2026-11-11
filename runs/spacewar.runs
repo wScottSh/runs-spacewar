@@ -239,8 +239,10 @@ enum scan
 
 # The "interesting and often changed constants" at the head of the tape.
 # The ones the original keeps as instructions to execute are Processors in
-# tunables.runs-prim; these are the ones it keeps as numbers.
-record tunables
+# tunables.runs-prim; these are the ones it keeps as numbers. The game's:
+# the fuel, the turn, the star's capture, the collisions and hyperspace
+# read them, and nothing the presentation runs does.
+game record tunables
   fuel_supply: word = -020000               # foo
   angular_acceleration: word = 010          # maa: spaceship angular acceleration
   star_capture_radius: word = 1             # str

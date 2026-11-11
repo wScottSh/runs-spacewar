@@ -1293,12 +1293,11 @@ def without_presentation(prog: Program) -> Program:
 
 
 def check_sides(prog: Program) -> None:
-    """A program whose Records all have kinds is pure, or it is an error.
-    The Spacewar conversion gives its Records kinds as it purifies them;
-    tools/check_purity.py reports what is left until every one has a kind."""
-    if all(r.side for r in prog.records.values()):
-        if found := impurities(prog):
-            raise RunsError(found[0])
+    """A program is pure, or it is an error: every Record has a kind, and
+    the kind rules hold. tools/check_purity.py reads a text that is not yet
+    pure (check with sides=False) and lists every impurity."""
+    if found := impurities(prog):
+        raise RunsError(found[0])
 
 
 def check_contracts(prog: Program) -> None:
