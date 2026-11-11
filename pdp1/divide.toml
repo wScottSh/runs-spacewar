@@ -1,7 +1,6 @@
 # idv and dvd: jda subroutines entered with the dividend in AC and IO and the
 # divisor by name after the call. dvd's steps are a block that idv jumps
 # into. Both return one word further when the quotient fits.
-replaces = "lift/divide.c"
 
 [[place]]
 routine = "integer_divide"

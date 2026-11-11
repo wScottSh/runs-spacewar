@@ -3,7 +3,6 @@
 # games, the new game, the control word getters and the object loop. Each
 # Network is a block the others jump to; the frame starts again where a
 # firing ends.
-replaces = "lift/main_loop.c"
 registers = ["outline_call"]
 pool = ["pacing.spare_time", "frame.restart_delay", "frame.objects_seen",
         "score.first", "score.second", "score.games_left", "controls.source"]

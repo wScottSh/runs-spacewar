@@ -1,7 +1,6 @@
 # The outline compiler (source lines 398-507): ocs, the JSP routine that
 # lays out IO twice, then oc, the JDA routine that decodes one outline
 # into the strokes' code.
-replaces = "lift/outline_compiler.c"
 pool = ["outline_compiler.codes_left", "outline_compiler.codes_rest", "pen.saved_x", "pen.saved_y"]
 
 # The strokes are held as the code of their use (docs/rules/held-as-code.md):

@@ -2,7 +2,6 @@
 # constants and pool words, the patch space and the object table. Where
 # they lie is the PDP-1's layout. The compiled outlines follow the table
 # (pdp1/main_loop.toml, [addresses]).
-replaces = "lift/core_layout.c"
 
 [[place]]
 machine = "constants"

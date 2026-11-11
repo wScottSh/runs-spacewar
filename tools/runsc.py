@@ -501,7 +501,7 @@ _PLACES = _list(_SECTION)
 # each takes: a field (record.field), a name (a routine, a local, a C word),
 # a number, a flag, or one of a few words.
 SCHEMA = {
-    "unit": {"replaces": _TEXT, "registers": _list(_name), "pool": _list(_field), "repeat": _name,
+    "unit": {"registers": _list(_name), "pool": _list(_field), "repeat": _name,
              "moves": _one_of("swap"), "place": _PLACES, "inline": _PLACES, "code": _PLACES,
              "share": _dict(_field, _field), "into": _dict(_field, _field),
              "spell": _dict(_name, _dict(_name, _SPELLED)), "flags": _dict(_field, _int),
@@ -539,7 +539,7 @@ SCHEMA = {
     "base": {"base": _field},
 }
 # The keys each must hold.
-REQUIRED = {"unit": {"replaces", "place"}, "routine": {"convention"}, "inline": {"routine"}, "code": {"routine"},
+REQUIRED = {"unit": {"place"}, "routine": {"convention"}, "inline": {"routine"}, "code": {"routine"},
             "slots": {"range"}, "jsp_slot": {"at", "returns", "jump"}, "table": {"at"},
             "store": {"loaded"},
             "stray": {"after", "cursor"}, "start": {"at", "network"}}
@@ -4276,7 +4276,7 @@ def write_tree(prog: runs.Program, out: Path) -> Path:
     lift = tomllib.loads((PROGRAM / "lift.toml").read_text())
     paths = sorted(BINDINGS.glob("*.toml"))
     binds = Bindings(prog, paths)
-    bound = {spec["replaces"]: p for p, spec in binds.specs.items()}
+    bound = {f"lift/{p.stem}.c": p for p in binds.specs}     # a unit's declarations are named after its C file
 
     generated = out / "lift"
     if generated.exists():

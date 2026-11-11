@@ -704,8 +704,6 @@ def binding_edits(binds: runsc.Bindings) -> list[Edit]:
                     out.append(Edit(f"{where} drop {text[x:y].strip()}", "element", name, lo, hi))
             elif kind == "string":
                 s = text[a + 1:z - 1]
-                if "/" in s:
-                    continue                        # the C file a unit replaces: not a name
                 for o in sorted(shapes["." in s] - {s}):
                     out.append(Edit(f"{where} {s} -> {o}", "value", name, a, z, f'"{o}"', s in made))
             elif kind == "number":

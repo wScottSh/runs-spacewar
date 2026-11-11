@@ -1,6 +1,5 @@
 # The outlines of the spaceships (source lines 1336-1356): each outline's
 # words, then five words of room to make it longer, which no rule reads.
-replaces = "lift/outlines.c"
 
 [[place]]
 slots = "outlines.codes"

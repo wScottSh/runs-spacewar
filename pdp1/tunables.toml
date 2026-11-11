@@ -4,7 +4,6 @@
 # operator could change them from the console between games; that the
 # addresses are fixed is the PDP-1's operator interface, not a game rule.
 # The ones the original executes with xct are XCT routines.
-replaces = "lift/tunables.c"
 
 [[place]]
 machine = "sequence break"

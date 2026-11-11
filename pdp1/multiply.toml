@@ -1,6 +1,5 @@
 # imp and mpy: jda subroutines. The second factor is the word after the
 # call, executed by name each time it is read. mp2 lies between them.
-replaces = "lift/multiply.c"
 
 [[place]]
 routine = "integer_multiply"

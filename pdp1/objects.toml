@@ -1,7 +1,6 @@
 # The calc routines for objects that are not flying spaceships: mex, tcr,
 # hp1 and hp3, jsp routines the main loop enters with its cursors on the
 # current object. The random and diff macros are laid out at each use.
-replaces = "lift/objects.c"
 pool = ["explosion_count.particles"]
 
 # Counts held as the code of their use (docs/rules/held-as-code.md):

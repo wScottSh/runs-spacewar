@@ -2,7 +2,6 @@
 # loaded high in core, right after the free core the outlines' strokes use:
 # runsc reserves outline_code's 02105 words after the object table, so the
 # catalog lies at 03772 + 02105 = 06077.
-replaces = "lift/star_catalog.c"
 
 [[place]]
 slots = "star_catalog.words"

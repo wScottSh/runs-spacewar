@@ -2,7 +2,6 @@
 # routines the main loop enters with its cursors on the ship's slot, and
 # the blocks they jump through. Every block that runs off its end leaves
 # through the shared exit, srt, which returns to the main loop.
-replaces = "lift/spaceship.c"
 pool = ["spaceship.controls", "heading.sine", "heading.cosine", "spaceship.gravity_x",
         "spaceship.gravity_y", "spaceship.operand", "spaceship.x_squared", "spaceship.torpedo_x",
         "spaceship.torpedo_y", "spaceship.flame",

@@ -1,7 +1,6 @@
 # The heavens (source lines 510-653): blp, the central star, and bpt, its
 # line, jsp routines; then bck, the Expensive Planetarium, a jsp routine
 # that lays out the dislis macro once for each magnitude; then its words.
-replaces = "lift/heavens.c"
 pool = ["central_star.slope_x", "central_star.slope_y"]
 
 # The star's slope lives in the pool words of the ship's gravity pull (bx,

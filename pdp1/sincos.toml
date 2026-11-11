@@ -2,7 +2,6 @@
 # word and jumps into sin's body. The series keeps x in sin's entry word,
 # x^2 and then the answer in cos's. The reduction loop is laid out with its
 # first exit falling into the series and the rest after the last return.
-replaces = "lift/sincos.c"
 
 [[place]]
 routine = "cosine"
