@@ -51,3 +51,17 @@ Purity is fixed. When a pure shape will not compile to the original image, the s
 - `pdp1/README.md`: the declarations' vocabulary and the rules `runsc` enforces. Read it before you change the declarations or the compiler.
 - `../runs-spec`: the RUNS spec. `NETWORK_TOPOLOGY.md` (Records, kinds, Networks) and `CONVERSION_PROCESS.md` (how a conversion goes) bear on every unit. A language change lands there too, with examples that `../runs-spec/tools/check_examples.py ../runs-spec .` runs.
 - `viewer/`: draws the RUNS text (`npm run net`, then `npm run dev`).
+
+## Agent skills
+
+### Issue tracker
+
+GitHub issues on `wScottSh/runs-spacewar`, via `gh`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `docs/adr/` at the root. See `docs/agents/domain.md`.
