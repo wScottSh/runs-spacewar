@@ -264,7 +264,7 @@ A swarm stress-tested this draft against Super Mario Bros., DOOM, Ocarina of Tim
 
 ## Verified
 
-`tools/check_all.sh` runs every check in the first list on each change, in about ten minutes on 32 cores; the counts are its own. The checks against SIMH run the RUNS source in the evaluator and SIMH running the oracle image on the same Records. The second list was run by hand, with larger counts.
+`tools/check_all.sh` runs every check in the first list on each change, all at once after the two builds; it prints each step's time, and the counts are its own. The checks against SIMH run the RUNS source in the evaluator and SIMH running the oracle image on the same Records. The second list was run by hand, with larger counts.
 
 What `check_all.sh` runs:
 

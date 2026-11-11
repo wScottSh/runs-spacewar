@@ -14,7 +14,7 @@ This repo converts Spacewar! 3.1 into **pure** RUNS. The conversion is a reorgan
 ## Every commit
 
 1. `uv run -q python tools/runsc.py | tail -1` prints `MATCH` with sha256 `8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf`.
-2. `tools/check_all.sh` passes. It takes about 6 minutes; run it in the background and edit nothing under `runs/`, `pdp1/` or `tools/` while it runs.
+2. `tools/check_all.sh` passes. It prints each step's time and its own total; run it in the background and edit nothing under `runs/`, `pdp1/` or `tools/` while it runs.
 3. The purity report gains no line: `PYTHONPATH=tools uv run -q python tools/check_purity.py --against HEAD` exits 0. It allows a new line only where a Record just got its kind and revealed an impurity already there; the decisions row lists those.
 4. The PDP-1 declarations do not grow: `uv run -q python tools/check_declarations.py` exits 0. It counts entries, not lines: every scalar value and every list element of the TOML (`pdp1/DECLARATIONS`, below).
 5. A row in `docs/decisions.tsv` for each decision: what, why, evidence, result.

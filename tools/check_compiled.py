@@ -785,7 +785,9 @@ FAILURES = ("silent", "dead", "crash")
 
 def main() -> int:
     prog = program()
-    if runsc.build(prog) != 0:
+    with tempfile.TemporaryDirectory() as out:      # not build/runs: the other checks read it meanwhile
+        code = runsc.build(prog, Path(out))
+    if code != 0:
         print(runsc.build.said)
         print("check_compiled: the unmutated image does not match")
         return 1
