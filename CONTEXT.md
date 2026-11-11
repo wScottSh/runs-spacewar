@@ -25,11 +25,15 @@ Anything the game remembers, one value or a fixed-size collection. All game stat
 _Avoid_: global, variable, state (unqualified)
 
 **Processor**:
-One rule. Its whole contract is the Records it declares it reads and writes.
+One rule, stateless. It names no Records: its whole contract is its Ports, and the Network binds Records to them at each use.
 _Avoid_: function, subroutine (except for the original's `jda` routines)
 
+**Port**:
+One value a Routine takes in, gives out, or both, with the kind of value it is. At each use the Network binds it to one field of a Record, a single slot of that field by default, or the whole field when the Routine indexes it itself. Routines with the same Ports can be swapped.
+_Avoid_: parameter (that is a slot passed by `run`), argument, pin
+
 **Network**:
-The game's skeleton. It fires Processors and other Networks in order, chooses with guards, iterates with bounds, and writes nothing.
+The game's skeleton. It fires Processors and other Networks in order, binds Records to their Ports, chooses with guards, iterates with bounds, and writes nothing. Only the Top Networks name Records; a Network below them has Ports of its own and passes them down.
 _Avoid_: scheduler, main loop (when it means the Network, not the original's code)
 
 **Routine**:

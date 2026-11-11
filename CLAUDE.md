@@ -13,6 +13,8 @@ This repo converts Spacewar! 3.1 into **pure** RUNS. The conversion is a reorgan
 
 ## Every commit
 
+A commit that changes only Markdown files and `docs/` runs none of checks 1-4: no tool reads them. It still gets its decisions row (5) and its push (6).
+
 1. `uv run -q python tools/runsc.py | tail -1` prints `MATCH` with sha256 `8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf`.
 2. `tools/check_all.sh` passes. It prints each step's time and its own total; run it in the background and edit nothing under `runs/`, `pdp1/` or `tools/` while it runs.
 3. The purity report gains no line: `PYTHONPATH=tools uv run -q python tools/check_purity.py --against HEAD` exits 0. It allows a new line only where a Record just got its kind and revealed an impurity already there; the decisions row lists those.
