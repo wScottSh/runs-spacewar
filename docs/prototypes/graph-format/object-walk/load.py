@@ -257,48 +257,54 @@ def writers(b: Bundle, place: str) -> list[str]:
 
 # ----------------------------------------------------------------- order
 
+NAMES_BACKWARD = False     # names break the last ties backward: ../order/walk.py's proof that they decide nothing
+TESTS_LAST = True          # False leaves the rule's guard fact out (../order/walk.py's planted defect)
+
+
 def schedule(w: World, b: Bundle) -> list[str]:
-    """Depth-first from the outputs in the order the bundle declares them:
-    a transition after the writers of its inputs (in its Processor's order;
-    a legacy routine's by name), then the writer of its guard's value. Then
-    the transitions no output reaches (a legacy routine that only reads), by
-    name. Each branch is laid out as one block, at its first member."""
+    """The order rule of ../order/rule.py (#63): a transition after the
+    writers of what it reads and of its guard's value; among the
+    transitions that may go next, an unguarded one before a test's branch
+    (work that does not depend on a test is done before it). Each branch is
+    laid out as one block, its members in the same order. Nothing here reads
+    the order of a file's lines or of a Processor's inputs: names break the
+    remaining ties, and they decide nothing (NAMES_BACKWARD)."""
     g = guards(b)
-    done: list[str] = []
+    deps = {}
+    for t in b.uses:
+        reads = [a.place for a in b.arcs if a.transition == t and a.into and not a.guard]
+        reads += [g[t][0]] if g[t] else []
+        deps[t] = {x for p in reads for x in writers(b, p)} - {t}
+    unit = lambda t: g[t][0] if g[t] else t  # noqa: E731
+    name = (lambda s: tuple(-ord(c) for c in s)) if NAMES_BACKWARD else (lambda s: tuple(map(ord, s)))
 
-    def key(t):
-        return (g[t] is not None and g[t][1] == "else", g[t] or ("", ""), t)
+    def ready(pending, done, under):
+        return [u for u in pending if all(d in done or unit(d) == u for t in under(u) for d in deps[t])]
 
-    def visit(t):
-        if t in done:
-            return
-        s = w.sig(b.uses[t].routine)
-        wired = {a.io: a.place for a in b.arcs if a.transition == t and a.into and a.io}
-        reads = [wired[i] for i in s.inputs] + sorted(a.place for a in b.arcs
-                                                      if a.transition == t and a.into and not a.io and not a.guard)
-        for p in reads:
-            for x in sorted(writers(b, p), key=key):
-                visit(x)
-        if g[t]:
-            for x in sorted(writers(b, g[t][0]), key=key):
-                visit(x)
-        done.append(t)
-    for _, n, _ in b.ports:
-        if any(a.place in (n,) or (entry(a.place) and base(a.place) == n) for a in b.arcs if not a.into):
-            for t in sorted({a.transition for a in b.arcs if not a.into and base(a.place) == n}, key=key):
-                visit(t)
-    for t in sorted(b.uses):
-        visit(t)
-    order, emitted = [], set()
-    for t in done:
-        if t in emitted:
+    def lay(members, done):
+        """members in dependency order, by the rule: a list scheduler."""
+        order, pending = [], list(members)
+        while pending:
+            here = [t for t in pending if deps[t] & set(members) <= set(order) | done]
+            t = min(here, key=lambda t: (TESTS_LAST and g[t] is not None, name(t)))
+            order.append(t)
+            pending.remove(t)
+        return order
+    order, done = [], set()
+    units = sorted({unit(t) for t in b.uses})
+    members = lambda u: [t for t in b.uses if unit(t) == u]  # noqa: E731
+    while units:
+        here = ready(units, done, members)
+        u = min(here, key=lambda u: (TESTS_LAST and u not in b.uses, name(u)))
+        units.remove(u)
+        if u in b.uses:
+            order.append(u)
+            done.add(u)
             continue
-        if g[t] is None:
-            order.append(t); emitted.add(t); continue
-        sides = sorted({g[u] for u in done if g[u] and g[u][0] == g[t][0]}, key=lambda x: (x[1] == "else", x))
-        for side in sides:
-            block = [u for u in done if g[u] == side]
-            order += block; emitted |= set(block)
+        for side in sorted({g[t] for t in members(u)}, key=lambda x: (x[1] == "else", x)):
+            block = lay([t for t in members(u) if g[t] == side], done)
+            order += block
+        done |= set(members(u))
     return order
 
 

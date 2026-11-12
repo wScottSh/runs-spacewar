@@ -3898,9 +3898,10 @@ class Function:
         if dotted and name == leaf(dotted) and name not in self.own.values() and not self.declared(name):
             kind = "register word" if dotted in self.binds.io_fields or self.owned(dotted) and name in self.b.io else "word"
             kind = "word *" if dotted in self.binds.pointers else kind + " "
-            if self.has_table or self.owned(dotted):
-                # the arms of a jump table lie apart and share their locals, and a Network's scratch is
-                # one field through all its lines: declared at the top
+            if self.has_table or self.owned(dotted) or (self.nested and self.own_result_local(dotted)):
+                # the arms of a jump table lie apart and share their locals, a Network's scratch is
+                # one field through all its lines, and a result set inside a branch is the routine's
+                # result after it: declared at the top
                 self.declare_top(f"{kind}{name};")
                 self.scopes[0].add(name)
                 self.emit(depth, f"{name} = {value};")

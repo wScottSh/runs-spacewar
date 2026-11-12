@@ -1,0 +1,10 @@
+processor shift_right_17                                    # scr 9s; scr 8s
+  in high: word
+  in entering_low: word
+  out shifted_high: word
+  out shifted_low: word
+  let h = high
+  let low = entering_low                                    # low: the local the PDP-1 keeps in IO
+  set (h, low) = scr(h, low, 17)
+  set shifted_high = h
+  set shifted_low = low

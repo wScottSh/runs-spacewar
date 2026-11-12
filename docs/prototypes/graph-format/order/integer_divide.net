@@ -1,0 +1,33 @@
+# integer divide (idv): the dividend is one word, shifted right 17 into the
+# 36-bit pair. IO's sign on entry lands in the low half's lowest bit. divide
+# is one transition, wired as a Processor is.
+
+network integer_divide
+  in dividend: word
+  in low: word
+  in divisor: word
+  out quotient: word
+  out result: word
+  out remainder: word
+  out outcome: division
+
+places
+  integer_divide_work.high
+  integer_divide_work.low
+
+transitions
+  shift: shift_right_17
+  divide: divide
+
+arcs
+  dividend -> shift.high
+  low -> shift.entering_low
+  shift.shifted_high -> integer_divide_work.high
+  shift.shifted_low -> integer_divide_work.low
+  integer_divide_work.high -> divide.high
+  integer_divide_work.low -> divide.low
+  divisor -> divide.divisor
+  divide.quotient -> quotient
+  divide.result -> result
+  divide.remainder -> remainder
+  divide.outcome -> outcome

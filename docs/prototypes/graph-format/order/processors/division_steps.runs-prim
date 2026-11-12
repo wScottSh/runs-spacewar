@@ -1,0 +1,7 @@
+processor division_steps                                    # repeat 22, dis; add
+  inout high: word
+  inout low: word
+  in divisor: word
+  for step in 1 .. 022:
+    set (high, low) = dis(high, low, divisor)
+  set high = high + divisor

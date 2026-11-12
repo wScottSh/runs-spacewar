@@ -1,0 +1,8 @@
+# The sine-cosine subroutine's own words (sin, cos). The series keeps its
+# working values in the two entry words.
+game record sine_call
+  angle: word = 0           # sin: jda leaves the angle here, binary point right of bit 3
+  x: word = 0               # sin, later: the angle reduced to [0, pi/2], times 2/pi
+  x_squared: word = 0       # cos, later
+  answer: word = 0          # cos, last: the series' answer
+  result: word = 0          # AC at return, binary point right of bit 0

@@ -1,0 +1,4 @@
+processor add_sine_c5                                       # add (121312
+  in value: word
+  out sum: word
+  set sum = value + 0121312

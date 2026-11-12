@@ -1,0 +1,5 @@
+processor subtract                                          # sub
+  in a: word
+  in b: word
+  out difference: word
+  set difference = a - b

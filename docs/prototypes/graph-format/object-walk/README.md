@@ -66,9 +66,11 @@ two words ... a fresh word costs`). That would cost one word and one copy.
 
 ## The order
 
-Nothing in these files states the order. `schedule` works depth first from each
-bundle's outputs, in the order the bundle declares them. The interleaving of
-the original follows from the chain:
+Nothing in these files states the order, and nothing in them breaks a tie.
+`schedule` applies the rule of `../order/` (#63): a transition comes after the
+writers of what it reads and of its guard's value, and among the transitions
+that may go next, an unguarded one goes before a test's branch. The
+interleaving of the original follows from the chain:
 
 - `calc` reads `collided`, which the collision fold writes, so a slot's calc
   routine comes after its collisions.
@@ -76,13 +78,15 @@ the original follows from the chain:
   routine gave. A torpedo that a ship launches into a later slot is counted,
   tested for collisions, and moved in the same frame.
 - `charge_time` reads `calculated[slot].cycles`, the value after `calc`.
+- `count_object` touches only the count, not the table, and has no guard, so
+  it goes before the collision test (`idx \moc` before `spi`).
 
-One choice is not data. `count_object` touches only the count, not the table.
-It comes first because `active_object` declares `inout seen` before `inout table`.
-With the two lines swapped, the count moves after `calc`, and the image
-differs at 01451 (want 261737, got 261736). That is the one remaining place where a declaration's order decides
-the image. It is the same tie-break the two-level loader uses, and here it
-matters.
+Before #63, the count came first only because `active_object` declares `inout
+seen` before `inout table`; swapped, the image differed at 01451. Now
+`../order/walk.py` reverses the in, inout and out lines of every network file
+and breaks the last ties by names backward: the image is identical each time.
+Left without its guard fact, the rule puts the count after `calc` and the image
+differs at 01451 (want 261737, got 261736).
 
 ## Collisions as a phase of their own
 

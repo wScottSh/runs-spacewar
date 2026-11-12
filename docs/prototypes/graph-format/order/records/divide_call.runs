@@ -1,0 +1,9 @@
+# The divide subroutine's own words (dvd): what a caller hands it and gets back.
+game record divide_call
+  high: word = 0            # dvd: jda leaves the dividend's high half here
+  low: word = 0             # IO: the dividend's low half
+  divisor: word = 0         # the word after the call
+  quotient: word = 0        # idv: the quotient's magnitude, or |divisor| on overflow
+  result: word = 0          # AC at return: the quotient, or |divisor| signed like one on overflow
+  remainder: word = 0       # IO at return: the remainder, or the dividend's high half on overflow
+  outcome: division = overflows
