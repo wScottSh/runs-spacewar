@@ -1,0 +1,4 @@
+# The `random` macro: the generator's next value.
+processor next_random
+  writes: random
+  set random.number = (rar(random.number, 1) ^ 0355670) + 0355670

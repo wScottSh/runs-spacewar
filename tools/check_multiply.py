@@ -1,5 +1,5 @@
-"""The multiply Processor and the integer_multiply Network of
-arithmetic.runs-prim against SIMH running mpy and imp in the oracle image.
+"""The multiply and integer_multiply network files (runs/arithmetic/)
+against SIMH running mpy and imp in the oracle image.
 
 Inputs: every pair of edge values (0, -0, +-max, +-1, +-powers of two), the
 nine pairs of the observed mpy and imp vectors, and N seeded

@@ -1,4 +1,4 @@
-"""The divide Processor and the integer_divide Network of arithmetic.runs-prim
+"""The divide and integer_divide network files (runs/arithmetic/)
 against SIMH running dvd and idv in the oracle image.
 
 Inputs: every (high dividend, divisor) pair of edge values (0, -0, +-max,
