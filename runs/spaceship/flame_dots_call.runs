@@ -1,0 +1,4 @@
+# The flame's dots: the flame they consume, and the fuel they burn.
+game record flame_dots_call
+  flame: word = 0
+  fuel: word = 0

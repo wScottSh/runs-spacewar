@@ -1,0 +1,16 @@
+# The exhaust flame while the rocket fires (sq7), a bundle: the dots the
+# flame was lit with, drawn behind the tail, each burning a unit of fuel.
+
+network flame(slot)
+  inout fleet: ship_flight
+
+places
+  spaceship.flame
+
+transitions
+  dots: flame_dots
+
+arcs
+  spaceship.flame -> dots.flame
+  fleet[slot].fuel -> dots.fuel
+  dots.fuel -> fleet[slot].fuel

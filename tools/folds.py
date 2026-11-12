@@ -255,6 +255,10 @@ class Facts:
                 return out.put(t, holding(k))
             if v[0] == "bin" and v[1] == "+" and bare(v[2]) == bare(t) and v[3] == ("num", 1):
                 return out.put(t, Known(whole=True))    # a step never gives -0
+            if v[0] == "neg" and (kn := self.get(v[1])) and kn.sign:
+                return out.put(t, Known(sign="nonneg" if kn.sign == "neg" else "neg"))  # every bit flips
+            if v[0] in ("name", "field", "index") and (kn := self.get(v)) and not names_in(v) & target_names(t):
+                return out.put(t, kn)                   # a copy knows what its source knows
             return out
         if op == "run" and s[1] in self.prog.routines:
             r = self.prog.routines[s[1]]
@@ -564,17 +568,42 @@ def settled(stmts: list, prog: runs.Program) -> list:
     decide: its arm when true, nothing when false. A loop bundle's counter
     set to a constant below 0 needs no test before the first pass (the
     `setup` and `count` macros: head_out's three passes)."""
+    return settled_from(stmts, Facts(prog))[0]
+
+
+def settled_from(stmts: list, facts: Facts | None) -> tuple[list, Facts | None]:
+    """settled, knowing facts at the start; with the facts at the end (None
+    when no path runs past it). A test's sides learn its outcome, and
+    what they all know after them holds after the test (light_flame: the
+    flame is below 0 on both sides of its sign test)."""
     out: list = []
-    facts = Facts(prog)
+    fresh = Facts(facts.prog) if facts is not None else None
     for s in stmts:
+        if facts is None:
+            out.append(s)
+            continue
         g = guard_of(s)
         if g is not None and (d := facts.decide(g)) is not None:
-            out.extend(s[1][0][1] if d else [])
-            facts = Facts(prog)
+            if d:
+                arm, facts = settled_from(s[1][0][1], facts)
+                out.extend(arm)
+            continue
+        if s[0] == "if":
+            arms, ends, prior = [], [], facts
+            for c, b in s[1]:
+                nb, end = settled_from(b, prior.learn(c, True))
+                arms.append((c, nb))
+                ends.append(end)
+                prior = prior.learn(c, False)
+            other, end = settled_from(s[2], prior)
+            out.append(("if", arms, other, s[3]))
+            facts = merge(ends + [end])
             continue
         out.append(s)
-        facts = facts.after(s) if s[0] in ("let", "set") else Facts(prog)
-    return out
+        if s[0] in ("break", "continue", "return", "stop", "goto", "unreachable"):
+            return out, None
+        facts = facts.after(s) if s[0] in ("let", "set") else fresh
+    return out, facts
 
 
 def dead_locals(stmts: list, names: set[str]) -> list:

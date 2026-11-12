@@ -4917,7 +4917,11 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
        other uses goes first, the made-and-used pairs after it (breakout's
        end before the recharge time; in_hyperspace's begin before the
        draws);
-    6. names, for the ties left, which decide nothing in the image
+    6. not one that makes the value a test of this level reads: the value
+       a skip tests is made just before it (the flame's dots: the fuel's
+       `count i \\mfu, st2` after the flame's aim, isp and its skip one
+       pair);
+    7. names, for the ties left, which decide nothing in the image
        (tools/check_names.py renames them)."""
     rank = {decl[k]: n for n, k in enumerate(ARRIVAL) if k in decl}
     reads = {t: {a.place for a in g.arcs if a.transition == t and a.into and a.io} for t in g.transitions}
@@ -4942,11 +4946,12 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
     def unit_key(u, ms, before, placed):
         if u in sides:
             rank, name = min(key(t) for t in inside[u])
-            return (True, False, rank, False, False, name)
+            return (True, False, rank, False, False, False, name)
         takers = [t for t in ms if t not in placed and t != u and t not in sides and t not in moves
                   and reads[t] & writes[u]] + [x for x in ms if x in sides and x not in placed and x in writes[u]]
         waits = bool(takers) and not any(before[t] <= placed | {u} for t in takers)
-        return (False, u in tail, key(u)[0], waits, bool(takers), u)
+        tested = any(p in sides and p in ms and p not in placed for p in writes[u])
+        return (False, u in tail, key(u)[0], waits, bool(takers), tested, u)
 
     def ok(prefix):
         return path_hazards(g, prefix, at, word, sigs, io, moves, calls, first, given) is None

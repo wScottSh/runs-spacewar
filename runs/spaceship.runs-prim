@@ -293,29 +293,11 @@ processor light_flame                                       # sq6: ranct sar 9s,
   set handoff.rocket_button = spaceship.controls            # lio \scw
   set handoff.rocket_button = ral(handoff.rocket_button, 2)
 
-processor aim_flame                                         # sq7: scale \sn, 8s, \ssn
-  reads: heading
-  writes: pen
-  set pen.down_x = heading.sine >> 8
-  set pen.down_y = heading.cosine >> 8
-
-processor burn_fuel(slot)                                   # count i \mfu, st2
-  writes: ship_flight
-  set ship_flight.fuel[slot] = ship_flight.fuel[slot] + 1
-
-processor empty_tank(slot)                                  # dzm i \mfu
-  writes: ship_flight
-  set ship_flight.fuel[slot] = 0
-
 processor plot_flame                                        # st2: yincr \sx1, \sy1, sub; dispt i, \sy1
   writes: pen, display
   set pen.y = pen.y - pen.down_y
   set pen.x = pen.x + pen.down_x
   emit display: pen.x, pen.y, 0
-
-processor count_flame                                       # count \src, sq7
-  writes: spaceship
-  set spaceship.flame = spaceship.flame + 1
 
 # Torpedoes. The counter is the tube's reload time. The fire button
 # launches while held; with sense switch 3 on, only when newly pressed. The

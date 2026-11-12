@@ -1,0 +1,41 @@
+# The flame's dots (sq7), a loop bundle: each pass burns a unit of fuel
+# and, while some is left, draws a dot and takes a token of the flame.
+# A pass that empties the tank takes no token, and the loop ends.
+
+network flame_dots
+  counter flame: word
+  inout fuel: word
+
+places
+  heading.sine
+  heading.cosine
+  pen.down_x
+  pen.down_y
+  flame_work.burned
+
+transitions
+  aim: aim_flame                                            # sq7: scale \sn, 8s, \ssn
+  burn: count_down                                          # count i \mfu, st2
+  empty: clear                                              # dzm i \mfu
+  give: copy
+  plot: plot_flame                                          # st2
+  take: count_down                                          # count \src, sq7
+
+arcs
+  heading.sine -> aim.sine
+  heading.cosine -> aim.cosine
+  aim.down_x -> pen.down_x
+  aim.down_y -> pen.down_y
+  fuel -> burn.counter
+  burn.counter -> flame_work.burned
+  flame_work.burned -> empty when else                      # out of fuel
+  empty.value -> fuel
+  flame_work.burned -> give when < 0
+  flame_work.burned -> give.source
+  give.target -> fuel
+  flame_work.burned -> plot when < 0
+  pen.down_x -> plot
+  pen.down_y -> plot
+  flame_work.burned -> take when < 0
+  flame -> take.counter
+  take.counter -> flame

@@ -30,6 +30,9 @@ BUILD = ROOT / "build/runs"         # runsc's last build: its C and its listing
 ORACLE = ROOT / "build/oracle.rim"
 
 # Record field: the Macro symbol of its first word (a collection's array).
+# A word that holds a chain of values maps from each Record field in the chain (mtc: the budget, then the
+# spare-time loop's tokens; ssn: the star wait, then its tokens; src: the flame, then its tokens); a check
+# compares the one written last (Binding.outlived).
 FIELDS = {
     ("objects", "routine"): "mtb", ("objects", "x"): "nx1", ("objects", "y"): "ny1",
     ("objects", "counter"): "na1", ("objects", "cycles"): "nb1",
@@ -39,8 +42,6 @@ FIELDS = {
     ("ships", "saved_routine"): "nh1", ("ships", "jumps_left"): "nh2", ("ships", "recharge"): "nh3",
     ("ships", "uncertainty"): "nh4",
     ("random", "number"): "ran",
-    # A word that holds a chain of values (mtc: the budget, then the spare-time loop's tokens; ssn: the
-    # star wait, then its tokens) maps from each; a check compares the one written last (outlived).
     ("burn_time_call", "budget"): "mtc", ("pacing", "spare_time"): "mtc",
     ("frame", "restart_delay"): "ntd", ("frame", "objects_seen"): "moc",
     ("score", "first"): "1sc", ("score", "second"): "2sc", ("score", "games_left"): "gct",
@@ -63,6 +64,7 @@ FIELDS = {
     ("ship_nose", "x"): "sx1", ("ship_nose", "y"): "sy1", ("spaceship", "star_wait"): "ssn",
     ("star_wait_work", "counted"): "ssn", ("wait_in_star_call", "wait"): "ssn",
     ("spaceship", "torpedo_x"): "stx", ("spaceship", "torpedo_y"): "sty", ("spaceship", "flame"): "src",
+    ("flame_dots_call", "flame"): "src",
     ("pen", "x"): "sx1", ("pen", "y"): "sy1", ("pen", "down_x"): "ssn", ("pen", "down_y"): "scn",
     ("pen", "out_x"): "scm", ("pen", "out_y"): "ssm", ("pen", "out_down_x"): "ssc",
     ("pen", "out_down_y"): "csm", ("pen", "in_down_x"): "csn", ("pen", "in_down_y"): "ssd",
@@ -358,12 +360,16 @@ class Binding:
     def places(self, records: list[str]):
         """Every (record, field, slot, address) of the named Records; fields
         held in a program flag or an instruction, and tables of constants,
-        are not words of their own."""
+        are not words of their own; nor is an input of a bundle laid out
+        inline that FIELDS does not name: it lives in its user's place, a
+        table entry (flame_dots_call.fuel, in the ship's nfu)."""
         constants = runs.constant_tables(self.prog)
         for rec in records:
             r = self.prog.records[rec]
             for fld in r.fields:
                 if (rec, fld) in FLAGS or (rec, fld) in INSTRUCTION_FIELDS or (rec, fld) in constants:
+                    continue
+                if rec in {g.call for g in self.prog.graphs.values()} and (rec, fld) not in FIELDS:
                     continue
                 for slot in (range(r.count) if r.count else [None]):
                     yield rec, fld, slot, self.address(rec, fld, slot)

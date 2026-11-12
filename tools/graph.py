@@ -23,7 +23,8 @@ A loop bundle declares one `counter name: type` line, an input set
 before the loop starts (CONTEXT.md 196-206). Its one cycle runs through
 the counter: a count_down takes it and gives it back one nearer 0, and
 nothing else touches it. Each pass fires every transition once and
-takes one token; the loop ends when the counter reaches 0. The places
+takes one token; the loop ends when the counter reaches 0, or after a
+pass whose take a guard keeps from firing (a guard stops it). The places
 it takes and gives (its inouts) hold one value a pass, and its user sees
 their final values. The counter holds minus the passes left, as every
 counter in Spacewar does (the PDP-1's `isp`).
@@ -657,6 +658,8 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
             for i in reversed(other):
                 del body[i]
             body[then[0]:then[0]] = moved
+    if take and body[-1][0]:
+        body = stop_side_first(g, body)
     head = f"network {g.name}({', '.join(g.params)})" if g.params else f"network {g.name}"
     requires = ([g.requires] if g.requires else []) + [f"requires: {low.at[p]} != {m}" for p, m in g.assumes]
     out = [head] + [f"  {r}" for r in requires] + [f"  owns {n}: word" for n in low.owns]
@@ -685,6 +688,28 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
 
 
 LOOP_BOUND = 0o400001     # more passes than an 18-bit counter below 0 holds tokens
+NEGATED = {"<": ">=", ">=": "<", ">": "<=", "<=": ">", "==": "!=", "!=": "=="}
+
+
+def stop_side_first(g: Graph, body: list) -> list:
+    """A loop bundle whose take runs on one side of a test: a pass on the
+    other side takes no token, and the loop ends after it. That side is
+    laid out first, under its own test, ending in a break; the take's side
+    follows it unguarded, the take last. body: the steps, the take's last."""
+    gd = body[-1][0]
+    if len(gd) != 1:
+        raise GraphError(f"{g.where}: {g.name}: the take runs on one side of one test, not under {len(gd)}")
+    place, side = gd[0]
+    test = next(a.guard for a in g.arcs if a.place == place and a.guard and a.guard != "else")
+    op, _, rest = test.partition(" ")
+    stop = (place, test if side == "else" else f"{NEGATED[op]} {rest}")
+    first = next(i for i, (d, _, _) in enumerate(body) if d)
+    if any(not d for d, _, _ in body[first:]):
+        raise GraphError(f"{g.where}: {g.name}: a pass that takes no token ends the loop, "
+                         f"so every transition off the test's sides comes before it")
+    ends = [((stop,) + d[1:], lines, w) for d, lines, w in body[first:] if d[0] != gd[0]]
+    goes = [(d[1:], lines, w) for d, lines, w in body[first:] if d[0] == gd[0]]
+    return body[:first] + ends + [((stop,), ["break"], set())] + goes
 
 
 def written_once(g: Graph, sigs: dict[str, Signature], copier: dict[str, str]) -> str:

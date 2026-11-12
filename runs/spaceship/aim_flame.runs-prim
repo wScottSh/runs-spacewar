@@ -1,0 +1,8 @@
+# The flame's step, from the heading: its dots run back from the tail.
+processor aim_flame                                         # sq7: scale \sn, 8s, \ssn
+  in sine: word
+  in cosine: word
+  out down_x: word
+  out down_y: word
+  set down_x = sine >> 8
+  set down_y = cosine >> 8
