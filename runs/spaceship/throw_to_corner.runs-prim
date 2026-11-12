@@ -1,0 +1,7 @@
+# A ship in the star is thrown to the corner of the screen.
+processor throw_to_corner
+  out x: word
+  out y: word
+  let corner = 0377777
+  set x = corner
+  set y = corner

@@ -1,0 +1,37 @@
+# A ship that falls into the central star (pof), a bundle: it stops. With
+# sense switch 5 on it explodes; otherwise it is thrown to the corner of
+# the screen and, instead of being drawn, waits out a count from its calc
+# routine's time in the pen's first step. A ship's time is positive, so
+# the wait is one step.
+
+network spaceship_in_star(slot)
+  in switches: console
+  inout table: objects
+
+places
+  spaceship.star_wait
+  star_wait_work.counted
+
+transitions
+  stop: stop_in_star                                        # dzm i \mdx; dzm i \mdy
+  corner: throw_to_corner                                   # lac (377777; dac i mx1; dac i my1
+  wait: copy                                                # lac i mb1; dac \ssn
+  first: count_down                                         # count \ssn, the first time
+  passes: wait_in_star                                      # count \ssn, .
+  explode: explode_in_star                                  # po1
+
+arcs
+  stop.dx -> table[slot].dx
+  stop.dy -> table[slot].dy
+  switches.star_kills -> corner when == off                 # szs 50
+  corner.x -> table[slot].x
+  corner.y -> table[slot].y
+  switches.star_kills -> wait when == off
+  table[slot].cycles -> wait.source
+  wait.target -> spaceship.star_wait
+  spaceship.star_wait -> first.counter
+  first.counter -> star_wait_work.counted
+  star_wait_work.counted -> passes.wait
+  switches.star_kills -> explode when else
+  explode.routine -> table[slot].routine
+  explode.counter -> table[slot].counter

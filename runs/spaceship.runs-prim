@@ -406,24 +406,3 @@ processor time_hyperspace(slot)                             # dac i ma1; law 3; 
   set objects.counter[slot] = handoff.hyperspace_time
   set objects.cycles[slot] = 3
 
-# A ship that falls into the central star stops. With sense switch 5 on it
-# explodes; otherwise it is thrown to the corner of the screen and, instead
-# of being drawn, waits out a count from its calc routine's time in the
-# pen's first step. A ship's time is positive, so the wait is one step.
-processor spaceship_in_star(slot)                           # pof
-  reads: console
-  writes: objects, spaceship
-  set objects.dx[slot] = 0
-  set objects.dy[slot] = 0
-  if console.star_kills == off:                             # szs 50
-    let corner = 0377777
-    set objects.x[slot] = corner
-    set objects.y[slot] = corner
-    set spaceship.star_wait = objects.cycles[slot]
-    set spaceship.star_wait = spaceship.star_wait + 1       # count \ssn, .
-    if spaceship.star_wait < 0:
-      for pass in 1 .. -spaceship.star_wait:
-        set spaceship.star_wait = spaceship.star_wait + 1
-    return
-  set objects.routine[slot] = explosion                     # po1
-  set objects.counter[slot] = -010

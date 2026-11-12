@@ -1,0 +1,3 @@
+# What a ship in the star leaves along the way, each written once.
+game record star_wait_work
+  counted: word = 0     # ssn after its first token is taken

@@ -47,7 +47,8 @@ spec.loader.exec_module(shipref)
 
 NEG = lambda v: v ^ runs.MASK
 JMP = 0o600000
-RECORDS = ["objects", "ship_flight", "ship_outlines", "ships", "random", "spaceship", "heading", "ship_nose", "pen"]
+RECORDS = ["objects", "ship_flight", "ship_outlines", "ships", "random", "spaceship", "star_wait_work", "wait_in_star_call",
+           "heading", "ship_nose", "pen"]
 # The arithmetic routines' own words that have a place in core.
 SCRATCH = [(rec, fld) for rec, fld in pdp1.FIELDS
            if rec in ("square_root_call", "multiply_call", "integer_multiply_call", "divide_call", "sine_call",

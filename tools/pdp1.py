@@ -39,8 +39,8 @@ FIELDS = {
     ("ships", "saved_routine"): "nh1", ("ships", "jumps_left"): "nh2", ("ships", "recharge"): "nh3",
     ("ships", "uncertainty"): "nh4",
     ("random", "number"): "ran",
-    # mtc holds a chain of values: the budget up to the spare-time loop, then the loop bundle's tokens.
-    # A check compares it with the one its stop sees (check_game at ml1, check_frame at the frame's end).
+    # A word that holds a chain of values (mtc: the budget, then the spare-time loop's tokens; ssn: the
+    # star wait, then its tokens) maps from each; a check compares the one written last (outlived).
     ("burn_time_call", "budget"): "mtc", ("pacing", "spare_time"): "mtc",
     ("frame", "restart_delay"): "ntd", ("frame", "objects_seen"): "moc",
     ("score", "first"): "1sc", ("score", "second"): "2sc", ("score", "games_left"): "gct",
@@ -61,6 +61,7 @@ FIELDS = {
     ("spaceship", "operand"): "t1", ("spaceship", "x_squared"): "t2",
     ("spaceship", "nose_step_x"): "ssn", ("spaceship", "nose_step_y"): "scn",
     ("ship_nose", "x"): "sx1", ("ship_nose", "y"): "sy1", ("spaceship", "star_wait"): "ssn",
+    ("star_wait_work", "counted"): "ssn", ("wait_in_star_call", "wait"): "ssn",
     ("spaceship", "torpedo_x"): "stx", ("spaceship", "torpedo_y"): "sty", ("spaceship", "flame"): "src",
     ("pen", "x"): "sx1", ("pen", "y"): "sy1", ("pen", "down_x"): "ssn", ("pen", "down_y"): "scn",
     ("pen", "out_x"): "scm", ("pen", "out_y"): "ssm", ("pen", "out_down_x"): "ssc",

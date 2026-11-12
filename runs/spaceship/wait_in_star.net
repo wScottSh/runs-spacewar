@@ -1,0 +1,13 @@
+# A ship in the star waits out its count (count \ssn, .), a loop bundle:
+# each pass takes a token of the wait, and does nothing else, until it
+# reaches 0.
+
+network wait_in_star
+  counter wait: word
+
+transitions
+  take: count_down                                          # count \ssn, .
+
+arcs
+  wait -> take.counter
+  take.counter -> wait

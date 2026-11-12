@@ -193,6 +193,18 @@ def returns_to(stmts: list, label: str) -> list:
     return out
 
 
+def each_side_leaves(stmts: list) -> list:
+    """A block that leaves through its unit's shared exit and ends in a test
+    with two sides: each side that runs off its end leaves by its own jump to
+    the exit (`jmp srt`), as a PDP-1 block lays out a branch that leaves,
+    not by a jump past the other side."""
+    last = stmts[-1] if stmts else None
+    if not last or last[0] != "if" or not last[2]:
+        return stmts
+    leave = lambda b: b + [("return", last[3])] if falls_off(b) else b  # noqa: E731
+    return stmts[:-1] + [("if", [(c, leave(b)) for c, b in last[1]], leave(last[2]), last[3])]
+
+
 def has_return(tree) -> bool:
     if isinstance(tree, tuple) and tree and tree[0] == "return":
         return True
@@ -2641,6 +2653,10 @@ class Function:
             self.stored_as(f, text)
         if self.b.exit_after:
             self.stmts = self.guards(self.stmts)
+        elif self.b.convention == "BLOCK" and self.unit.exit and not any(
+                x[0] == "call" and (c := self.binds.bound.get(x[1])) and (c.convention == "BLOCK" or c.block)
+                for x in walk(self.stmts)):
+            self.stmts = each_side_leaves(self.stmts)   # its one way out is the shared exit
         if any(b.pulse and b.back == self.b.name for b in self.binds.bound.values()):
             self.emit(1, "ioh();")              # wait for the pulse the code that jumps here left pending
         self.block(self.stmts, 1, top=True)

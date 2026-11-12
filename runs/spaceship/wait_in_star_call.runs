@@ -1,0 +1,3 @@
+# A ship's wait in the star: the count its passes consume.
+game record wait_in_star_call
+  wait: word = 0

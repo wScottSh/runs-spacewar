@@ -1,0 +1,6 @@
+# A ship in the star stops (dzm i \mdx; dzm i \mdy).
+processor stop_in_star
+  out dx: word
+  out dy: word
+  set dx = 0
+  set dy = 0

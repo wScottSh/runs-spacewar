@@ -1,0 +1,6 @@
+# A ship in the star with sense switch 5 on explodes (po1).
+processor explode_in_star
+  out routine: calc_routine
+  out counter: word
+  set routine = explosion
+  set counter = -010
