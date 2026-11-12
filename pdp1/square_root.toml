@@ -9,4 +9,4 @@ result = ["square_root_call.root"]
 io = ["input_bits"]
 
 [[place]]
-fields = ["square_root_call.passes_left", "square_root_call.root"]
+fields = ["square_root_work.passes_left", "square_root_call.root"]

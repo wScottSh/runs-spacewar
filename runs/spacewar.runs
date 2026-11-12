@@ -279,12 +279,6 @@ presentation record explosion_cloud
   spread: word = 0          # msh: which of mst's shifts spreads the dots, scr 1s or scr 3s
   scatter: word = 0         # mi1: places the scl built from a random number shifts this dot
 
-# The integer square root's own words.
-game record square_root_call
-  entry: word = 0           # sqt: jda leaves the argument here; it doubles as the remainder
-  passes_left: word = 0     # sq1
-  root: word = 0            # sq2: the result
-
 # The spaceship calc routine's own words, handed from one of its rules to the
 # next within one ship's turn.
 enum rocket

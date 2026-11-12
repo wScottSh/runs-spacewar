@@ -1,0 +1,18 @@
+# BBN integer square root (sqt), a bundle: its passes as one transition.
+
+network square_root
+  in entry: word
+  out root: word
+
+places
+  square_root_work.remainder
+  square_root_work.passes_left
+
+transitions
+  passes: square_root_passes
+
+arcs
+  entry -> passes.remainder
+  passes.remainder -> square_root_work.remainder
+  passes.root -> root
+  passes.passes_left -> square_root_work.passes_left

@@ -1,0 +1,4 @@
+# What the integer square root's passes leave, each written once.
+game record square_root_work
+  remainder: word = 0       # what is left of the argument, in its word
+  passes_left: word = 0     # sq1: 0 once every pass ran

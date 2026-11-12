@@ -1,0 +1,4 @@
+# The integer square root's own words (sqt): what a caller hands it and gets back.
+game record square_root_call
+  entry: word = 0           # sqt: jda leaves the argument here
+  root: word = 0            # sq2: the result, AC at return
