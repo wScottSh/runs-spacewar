@@ -1019,9 +1019,10 @@ class Bindings:
         its index in the enum, so a two-member enum is 0 and 1, as DDT holds
         its typing state in program flag 1 (clf 1 / stf 1 / szf 1)."""
         arms: dict[str, dict[str, str]] = {}
+        pc = (phase_dispatch(self.prog) or (None,))[0]     # held in the program counter: no word to encode
         for r in self.prog.routines.values():
             for s in walk(r.body):
-                if s[0] == "match":
+                if s[0] == "match" and (pc is None or dotted_of(s[1]) != pc):
                     for member, body in s[2].items():
                         if len(body) == 1 and body[0][0] == "run":
                             enum = resolve(self.prog, member, field_type(self.prog, s[1]), s[3])
@@ -1823,7 +1824,8 @@ class Unit:
         if r.kind == "processor":
             if (cleared := self.clears_table(r.name, body)) is not None:
                 return [cleared]
-            return body
+            pc = (phase_dispatch(self.prog) or (None,))[0]
+            return [s for s in body if not (pc and s[0] == "set" and dotted_of(s[1]) == pc)]   # the PC: where it stops
         return self.flat_body(body, r, tail=tail)
 
     def label(self, what: str) -> str:
@@ -4419,7 +4421,8 @@ class SharedWords:
                              for s in walk(r.body)}
 
     def check(self):
-        fired = set().union(set(), *(runs.runs_of(r.body) for r in self.prog.routines.values()))
+        fired = set().union(set(), *(runs.runs_of(r.body) for r in self.prog.routines.values()
+                                     if r.name not in pc_dispatchers(self.prog)))     # the PC's: no code
         entry: dict[str, dict] = {}
         todo = []
         for fn, _ in self.compiled:
@@ -5109,9 +5112,88 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
     raise BindError(f"{g.where}: {g.name}: no order the wiring allows keeps every value in its word until read")
 
 
+def phase_dispatch(prog: runs.Program) -> tuple[str, str, dict[str, str]] | None:
+    """The field the ticks carry which top Network runs next, if the game
+    has one: a network file that nothing runs, whose dispatch on the field
+    runs the Network the PDP-1 runs again (repeat) on one side. Returns
+    (the field, the member that runs the repeat, member -> the network
+    its side runs)."""
+    if "phase_dispatch" in prog.__dict__:
+        return prog.__dict__["phase_dispatch"]
+    prog.__dict__["phase_dispatch"] = found = phase_dispatch_of(prog)
+    return found
+
+
+def phase_dispatch_of(prog: runs.Program) -> tuple[str, str, dict[str, str]] | None:
+    repeats = {u["repeat"] for f in sorted(BINDINGS.glob("*.toml")) if f.name != DEVICES
+               if "repeat" in (u := tomllib.loads(f.read_text()))}
+    ran = {p for h in prog.graphs.values() for p in h.transitions.values()}
+    for t in prog.graphs.values():
+        if t.name in ran:
+            continue
+        arms = {}
+        for a in t.arcs:
+            if a.guard and a.guard.startswith("== "):
+                arms[a.guard[3:]] = (t.field(a.place), t.transitions[a.transition])
+        fields = {f for f, _ in arms.values()}
+        on = [m for m, (_, n) in arms.items() if n in repeats]
+        if len(fields) == 1 and len(on) == 1:
+            return fields.pop(), on[0], {m: n for m, (_, n) in arms.items()}
+    return None
+
+
+def pc_dispatchers(prog: runs.Program) -> set[str]:
+    """The network files that dispatch on the field the PDP-1 holds in its
+    program counter: the PDP-1 lays out no code for them."""
+    found = phase_dispatch(prog)
+    ran = {p for h in prog.graphs.values() for p in h.transitions.values()}
+    return {g.name for g in prog.graphs.values() if found and g.name not in ran
+            and any(g.field(a.place) == found[0] for a in g.arcs if a.guard)}
+
+
+def resumed(prog: runs.Program, g: graph.Graph) -> dict[str, list[str]]:
+    """The PDP-1 holds the field the ticks dispatch on in its program
+    counter: where it stops between firings. A transition that sets it to
+    the member that runs the repeat lays out nothing, for a firing ends with
+    the jump to the repeat. One that sets it to another member ends its
+    firing in a halt (the wait after the emit that shows a stream), and the
+    machine, continued, runs that member's Network from the next word:
+    `wait`, then the run of that Network, laid out after the halt."""
+    found = phase_dispatch(prog)
+    if found is None:
+        return {}
+    phase, home, arms = found
+    out = {}
+    for t, proc in g.transitions.items():
+        writes = [a for a in g.arcs if a.transition == t and not a.into and g.field(a.place) == phase]
+        if not writes:
+            continue
+        body = prog.routines[proc].body if proc in prog.routines else []
+        sets = [x for x in body if x[0] == "set" and x[1] == ("name", writes[0].io)]
+        if len(writes) != 1 or len(body) != 1 or len(sets) != 1 or sets[0][2][0] != "name" \
+                or sets[0][2][1] not in arms:
+            raise BindError(f"{g.where}: {t} sets {phase}, which the PDP-1 holds in its program counter: "
+                            f"a Processor that sets it to one member and does nothing else")
+        member = sets[0][2][1]
+        run = [f"run {proc}", f"  {writes[0].io}: {phase}"]
+        out[t] = [] if member == home else ["wait"] + run + [f"run {arms[member]}"]
+    return out
+
+
 def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[str, str]) -> str:
     """runs.load's lowering for the PDP-1: each place in the word the
     original keeps it in, in the original's order."""
+    if g.name in pc_dispatchers(prog):
+        return graph.written_once(g, sigs, copier)     # the PC: the PDP-1 lays out no code for it
+    resumes = resumed(prog, g)
+    goes_on = [t for t in g.transitions if resumes.get(t)]
+    whole = g
+    if resumes:                       # the phase has no word: its writes are where the firing goes on
+        whole = replace(g, transitions={t: p for t, p in g.transitions.items() if resumes.get(t, 1)},
+                        arcs=[a for a in g.arcs if a.transition not in resumes or a.guard and resumes[a.transition]])
+        g = replace(whole, transitions={t: p for t, p in whole.transitions.items() if t not in goes_on},
+                    arcs=[a for a in whole.arcs if a.transition not in goes_on])
+        g.places = whole.places = [p for p in g.places if any(a.place == p for a in whole.arcs) or p in g.ports]
     decl = declaration(g.name)
     st = Storage(g, sigs, copier, prog)
     bundles = {p for p in g.transitions.values() if sigs[p].bundle}
@@ -5142,11 +5224,12 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
                                     f"but {g.name} runs it with {n} in {word[b, n]}")
         wired = any(b == g.name for b, _ in given)
         if wired:                            # laid out inline: its run wires each input and output
-            named = {at[p]: p for p in g.ports}
+            named = {at[p]: p for p in g.ports if g.ports[p][1] not in g.wholes}   # a whole Record is its own words
             at = {p: named.get(w, w) for p, w in at.items()}
         owns = sorted({w for w in at.values() if "." not in w and w not in prog.records and not (wired and w in g.ports)})
         skip = {decl["skips"][0]} if "skips" in decl else set()
-        return graph.lower(g, sigs, order, graph.Lowering(at, word, copier, owns, skip, inlined, wired))
+        return graph.lower(whole, sigs, order + goes_on, graph.Lowering(at, word, copier, owns, skip, inlined, wired,
+                                                                        resumes))
     raise BindError(tried[0] if tried else f"{g.where}: {g.name}: no word for a value")
 
 

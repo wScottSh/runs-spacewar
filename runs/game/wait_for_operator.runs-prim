@@ -1,0 +1,4 @@
+# The next tick is the operator's answer to the scores.
+processor wait_for_operator
+  out phase: phase
+  set phase = scores_shown

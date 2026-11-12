@@ -13,6 +13,7 @@ network restart_countdown                                   # mdn
   inout stars: magnitudes
   inout points: display
   inout tally: score
+  inout shown: scoreboard
   out lamps: lights
 
 places
@@ -60,6 +61,8 @@ arcs
   scored -> next.tally
   next.tally -> tally
   switches -> next.switches
+  shown -> next.shown
+  next.shown -> shown
   table -> next
   next -> table
   counted.restart_delay -> keep when else

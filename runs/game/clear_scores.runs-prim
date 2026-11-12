@@ -1,0 +1,6 @@
+# A new match starts from no score.
+processor clear_scores                                      # dzm \1sc; dzm \2sc
+  out first: word
+  out second: word
+  set first = 0
+  set second = 0

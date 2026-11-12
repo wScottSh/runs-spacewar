@@ -1,0 +1,22 @@
+# The scores show (a4), a bundle: ship 1's in AC and ship 2's in IO, on
+# the console lights, and the machine halts. The tick ends there: the
+# next one is the operator's answer (after_scores), which the pause's
+# phase names.
+
+network show_scores
+  in tally: score
+  inout shown: scoreboard
+
+places
+  pause.phase
+
+transitions
+  post: post_scores                                         # lac \1sc; lio \2sc; hlt
+  hold: wait_for_operator
+
+arcs
+  tally.first -> post.first
+  tally.second -> post.second
+  shown -> post.scores
+  post.scores -> shown
+  hold.phase -> pause.phase

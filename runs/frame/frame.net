@@ -1,16 +1,12 @@
-# One pass of the main loop is one frame (ml0 .. ml0), a top Network the
-# host fires once each frame: the frame's instruction budget, then the
-# restart checks. While both ships fly on their own calc routines and one
-# still has torpedoes, the restart delay is held; otherwise it counts down,
-# and then the survivors score. Its inputs and outputs are the game's
-# boundary with presentation: the console comes in; the points, the scores
-# and the lights leave. Which device the control word comes from is the
+# One pass of the main loop is one frame (ml0 .. ml0), which the tick runs
+# while the game plays: the frame's instruction budget, then the restart
+# checks. While both ships fly on their own calc routines and one still has
+# torpedoes, the restart delay is held; otherwise it counts down, and then
+# the survivors score. Which device the control word comes from is the
 # operator's choice of start address, and the compiled outlines are what the
 # start's new game compiled: both are set before the first frame.
 
 network frame                                               # ml0
-  requires: console, score, controls, outline_code
-  produces: display, scoreboard, lights
   in switches: console
   in flight: ship_flight
   inout table: objects
@@ -22,6 +18,7 @@ network frame                                               # ml0
   inout stars: magnitudes
   inout points: display
   inout tally: score
+  inout shown: scoreboard
   out lamps: lights
 
 places
@@ -111,6 +108,8 @@ arcs
   tally -> count_first.tally
   count_first.tally -> tally
   count_first.lamps -> lamps
+  shown -> count_first.shown
+  count_first.shown -> shown
   switches -> count_second.switches
   table -> count_second.table
   count_second.table -> table
@@ -131,6 +130,8 @@ arcs
   tally -> count_second.tally
   count_second.tally -> tally
   count_second.lamps -> lamps
+  shown -> count_second.shown
+  count_second.shown -> shown
   switches -> count_third.switches
   table -> count_third.table
   count_third.table -> table
@@ -151,3 +152,5 @@ arcs
   tally -> count_third.tally
   count_third.tally -> tally
   count_third.lamps -> lamps
+  shown -> count_third.shown
+  count_third.shown -> shown

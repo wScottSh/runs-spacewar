@@ -3,6 +3,8 @@
 
 network ask
   in switches: console
+  in tally: score
+  inout shown: scoreboard
 
 places
   ask_work.scores_switch
@@ -17,3 +19,6 @@ arcs
   read.switch -> ask_work.scores_switch
   ask_work.scores_switch -> play when == 0
   ask_work.scores_switch -> show when else
+  tally -> show.tally
+  shown -> show.shown
+  show.shown -> shown

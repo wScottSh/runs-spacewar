@@ -1,0 +1,57 @@
+# One tick, the top Network the host fires again and again once the game
+# has started: a frame of play, or, after the machine halted to show the
+# scores, the operator's answer. The pause's phase carries which from one
+# tick to the next.
+
+network tick
+  requires: console, score, controls, outline_code, pause
+  produces: display, scoreboard, lights, pause
+  in switches: console
+  in flight: ship_flight
+  inout table: objects
+  inout clock: frame
+  out time: pacing
+  inout seed: random
+  inout fleet: ships
+  inout sky: planetarium
+  inout stars: magnitudes
+  inout points: display
+  inout tally: score
+  inout shown: scoreboard
+  out lamps: lights
+
+places
+  pause.phase
+
+transitions
+  play: frame
+  answer: after_scores
+
+arcs
+  pause.phase -> play when == playing
+  pause.phase -> answer when == scores_shown
+  switches -> play.switches
+  flight -> play.flight
+  table -> play.table
+  play.table -> table
+  clock -> play.clock
+  play.clock -> clock
+  play.time -> time
+  seed -> play.seed
+  play.seed -> seed
+  fleet -> play.fleet
+  play.fleet -> fleet
+  sky -> play.sky
+  play.sky -> sky
+  stars -> play.stars
+  play.stars -> stars
+  points -> play.points
+  play.points -> points
+  tally -> play.tally
+  play.tally -> tally
+  shown -> play.shown
+  play.shown -> shown
+  play.lamps -> lamps
+  switches -> answer.switches
+  tally -> answer.tally
+  answer.tally -> tally

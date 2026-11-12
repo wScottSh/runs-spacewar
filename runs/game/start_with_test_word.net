@@ -4,9 +4,10 @@
 
 network start_with_test_word
   requires: console, score
-  produces: scoreboard
+  produces: scoreboard, pause
   in switches: console
   inout tally: score
+  inout shown: scoreboard
 
 places
   controls.source
@@ -20,3 +21,5 @@ arcs
   switches -> begin.switches
   tally -> begin.tally
   begin.tally -> tally
+  shown -> begin.shown
+  begin.shown -> shown

@@ -1,0 +1,7 @@
+# The scores leave the game: on the PDP-1, the console lights while the
+# machine halts.
+processor post_scores                                       # lac \1sc; lio \2sc; hlt
+  in first: word
+  in second: word
+  inout scores: scoreboard
+  emit scores, first, second

@@ -11,7 +11,7 @@ Two kinds of run, each in one SIMH session:
    that ends a new game. A breakpoint on the halt between games records the
    scores on the lights, deposits the second test word and continues past
    the halt, as the operator does. The evaluator fires the same Network on
-   the same Records, the second test word given at its wait.
+   the same Records, the second test word given at its halt.
 2. the seventeen scripted matches (tools/check-main-loop-frames.py:
    the same scenarios and control policies), played from power-on. At each
    stop (a frame at ml0, or a halt) the evaluator takes SIMH's Records and
@@ -71,6 +71,16 @@ LAW, LAW_I = 0o700000, 0o710000
 
 def member(enum: str, name: str) -> runs.Member:
     return runs.Member(enum, name)
+
+
+def fire_through(m: runs.Machine, name: str, at_halt) -> None:
+    """Fires name, then, while a firing ends in the halt that shows the
+    scores (the pause's phase names the operator's answer next), takes the
+    host's turn at the halt and fires the next tick."""
+    m.run(name)
+    while m.state["pause"]["phase"] == member("phase", "scores_shown"):
+        at_halt(m)
+        m.run("tick")
 
 
 def house_rules(prog: runs.Program, deposits) -> runs.Program:
@@ -280,14 +290,13 @@ def run_cases(cases: list[dict], game: Game) -> tuple[int, dict]:
             m.stop_before = {"object_loop"}
             waits = []
 
-            def at_wait(machine):
+            def at_halt(machine):
                 waits.append(list(machine.state["scoreboard"]))
                 machine.state["console"]["test_word"] = runs.W(tw[1])
-            m.on_wait = at_wait
             name = {None: "frame", **pdp1.START}[case["start"]]
             ended = "new game"
             try:
-                m.run(name)
+                fire_through(m, name, at_halt)
             except runs.StopAt:
                 ended = "object loop"
             bad = game.differences(m, want)
@@ -380,7 +389,7 @@ def play(scenario, stops: int) -> tuple[str, int, dict, list[str]]:
         at = [k]
         trouble: list[str] = []
 
-        def at_wait(machine):
+        def at_halt(machine):
             at[0] += 1
             if at[0] >= len(record):
                 raise runs.StopAt("end of record")
@@ -392,9 +401,8 @@ def play(scenario, stops: int) -> tuple[str, int, dict, list[str]]:
             if machine.state["scoreboard"][-1:] != [(runs.W(ac), runs.W(io))]:
                 trouble.append(f"stop {at[0]}: shown {machine.state['scoreboard'][-1:]} simh {ac:06o} {io:06o}")
             machine.state["console"]["test_word"] = runs.W(tw)
-        m.on_wait = at_wait
         try:
-            m.run(name)
+            fire_through(m, name, at_halt)
         except runs.StopAt as stop:
             if stop.name != "object_loop" or trouble:
                 return -1, trouble

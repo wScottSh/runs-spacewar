@@ -730,6 +730,7 @@ class Lowering:
     before_test: set[str] = field(default_factory=set)  # fields an else may set before its test instead
     inline: set[str] = field(default_factory=set)   # bundles whose run wires each input and output to its word
     wired: bool = False        # this Network's inputs and outputs are wired by the run that runs it
+    resumes: dict[str, list[str]] = field(default_factory=dict)   # transition -> the statements laid in its stead
 
 
 def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering) -> list:
@@ -741,6 +742,10 @@ def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
         return [f"run {low.copier[typ]}", f"  source: {source}", f"  target: {target}"]
 
     for t in order:
+        if t in low.resumes:
+            if low.resumes[t]:
+                out.append((guard[t], low.resumes[t], set()))
+            continue
         proc, s = g.transitions[t], sigs[g.transitions[t]]
         wire: dict[str, dict[str, str]] = {}
         for a in g.arcs:

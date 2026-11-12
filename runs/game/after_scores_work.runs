@@ -1,0 +1,3 @@
+# What the operator's answer to the scores computes, written once.
+game record after_scores_work
+  scores_switch: word = 0   # test word switch 040, as the operator left it

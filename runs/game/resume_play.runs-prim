@@ -1,0 +1,4 @@
+# The operator answered: the ticks after this one are frames again.
+processor resume_play
+  out phase: phase
+  set phase = playing

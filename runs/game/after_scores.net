@@ -1,0 +1,29 @@
+# The operator's answer to the scores (a4, after the halt), a bundle:
+# continued with test word switch 040 on, a new game of the match;
+# off, the scores clear and a new match begins.
+
+network after_scores
+  in switches: console
+  inout tally: score
+
+places
+  after_scores_work.scores_switch
+  pause.phase
+
+transitions
+  resume: resume_play
+  read: read_scores_switch                                  # lat; and (40
+  play: new_game                                            # sza; jmp a2
+  clear: clear_scores                                       # dzm \1sc; dzm \2sc
+  match: new_match
+
+arcs
+  resume.phase -> pause.phase
+  switches.test_word -> read.test_word
+  read.switch -> after_scores_work.scores_switch
+  after_scores_work.scores_switch -> play when != 0
+  after_scores_work.scores_switch -> clear when else
+  clear.first -> tally.first
+  clear.second -> tally.second
+  after_scores_work.scores_switch -> match when else
+  switches -> match.switches

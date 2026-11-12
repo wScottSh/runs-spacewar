@@ -508,7 +508,7 @@ def games(prog: runs.Program, machine, rng: random.Random):
                 m.state["console"]["control_boxes"] = runs.W(rng.randrange(1 << 18))
                 for stream in streams:
                     m.state[stream] = []
-                m.run("frame")
+                m.run("tick")
             yield copied(m.state)
         except (runs.RunsError, runs.Stop) as e:
             yield f"{type(e).__name__}: {e}"

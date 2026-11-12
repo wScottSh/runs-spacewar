@@ -1,0 +1,8 @@
+# Which tick comes next: a frame of play, or the operator's answer after
+# the machine halted to show the scores.
+enum phase
+  playing
+  scores_shown
+
+game record pause
+  phase: phase = playing
