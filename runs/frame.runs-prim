@@ -8,15 +8,6 @@ processor use_control_boxes                                 # a40
   writes: controls
   set controls.source = control_boxes
 
-processor count_game
-  writes: score
-  set score.games_left = score.games_left + 1
-
-# A tie at the end of a match: one more game.
-processor play_off
-  writes: score
-  set score.games_left = -1
-
 processor post_scores
   reads: score
   writes: scoreboard

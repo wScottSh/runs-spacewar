@@ -86,6 +86,10 @@ holds where the others fail (`if r != none and r != explosion`).
     table[slot].routine -> fly when == torpedo
     table[slot].routine -> burst when == explosion
 
+A test may compare its place with another place of the network, as the
+PDP-1's sas compares AC with a word: `tally.first -> show when !=
+tally.second`. The test reads both.
+
 Today a `run` passes no values, so the lowering keeps a bundle's inputs and
 outputs in the fields of its call Record, `<bundle>_call`, which a Record
 file declares with exactly the bundle's inputs and outputs. Running a bundle
@@ -303,9 +307,22 @@ def parse(path: Path) -> Graph:
     if clash := sorted(set(g.transitions) & {p.split(".")[0] for p in g.places}):
         raise GraphError(f"{path}: {clash[0]} names a transition and a Record")
     g.places += [n for n in g.ports if n not in g.places]
-    g.places += list(dict.fromkeys(a.place for a in g.arcs if (g.port(a.place) or re.match(r"\w+", a.place)[0]
-                                                                in g.locals) and a.place not in g.places))
+    ends = [a.place for a in g.arcs] + [p for a in g.arcs if (p := operand(g, a.guard))]
+    g.places += list(dict.fromkeys(p for p in ends if (g.port(p) or re.match(r"\w+", p)[0] in g.locals)
+                                   and p not in g.places))
     return g
+
+
+def operand(g: Graph, guard: str | None) -> str | None:
+    """The place a test compares its own with (`!= tally.second`), if any."""
+    if not guard or guard == "else":
+        return None
+    rest = guard.partition(" ")[2]
+    if not re.fullmatch(NAME, rest) or re.fullmatch(r"\d\w*", rest):
+        return None
+    if "." in rest or rest in g.ports or rest in g.locals or rest in g.places:
+        return rest
+    return None
 
 
 def written_by(g: Graph) -> dict[str, set[str]]:
@@ -449,6 +466,7 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
         if type_of(p) is None:
             fail(f"{p} is neither a Record field nor an input or output of {g.name}")
     wired = {a.place for a in g.arcs} | {re.match(r"\w+", a.place)[0] for a in g.arcs}   # a whole place, or an entry
+    wired |= {p for a in g.arcs if (p := operand(g, a.guard))}           # the other place of a test
     if stated := sorted(set(g.places) - wired - set(g.ports)):
         fail(f"the place {stated[0]} is wired to nothing")
     for a in g.arcs:
@@ -495,6 +513,12 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
             tests.setdefault(a.place, set()).add(a.guard)
     for place, gs in tests.items():
         partition(g, place, gs, type_of(place), enums, fail)
+        for x in gs:
+            if (other := operand(g, x)) is not None:
+                if other not in g.places:
+                    fail(f"the test on {place} compares it with {other}, no place of {g.name}")
+                if type_of(other) != type_of(place):
+                    fail(f"the test on {place} compares a {type_of(place)} with {other}, a {type_of(other)}")
     for place, m in g.assumes:
         if place not in tests or m not in enums.get(type_of(place) or "", []):
             fail(f"assumes: {place} != {m} names no member of a value the network tests")
@@ -598,7 +622,9 @@ def depends(g: Graph) -> dict[str, set[str]]:
                 out[w].add(a.transition)
     for t in g.transitions:
         if guard[t]:
-            out[t] |= writers.get(guard[t][0], set())
+            for place in [guard[t][0]] + [p for test in chains(g)[t] if (p := operand(g, test[1]))]:
+                if not g.threaded(place):         # a test of an inout reads its in value
+                    out[t] |= writers.get(place, set())
     return shared_words(g, out, writers)
 
 
@@ -808,6 +834,8 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
             if test[1] == "else" and not side:          # the test's only side with work is its else
                 out.append(pad(gd, depth) + f"if {negation(g, test[0], tested.get(test[0], low.at[test[0]]))}:")
                 continue
+            if other := operand(g, test[1]):
+                test = (test[0], f"{test[1].partition(' ')[0]} {low.at[other]}")
             out.append(pad(gd, depth) + ("else:" if test[1] == "else" else
                                          f"{'elif' if side else 'if'} {tested.get(test[0], low.at[test[0]])} "
                                          f"{test[1]}:"))

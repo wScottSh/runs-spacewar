@@ -1,0 +1,45 @@
+# After a game (a), a bundle. In a match the game count steps on, and a
+# tie at the end adds a game. The machine halts to show the scores after
+# every game with test word switch 040 on, and at the end of a match.
+
+network between_games
+  inout tally: score
+  in switches: console
+
+places
+  between_games_work.counted
+  between_games_work.first
+
+transitions
+  no_match: ask                                             # lac \gct; sma; jmp a5
+  count: count_down                                         # count \gct, a5
+  more_games: copy
+  next_game: ask
+  take_first: copy                                          # lac \1sc
+  lead: copy
+  shown: show_scores                                        # sas \2sc; jmp a4
+  play_off: play_off                                        # law i 1; dac \gct
+  tie_break: ask
+
+arcs
+  tally.games_left -> no_match when >= 0
+  switches -> no_match.switches
+  tally.games_left -> count when else
+  tally.games_left -> count.counter
+  count.counter -> between_games_work.counted
+  between_games_work.counted -> more_games when < 0
+  between_games_work.counted -> more_games.source
+  more_games.target -> tally.games_left
+  between_games_work.counted -> next_game when < 0
+  switches -> next_game.switches
+  between_games_work.counted -> take_first when else
+  tally.first -> take_first.source
+  take_first.target -> between_games_work.first
+  between_games_work.first -> lead when != tally.second
+  between_games_work.counted -> lead.source
+  lead.target -> tally.games_left
+  between_games_work.first -> shown when != tally.second
+  between_games_work.first -> play_off when else
+  play_off.games_left -> tally.games_left
+  between_games_work.first -> tie_break when else
+  switches -> tie_break.switches

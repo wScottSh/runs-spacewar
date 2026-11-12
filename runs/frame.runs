@@ -21,22 +21,6 @@ network start_with_control_boxes                            # a40: started at 4
   run use_control_boxes
   run new_match
 
-# After a game (a). In a match the game count steps on, and a tie at the end
-# adds a game. The machine halts to show the scores after every game with
-# test word switch 040 on, and at the end of a match.
-network between_games                                       # a
-  if score.games_left >= 0:
-    run ask
-  else:
-    run count_game                                          # count \gct, a5
-    if score.games_left < 0:
-      run ask
-    else:
-      if score.first != score.second:
-        run show_scores
-      else:
-        run play_off
-        run ask
 
 # The scores show on the console lights, ship 1's in AC and ship 2's in IO,
 # while the machine waits. Continuing with switch 040 off clears them and

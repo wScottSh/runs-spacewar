@@ -57,8 +57,9 @@ arcs
   survivors.first_light -> lamps.first_survived
   survivors.second_light -> lamps.second_survived
   counted.restart_delay -> next when else
-  scored -> next
-  next -> tally
+  scored -> next.tally
+  next.tally -> tally
+  switches -> next.switches
   table -> next
   next -> table
   counted.restart_delay -> keep when else

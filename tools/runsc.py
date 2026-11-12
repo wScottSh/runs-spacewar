@@ -4946,8 +4946,9 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
             if not taken.issuperset(chain[t]):
                 continue
             for gd in chain[t]:
-                if gd not in opened and (bad := read(t, gd[0])):
-                    return bad
+                for place in (gd[0], graph.operand(g, gd[1])) if gd not in opened else ():
+                    if place and (bad := read(t, place)):
+                        return bad
             opened = chain[t]
             proc = g.transitions[t]
             ins = [a for a in g.arcs if a.transition == t and a.into and a.io]

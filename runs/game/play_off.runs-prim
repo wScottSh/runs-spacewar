@@ -1,0 +1,4 @@
+# A tie at the end of a match: one more game.
+processor play_off                                          # law i 1; dac \gct
+  out games_left: word
+  set games_left = -1

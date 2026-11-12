@@ -1,0 +1,4 @@
+# What the step between games computes, written once.
+game record between_games_work
+  counted: word = 0         # the games left, one game on
+  first: word = 0           # the first ship's score, to compare with the second's
