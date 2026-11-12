@@ -193,15 +193,20 @@ def returns_to(stmts: list, label: str) -> list:
     return out
 
 
-def each_side_leaves(stmts: list) -> list:
-    """A block that leaves through its unit's shared exit and ends in a test
-    with two sides: each side that runs off its end leaves by its own jump to
-    the exit (`jmp srt`), as a PDP-1 block lays out a branch that leaves,
-    not by a jump past the other side."""
+def each_side_leaves(stmts: list, jumps) -> list:
+    """A block that leaves through its unit's shared exit: every way through
+    it ends in a jump to the exit (`jmp srt`). A test that ends the block
+    passes the rule to each side; a side that runs off its end gets its own
+    jump to the exit, not a jump past the other side to one. A side that
+    ends in a jump of its own (jumps) keeps it."""
     last = stmts[-1] if stmts else None
     if not last or last[0] != "if" or not last[2]:
         return stmts
-    leave = lambda b: b + [("return", last[3])] if falls_off(b) else b  # noqa: E731
+
+    def leave(b):
+        if b and b[-1][0] == "if" and b[-1][2]:
+            return each_side_leaves(b, jumps)
+        return b + [("return", last[3])] if falls_off(b) and not (b and jumps(b[-1])) else b
     return stmts[:-1] + [("if", [(c, leave(b)) for c, b in last[1]], leave(last[2]), last[3])]
 
 
@@ -2653,10 +2658,9 @@ class Function:
             self.stored_as(f, text)
         if self.b.exit_after:
             self.stmts = self.guards(self.stmts)
-        elif self.b.convention == "BLOCK" and self.unit.exit and not any(
-                x[0] == "call" and (c := self.binds.bound.get(x[1])) and (c.convention == "BLOCK" or c.block)
-                for x in walk(self.stmts)):
-            self.stmts = each_side_leaves(self.stmts)   # its one way out is the shared exit
+        elif self.b.convention == "BLOCK" and self.unit.exit:
+            self.stmts = each_side_leaves(self.stmts, lambda x: x[0] == "goto" or x[0] in ("call", "run") and (
+                c := self.binds.bound.get(x[1])) and (c.convention == "BLOCK" or c.block))
         if any(b.pulse and b.back == self.b.name for b in self.binds.bound.values()):
             self.emit(1, "ioh();")              # wait for the pulse the code that jumps here left pending
         self.block(self.stmts, 1, top=True)
