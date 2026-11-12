@@ -52,15 +52,15 @@ def check_routine(prog: runs.Program, sym: dict, b: runsc.Bound, n: int) -> int:
     calls, domain = calls_for(b, n)
     want = simh.run_jda(pdp1.SIMH, pdp1.ORACLE, sym[label], calls, op="xct", timeout=3600)
     m = runs.Machine(prog)
-    h = m.state["handoff"]
     inputs = [b.ac_param, b.io_param]
     differ = 0
     for c, w in zip(calls, want):
         for f, v in zip(inputs, (c.ac, c.io)):
             if f:
-                h[f.split(".")[1]] = runs.W(v)
+                rec, fld = f.split(".")
+                m.state[rec][fld] = runs.W(v)
         m.run(name)
-        got = [h[f.split(".")[1]].v for f in b.result]
+        got = [m.state[rec][fld].v for rec, fld in (f.split(".") for f in b.result)]
         bad = [f"{reg} simh {x:06o} runs {r:06o}" for reg, x, r in zip(("AC", "IO"), (w.ac, w.io), got) if x != r]
         if w.returned_past:
             bad.append(f"returned past {w.returned_past}")
@@ -89,7 +89,7 @@ def check_numbers(prog: runs.Program, sym: dict, places: list[dict]) -> int:
 
 
 def main() -> int:
-    prog = runs.program(runs.source())
+    prog = runsc.pdp1_program()   # the program runsc compiled: one copy a called routine
     sym = oracle_symbols()
     places = tomllib.loads(BINDING.read_text())["place"]
     failed = check_numbers(prog, sym, places)

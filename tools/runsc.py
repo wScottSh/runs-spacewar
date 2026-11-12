@@ -4663,7 +4663,9 @@ class Storage:
         self.parent = {p: p for p in g.places}
 
         def word(p):
-            return g.field(p) if g.field(p) in declared else None
+            """A table entry is its own word; any other place, the one the declarations give."""
+            f = g.field(p)
+            return f if g.port(p) in g.tables or re.sub(r"\[\w+\]", "", f) in declared else None
 
         memory: set[str] = set()
         in_ac: set[str] = set()
@@ -4708,10 +4710,18 @@ class Storage:
                 continue
             for n in sigs[proc].inout:
                 share(*ends[t][n])
+        called: dict[str, list[str]] = {}
+        for t, proc in sorted(g.transitions.items()):
+            if not sigs[proc].bundle and sigs[proc].inputs + sigs[proc].outputs and declaration(proc):
+                called.setdefault(proc, []).append(t)
+        for proc, ts in called.items():                 # a called routine is one routine: one wiring
+            for n in sigs[proc].inputs + sigs[proc].outputs:
+                for t in ts[1:]:
+                    share(ends[ts[0]][n][0], ends[t][n][0])
         for t, proc in sorted(g.transitions.items()):
             if proc in copier.values() and writers[ends[t]["target"][0]] > 1:
                 share(ends[t]["source"][0], ends[t]["target"][0])
-        own = [f"{g.call}.{f}" for f in prog.records[g.call].fields] if g.ports else []
+        own = [f"{g.call}.{f}" for f in prog.records[g.call].fields] if g.call in prog.records else []
         in_memory = [f for f in own if f in memory_words()]
         io_words = [f for f in own if f == decl.get("io_param") or f in decl.get("io", [])]
         self.where: dict[str, str] = {}
@@ -4766,7 +4776,7 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
 
         def read(t, place):
             w = at[place]
-            if place in g.ports and w not in holds and g.field(place) == w:
+            if g.port(place) and w not in holds and g.field(place) == w:
                 return None
             if holds.get(w, place) != place:
                 return f"{t} reads {place}, but {w} holds {holds[w]}"

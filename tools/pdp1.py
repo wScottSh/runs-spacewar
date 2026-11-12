@@ -139,7 +139,7 @@ class HeldCode:
     #                                     ("past", w, label) a jump within it, ("hole", field) a held word
 
 
-def held_code(prog: runs.Program) -> HeldCode:
+def held_code() -> HeldCode:
     """The binding's collection held as a run of code, and each member's
     words: its TEMPLATE as pdp1cc compiles it from the last build's C,
     emitted as pdp1cc emits a word and assembled by macro1 with the last
@@ -147,7 +147,7 @@ def held_code(prog: runs.Program) -> HeldCode:
     import runsc
     from tools.pdp1cc import emit, ir, select
     from tools.pdp1cc import program as cc
-    binds = runsc.Bindings(prog, sorted(runsc.BINDINGS.glob("*.toml")))
+    binds = runsc.Bindings(runsc.pdp1_program(), sorted(runsc.BINDINGS.glob("*.toml")))
     (code, walk), = binds.walks.items()
     held = {binds.c_name(f): tuple(f.split(".")) for f in binds.held}
     names = {f"{binds.c_name(code)}_{m}": m for m in walk.arms}
@@ -214,7 +214,7 @@ class Binding:
         self.routine_word = self.enum_word["calc_routine"]
         self.moved: dict[tuple[str, str], int] = {}     # a field a check lays out elsewhere: its address
         self.slot_at: dict[tuple[str, str, int], int] = {}  # a slot laid out on its own: its address
-        self.held = held_code(prog)
+        self.held = held_code()
         self.code = self.held.field                     # the collection held as a run of code
         self.members = self.held.members
         self.code_slots: list[int] = []                 # the code laid out: each slot's address, then its end

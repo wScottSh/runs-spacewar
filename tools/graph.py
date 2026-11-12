@@ -68,6 +68,8 @@ class Graph:
     places: list[str]
     transitions: dict[str, str]                # transition -> Processor or bundle
     arcs: list[Arc]
+    params: list[str] = field(default_factory=list)       # which slot, as `network torpedo(slot)`
+    args: dict[str, str] = field(default_factory=dict)    # transition -> the slot it passes, "(slot)"
 
     @property
     def call(self) -> str:
@@ -85,9 +87,23 @@ class Graph:
             s.types[n] = typ
         return s
 
+    def port(self, place: str) -> str | None:
+        """The input or output a place is, or is an entry of (`table[slot].x`)."""
+        root = re.match(r"\w+", place)[0]
+        return root if root in self.ports else None
+
     def field(self, place: str) -> str:
-        """A place as a Record field: an input or output is its call Record's."""
+        """A place as a Record field: an input or output is its call Record's;
+        an entry of a table input or output is the table Record's."""
+        if (n := self.port(place)) and n != place:
+            index, fld = re.fullmatch(r"\w+\[(\w+)\]\.(\w+)", place).groups()
+            return f"{self.ports[n][1]}.{fld}[{index}]"
         return place if "." in place else f"{self.call}.{place}"
+
+    @property
+    def tables(self) -> set[str]:
+        """The inputs and outputs that are a whole table, named by entry."""
+        return {n for n in self.ports if any(a.place.startswith(n + "[") for a in self.arcs)}
 
 
 NAME = r"\w+(?:\[\w+\])?(?:\.\w+)?"
@@ -102,7 +118,10 @@ def parse(path: Path) -> Graph:
         if not line:
             continue
         if line.startswith("network "):
-            g.name = line.split()[1]
+            m = re.fullmatch(r"network (\w+)(?:\((.*)\))?", line.strip())
+            if not m:
+                raise GraphError(f"{where}: a network line is `network name` or `network name(slot)`")
+            g.name, g.params = m[1], [x.strip() for x in (m[2] or "").split(",") if x.strip()]
         elif not line.startswith(" "):
             section = line.strip()
             if section not in ("places", "transitions", "arcs"):
@@ -120,7 +139,12 @@ def parse(path: Path) -> Graph:
             t, _, p = line.partition(":")
             if t.strip() in g.transitions:
                 raise GraphError(f"{where}: transition {t.strip()} named twice")
-            g.transitions[t.strip()] = p.strip()
+            m = re.fullmatch(r"(\w+)(\(.*\))?", p.strip())
+            if not m:
+                raise GraphError(f"{where}: a transition is `name: Processor` or `name: Processor(slot)`")
+            g.transitions[t.strip()] = m[1]
+            if m[2]:
+                g.args[t.strip()] = m[2]
         elif m := re.fullmatch(rf"\s+({NAME}) -> (\w+) when (.+)", line):
             g.arcs.append(Arc(m[1], m[2], None, True, m[3].strip(), where))
         elif m := re.fullmatch(rf"\s+({NAME}) -> ({NAME})", line):
@@ -140,6 +164,7 @@ def parse(path: Path) -> Graph:
     if clash := sorted(set(g.transitions) & {p.split(".")[0] for p in g.places}):
         raise GraphError(f"{path}: {clash[0]} names a transition and a Record")
     g.places += [n for n in g.ports if n not in g.places]
+    g.places += list(dict.fromkeys(a.place for a in g.arcs if g.port(a.place) and a.place not in g.places))
     return g
 
 
@@ -154,7 +179,7 @@ def guards(g: Graph) -> dict[str, tuple[str, str] | None]:
             out[t] = own.get(t)
             if out[t] is None:
                 for a in g.arcs:
-                    if a.transition == t and a.into and a.io:
+                    if a.transition == t and a.into and a.io is not None:
                         ws = {of(w.transition) for w in g.arcs if w.place == a.place and not w.into}
                         if len(ws) == 1 and (w := ws.pop()):
                             out[t] = w
@@ -174,7 +199,7 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
     def type_of(place: str) -> str | None:
         if place in g.ports:
             return g.ports[place][1]
-        rec, _, fld = re.sub(r"\[\w+\]", "", place).partition(".")
+        rec, _, fld = re.sub(r"\[\w+\]", "", g.field(place) if g.port(place) else place).partition(".")
         return fields.get(rec, {}).get(fld)
 
     for p in g.places:
@@ -201,12 +226,13 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
                     fail(f"{t}.{a.io} is {s.types[a.io]}, wired to {a.place}, {type_of(a.place)}", a.where)
         for n in s.inout:
             ends = {a.place for a in g.arcs if a.transition == t and a.io == n}
-            if len(ends) != 2:
+            threaded = len(ends) == 1 and (p := g.port(next(iter(ends)))) and g.ports[p][0] == "inout"
+            if len(ends) != 2 and not threaded:   # a network inout's in value is read, its out value given
                 fail(f"{t}.{n} is inout: it takes one place and gives a fresh one, not {sorted(ends)}")
     guard = guards(g)
     for place in g.places:
         writers = [a.transition for a in g.arcs if a.place == place and not a.into]
-        if place in g.ports and g.ports[place][0] == "in" and writers:
+        if g.port(place) and g.ports[g.port(place)][0] == "in" and writers:
             fail(f"{place} is an input of {g.name}; {writers[0]} writes it")
         branches = [guard[w] for w in writers]
         if len(branches) != len(set(branches)) or len(writers) > 1 and not all(branches):
@@ -214,7 +240,7 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
         if len(writers) > 1 and len({b[0] for b in branches}) != 1:
             fail(f"{place} is written on branches of different tests")
     for n, (d, _) in g.ports.items():
-        if d != "in" and not any(a.place == n and not a.into for a in g.arcs):
+        if d != "in" and not any(g.port(a.place) == n and not a.into for a in g.arcs):
             fail(f"nothing gives its output {n}")
     tests: dict[str, set[str]] = {}
     for a in g.arcs:
@@ -236,7 +262,7 @@ def depends(g: Graph) -> dict[str, set[str]]:
             writers.setdefault(a.place, set()).add(a.transition)
     out: dict[str, set[str]] = {t: set() for t in g.transitions}
     for a in g.arcs:
-        if a.into and not (a.place in g.ports and g.ports[a.place][0] == "inout"):
+        if a.into and not (g.port(a.place) and g.ports[g.port(a.place)][0] == "inout"):
             out[a.transition] |= writers.get(a.place, set())
         elif a.into:
             for w in writers.get(a.place, set()) - {a.transition}:
@@ -331,7 +357,7 @@ def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
             for n in s.inputs:
                 if wire[n]["in"] != (w := low.word[proc, n]):
                     lines += copy(s.types[n], wire[n]["in"], w)
-            lines.append(f"run {proc}")
+            lines.append(f"run {proc}{g.args.get(t, '')}")
             for n in s.outputs:
                 if wire[n]["out"] != (w := low.word[proc, n]):
                     lines += copy(s.types[n], w, wire[n]["out"])
@@ -345,7 +371,7 @@ def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
             if n in s.inout and w["in"] != w["out"]:
                 lines += copy(s.types[n], w["in"], w["out"])
             args.append(f"  {n}: {w.get('out', w.get('in'))}")
-        out.append((guard[t], lines + [f"run {proc}"] + args, written))
+        out.append((guard[t], lines + [f"run {proc}{g.args.get(t, '')}"] + args, written))
     return out
 
 
@@ -362,7 +388,8 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
             for i in reversed(other):
                 del body[i]
             body[then[0]:then[0]] = moved
-    out = [f"network {g.name}"] + [f"  owns {n}: word" for n in low.owns]
+    head = f"network {g.name}({', '.join(g.params)})" if g.params else f"network {g.name}"
+    out = [head] + [f"  owns {n}: word" for n in low.owns]
     opened = None
     for gd, lines, _ in body:
         if gd != opened and gd is not None:

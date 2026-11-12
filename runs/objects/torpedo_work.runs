@@ -1,0 +1,11 @@
+# Every value a torpedo's flight computes on the way, each written once.
+game record torpedo_work
+  counted: word = 0         # its life, one frame on; at 0 it explodes
+  coordinate_x: word = 0    # x, sar 9s, into the warpage
+  pull_y: word = 0          # the warpage's pull on dy
+  moved_y: word = 0
+  position_y: word = 0      # what diff leaves in AC
+  coordinate_y: word = 0
+  pull_x: word = 0
+  moved_x: word = 0
+  position_x: word = 0      # nothing reads it

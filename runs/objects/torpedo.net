@@ -1,0 +1,68 @@
+# A torpedo (tcr), a bundle: it flies straight, bent only by the torpedo
+# space warpage, until its life runs out and it explodes. It takes the
+# object table and gives the next.
+
+network torpedo(slot)
+  inout table: objects
+
+places
+  torpedo_work.counted
+  torpedo_work.coordinate_x
+  torpedo_work.pull_y
+  torpedo_work.moved_y
+  torpedo_work.position_y
+  torpedo_work.coordinate_y
+  torpedo_work.pull_x
+  torpedo_work.moved_x
+  torpedo_work.position_x
+
+transitions
+  count: count_down                                         # count i ma1, tc1
+  explode: explode_torpedo
+  warp_x: warp_from_x                                       # tc1
+  warpage_y: torpedo_space_warpage
+  move_y: inertia_y
+  warp_y: warp_from_y
+  warpage_x: torpedo_space_warpage
+  move_x: inertia_x
+  show: plot_torpedo(slot)
+  give_counter: copy
+  give_x: copy
+  give_y: copy
+
+arcs
+  table[slot].counter -> count.counter
+  count.counter -> torpedo_work.counted
+  torpedo_work.counted -> explode when >= 0
+  explode.routine -> table[slot].routine
+  explode.counter -> table[slot].counter
+  torpedo_work.counted -> warp_x when else
+  table[slot].x -> warp_x.x
+  warp_x.coordinate -> torpedo_work.coordinate_x
+  torpedo_work.coordinate_x -> warpage_y.coordinate
+  warpage_y.acceleration -> torpedo_work.pull_y
+  torpedo_work.pull_y -> move_y.acceleration
+  table[slot].dy -> move_y.velocity
+  table[slot].y -> move_y.place
+  move_y.velocity -> table[slot].dy
+  move_y.place -> torpedo_work.moved_y
+  move_y.position -> torpedo_work.position_y
+  torpedo_work.position_y -> warp_y.position
+  warp_y.coordinate -> torpedo_work.coordinate_y
+  torpedo_work.coordinate_y -> warpage_x.coordinate
+  warpage_x.acceleration -> torpedo_work.pull_x
+  torpedo_work.pull_x -> move_x.acceleration
+  table[slot].dx -> move_x.velocity
+  table[slot].x -> move_x.place
+  move_x.velocity -> table[slot].dx
+  move_x.place -> torpedo_work.moved_x
+  move_x.position -> torpedo_work.position_x
+  torpedo_work.moved_x -> show
+  torpedo_work.moved_y -> show
+  torpedo_work.counted -> give_counter when else
+  torpedo_work.counted -> give_counter.source
+  give_counter.target -> table[slot].counter
+  torpedo_work.moved_x -> give_x.source
+  give_x.target -> table[slot].x
+  torpedo_work.moved_y -> give_y.source
+  give_y.target -> table[slot].y

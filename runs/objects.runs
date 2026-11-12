@@ -40,41 +40,6 @@ network explosion(slot)                                     # mex
   if objects.counter[slot] >= 0:
     run free_slot(slot)
 
-# A torpedo flies straight, bent only by the torpedo space warpage, until
-# its life runs out and it explodes.
-# Generated from docs/prototypes/graph-format/object-walk/*.net by its load.py.
-network torpedo(slot)                                       # tcr
-  run count_down                                            # count i ma1, tc1
-    counter: objects.counter[slot]
-  if objects.counter[slot] >= 0:
-    run explode_torpedo
-      routine: objects.routine[slot]
-      counter: objects.counter[slot]
-  else:
-    run warp_from_x                                         # tc1
-      x: objects.x[slot]
-      coordinate: handoff.coordinate
-    run torpedo_space_warpage
-      coordinate: handoff.coordinate
-      acceleration: handoff.acceleration
-    run inertia_y
-      acceleration: handoff.acceleration
-      velocity: objects.dy[slot]
-      place: objects.y[slot]
-      position: handoff.position
-    run warp_from_y
-      position: handoff.position
-      coordinate: handoff.coordinate
-    run torpedo_space_warpage
-      coordinate: handoff.coordinate
-      acceleration: handoff.acceleration
-    run inertia_x
-      acceleration: handoff.acceleration
-      velocity: objects.dx[slot]
-      place: objects.x[slot]
-      position: handoff.position
-    run plot_torpedo(slot)
-
 # A ship in hyperspace is not drawn and does not collide. When its time is
 # up it jumps by a random displacement, takes a random velocity and
 # heading, and breakout begins.

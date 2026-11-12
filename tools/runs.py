@@ -778,20 +778,20 @@ COPIER = "copy"       # the Processor that copies a word; copy_<enum> copies a v
 
 def signatures(prog: Program) -> dict[str, "graph.Signature"]:
     """What a transition can name: each Processor with inputs and outputs,
-    and each network file."""
+    each network file, and each routine that still names its Records (no
+    inputs and no outputs; arcs with no input or output order it)."""
     sigs = {}
     for r in prog.routines.values():
-        if r.ports:
-            s = graph.Signature([], [])
-            for p in r.ports.values():
-                if p.direction in ("in", "inout"):
-                    s.inputs.append(p.name)
-                if p.direction in ("out", "inout"):
-                    s.outputs.append(p.name)
-                if p.direction == "inout":
-                    s.inout.add(p.name)
-                s.types[p.name] = kind_text(p.type, p.count)
-            sigs[r.name] = s
+        s = graph.Signature([], [])
+        sigs[r.name] = s
+        for p in r.ports.values():
+            if p.direction in ("in", "inout"):
+                s.inputs.append(p.name)
+            if p.direction in ("out", "inout"):
+                s.outputs.append(p.name)
+            if p.direction == "inout":
+                s.inout.add(p.name)
+            s.types[p.name] = kind_text(p.type, p.count)
     for g in prog.graphs.values():
         if g.name in sigs:
             raise RunsError(f"{g.where}: {g.name} is a Processor and a network file")
@@ -814,8 +814,7 @@ def lower_graphs(prog: Program, lower) -> None:
             graph.check(g, sigs, fields)
         except graph.GraphError as e:
             raise RunsError(str(e)) from e
-        if g.ports:
-            want = {n: typ for n, (_, typ) in g.ports.items()}
+        if want := {n: typ for n, (_, typ) in g.ports.items() if n not in g.tables}:
             if fields.get(g.call) != want:
                 raise RunsError(f"{g.where}: the Record {g.call} must hold {g.name}'s inputs and outputs, "
                                 f"{want}, and nothing else")
