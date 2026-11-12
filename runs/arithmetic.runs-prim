@@ -130,24 +130,6 @@ network cosine                                              # cos
   run cosine_angle
   run sine
 
-# BBN integer divide (idv): the dividend is one word, shifted right 17 into
-# the 36-bit pair. IO's sign on entry lands in the low half's lowest bit.
-processor integer_divide_dividend                           # idv
-  reads: integer_divide_call
-  writes: divide_call
-  let high = integer_divide_call.dividend
-  let low = integer_divide_call.low
-  set (high, low) = scr(high, low, 17)
-  set divide_call.high = high
-  set divide_call.low = low
-  set divide_call.divisor = integer_divide_call.divisor
-
-network integer_divide                                      # idv
-  reads: integer_divide_call
-  writes: divide_call
-  run integer_divide_dividend
-  run divide
-
 # The `random` macro: the generator's next value.
 processor next_random
   writes: random

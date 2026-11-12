@@ -1,0 +1,4 @@
+# The 36-bit dividend integer divide hands divide, each half written once.
+game record integer_divide_work
+  high: word = 0
+  low: word = 0

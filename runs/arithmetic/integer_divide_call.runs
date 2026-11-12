@@ -1,0 +1,10 @@
+# The integer divide subroutine's own words (idv): what a caller hands it and
+# gets back. The divisor is the word after the call.
+game record integer_divide_call
+  dividend: word = 0        # idv: jda leaves the dividend here
+  low: word = 0             # IO on entry: its sign lands in the low half's lowest bit
+  divisor: word = 0
+  quotient: word = 0        # the quotient's magnitude, or |divisor| on overflow
+  result: word = 0          # AC at return: the quotient, or |divisor| signed like one on overflow
+  remainder: word = 0       # IO at return: the remainder, or the shifted dividend's high half on overflow
+  outcome: division = overflows

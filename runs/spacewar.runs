@@ -285,11 +285,6 @@ game record square_root_call
   passes_left: word = 0     # sq1
   root: word = 0            # sq2: the result
 
-game record integer_divide_call
-  dividend: word = 0        # idv: jda leaves the dividend here
-  low: word = 0             # IO on entry: its sign lands in the low half's lowest bit
-  divisor: word = 0
-
 # The sine-cosine subroutine's own words (sin, cos). The series keeps its
 # working values in the two entry words.
 game record sine_call
