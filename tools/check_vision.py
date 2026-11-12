@@ -24,7 +24,12 @@ HEADER = """\
 #                   statements across the Processors, or a Processor sets it after reading the
 #                   value it held (read before the set, or read in a loop that sets it).
 #                   Counted in the file that declares the Record. A stream is not counted:
-#                   `emit` adds a fresh entry.
+#                   `emit` adds a fresh entry. The Networks runs.load lowers network files to,
+#                   and the copies they run, are not counted: tools/graph.py refuses a network
+#                   file whose place two transitions write other than on the two sides of one
+#                   test, or whose transition reads a place it writes (a cycle). A bundle's call
+#                   Record holds its inputs and outputs, which the bundle writes once each, so
+#                   the sets of the routines that run the bundle count in their own files.
 # names_records     Processors that name Records (CONTEXT.md 166-169: a Processor knows nothing
 #                   of the Records it is wired to). A Processor counts when it names any Record:
 #                   in `reads:`, `writes:`, `requires:`, or its body.
@@ -45,6 +50,10 @@ HEADER = """\
 #                   (CONTEXT.md 359-370) and does not count.
 # extra_processors  Files holding more than one Processor: each file's Processors beyond its
 #                   first. A file holds more than one when its count is above 0.
+#
+# A network file is wiring with guards, so it counts nothing under control_flow, mid_exit
+# and open_guards; tools/graph.py refuses one whose guards on a place are not one test and
+# its else.
 """
 
 COUNTS = ("in_place", "names_records", "control_flow", "mid_exit", "open_guards", "extra_processors")
@@ -78,8 +87,18 @@ class Home:
 
 
 def as_written(prog: runs.Program) -> dict[str, runs.Routine]:
-    """The routines the source writes: every routine but the copies a wired run makes."""
-    return {**{n: r for n, r in prog.routines.items() if n not in prog.copies}, **prog.templates}
+    """The routines the source writes: every routine but the copies a wired run
+    makes and the Networks lowered from network files."""
+    return {**{n: r for n, r in prog.routines.items() if n not in prog.copies and n not in prog.graphs},
+            **prog.templates}
+
+
+def lowered(prog: runs.Program) -> set[str]:
+    """The Networks lowered from network files, and the copies they run."""
+    out = set(prog.graphs)
+    for g in prog.graphs:
+        out |= runs.runs_of(prog.routines[g].body) & set(prog.copies)
+    return out
 
 
 def field_of(e, records) -> tuple[str, str] | None:
@@ -164,8 +183,9 @@ def in_place(prog, routines, home) -> list[tuple[str, str]]:
     updates: dict[tuple[str, str], set[str]] = {}
     # A Processor with Ports writes the Fields its runs wire to its out and
     # inout Ports: each copy is its body with those Fields in place of them.
+    skip = lowered(prog)
     for r in prog.routines.values():
-        if r.kind != "processor":
+        if r.kind != "processor" or r.name in skip:
             continue
         name = prog.copies.get(r.name, (r.name,))[0]
         read = held_reads(r.body, records, set())[0]
@@ -174,6 +194,7 @@ def in_place(prog, routines, home) -> list[tuple[str, str]]:
             if f in read:
                 updates.setdefault(f, set()).add(name)
     by_record: dict[str, list[str]] = {}
+    who_of: dict[str, set[str]] = {}
     for f, who in sorted(sites.items()):
         if len(who) > 1 or f in updates:
             why = []
@@ -182,8 +203,16 @@ def in_place(prog, routines, home) -> list[tuple[str, str]]:
             if f in updates:
                 why.append(f"updated by {', '.join(sorted(updates[f]))}")
             by_record.setdefault(f[0], []).append(f"{f[1]} ({'; '.join(why)})")
-    return [(home.records.get(rec) or home[prog.records[rec].owner], f"in_place {rec}: {', '.join(fs)}")
-            for rec, fs in sorted(by_record.items())]
+            who_of.setdefault(f[0], set()).update(who)
+    calls = {g.call for g in prog.graphs.values() if g.ports}
+    out = []
+    for rec, fs in sorted(by_record.items()):
+        line = f"in_place {rec}: {', '.join(fs)}"
+        if rec in calls:
+            out += [(f, line) for f in sorted({home[w] for w in who_of[rec]})]
+        else:
+            out.append((home.records.get(rec) or home[prog.records[rec].owner], line))
+    return out
 
 
 def names_records(prog, routines, home) -> list[tuple[str, str]]:
