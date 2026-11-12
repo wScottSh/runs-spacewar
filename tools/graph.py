@@ -69,7 +69,10 @@ A counter may start at a count the bundle states, `counter left: word =
 user sets. A guard on its take stops the loop before the count runs out
 (an outline's codes end at its 7 code), and the lowering is the guarded
 fold `for left in 1 .. 0140: if left == 1 or <the take's guard>:`, whose
-count the PDP-1 back end compiles to nothing (pdp1/README.md).
+count the PDP-1 back end compiles to nothing (pdp1/README.md). A take
+under more than one test (the angle reduction's three ways out) is
+lowered to `loop at most <count>:`, each test's other side first and
+ending in a break, with no count.
 
 A loop bundle over slots, a dispatch over a collection (CONTEXT.md 340-348),
 states its slots in place of the counter's type: `counter later: slot + 1
@@ -856,14 +859,15 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
     run, each side of a test under its `if` or `else`."""
     take = taker(g)
     fold = None
-    if take and g.bound:
+    nested = bool(take and g.bound and len(chains(g)[take]) > 1)
+    if take and g.bound and not nested:
         fold, take = fold_guard(g, take, low), None
         order = [t for t in order if t != taker(g)]
     facts = tested_copies(g, sigs, low)
     tested = {p: low.at[src] for p, (_, src) in facts.items()}
     dropped = {t for t, _ in facts.values()}
     order = [t for t in order if t not in dropped]
-    body = steps(g, sigs, [t for t in order if t != take] + ([take] if take and not g.over else []), low)
+    body = steps(g, sigs, [t for t in order if t != take] + ([take] if take and not g.over and not nested else []), low)
     for place in sorted({gd[0][0] for gd, _, _ in body if len(gd) == 1}):
         then = [i for i, (gd, _, _) in enumerate(body) if gd and gd[-1][0] == place and gd[-1][1] != "else"]
         other = [i for i, (gd, _, _) in enumerate(body) if gd and gd[-1][0] == place and gd[-1][1] == "else"]
@@ -873,7 +877,9 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
             for i in reversed(other):
                 del body[i]
             body[then[0]:then[0]] = moved
-    if take and not g.over and body[-1][0]:
+    if nested:                          # the bound keeps no count: the take is only where the loop goes on
+        body = stop_side_first(g, body + [(chains(g)[take], [], set())])[:-1]
+    elif take and not g.over and body[-1][0]:
         body = stop_side_first(g, body)
     head = f"network {g.name}({', '.join(g.params)})" if g.params else f"network {g.name}"
     requires = ([g.requires] if g.requires else []) + [f"requires: {low.at[p]} != {m}" for p, m in g.assumes]
@@ -920,7 +926,9 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
         c = g.counter
         out[head:] = [f"  for {c} in 1 .. {g.bound.lstrip('-')}:", f"    if {c} == 1 or {fold}:",
                       *("    " + x for x in out[head:])]
-    if g.over:                          # the take steps the slot: the walk's own step
+    if nested:
+        out[head:] = [f"  loop at most {g.bound.lstrip('-')}:", *("  " + x for x in out[head:])]
+    elif g.over:                        # the take steps the slot: the walk's own step
         out[head:] = [f"  for {g.over[0]} in {g.over[1]} .. {g.over[2]}:", *("  " + x for x in out[head:])]
     elif take:
         c = low.at[g.counter]
@@ -1003,10 +1011,12 @@ def stop_side_first(g: Graph, body: list) -> list:
     """A loop bundle whose take runs on one side of a test: a pass on the
     other side takes no token, and the loop ends after it. That side is
     laid out first, under its own test, ending in a break; the take's side
-    follows it unguarded, the take last. body: the steps, the take's last."""
+    follows it unguarded, the take last. A take under a test in that side
+    is laid out the same way, a test at a time (the angle reduction's three
+    ways out). body: the steps, the take's last."""
     gd = body[-1][0]
-    if len(gd) != 1:
-        raise GraphError(f"{g.where}: {g.name}: the take runs on one side of one test, not under {len(gd)}")
+    if not gd:
+        return body
     place, side = gd[0]
     test = next(a.guard for a in g.arcs if a.place == place and a.guard and a.guard != "else")
     op, _, rest = test.partition(" ")
@@ -1017,7 +1027,7 @@ def stop_side_first(g: Graph, body: list) -> list:
                          f"so every transition off the test's sides comes before it")
     ends = [((stop,) + d[1:], lines, w) for d, lines, w in body[first:] if d[0] != gd[0]]
     goes = [(d[1:], lines, w) for d, lines, w in body[first:] if d[0] == gd[0]]
-    return body[:first] + ends + [((stop,), ["break"], set())] + goes
+    return body[:first] + ends + [((stop,), ["break"], set())] + stop_side_first(g, goes)
 
 
 def written_once(g: Graph, sigs: dict[str, Signature], copier: dict[str, str]) -> str:

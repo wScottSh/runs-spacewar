@@ -1,0 +1,4 @@
+# The reduction's passes: the angle, the reduced angle.
+game record reduce_passes_call
+  angle: word = 0
+  reduced: word = 0

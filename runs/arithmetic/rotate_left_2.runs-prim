@@ -1,0 +1,5 @@
+# si3: the reduced angle shifted left 2, for the series.
+processor rotate_left_2                                     # ral 2s
+  in angle: word
+  out rotated: word
+  set rotated = ral(angle, 2)

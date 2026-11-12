@@ -1,0 +1,5 @@
+# A quarter turn more (pi/2 is 062210).
+processor add_quarter                                       # add (62210
+  in angle: word
+  out more: word
+  set more = angle + 062210

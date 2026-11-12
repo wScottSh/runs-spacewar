@@ -1,0 +1,9 @@
+# Every value the angle reduction computes on the way, each written once.
+game record reduce_work
+  turned: word = 0          # the angle, 0 or more
+  left: word = 0            # the angle after the last pass
+  quarter: word = 0         # in [0, pi/2]
+  less: word = 0            # a pass: the angle a quarter turn less
+  folded: word = 0          # past a quarter, folded back
+  more: word = 0            # that, a quarter more
+  under: word = 0           # that, a quarter less again

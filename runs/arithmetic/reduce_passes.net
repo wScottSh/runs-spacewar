@@ -1,0 +1,56 @@
+# The reduction's passes (si1 .. jmp si1), a loop bundle. A pass takes a
+# quarter turn off the angle; below 0, the angle was within the first
+# quarter. Else it folds the rest back below a quarter (si2); at 0 or
+# more that is the answer. Else a quarter more is the answer when at 0 or
+# more; below 0, the angle goes a turn on and round again. Two passes
+# reduce every angle within a turn either way (all 2^18 words run).
+
+network reduce_passes
+  counter passes: word = -2
+  inout angle: word
+  out reduced: word
+
+places
+  reduce_work.less
+  reduce_work.folded
+  reduce_work.more
+  reduce_work.under
+
+transitions
+  less: less_quarter                                        # sub (62210
+  within: add_quarter                                       # add (62210
+  fold: fold_back                                           # si2: cma; add (62210
+  folded: copy
+  more: add_quarter                                         # add (62210
+  past: less_quarter                                        # sub (62210
+  under: less_quarter                                       # sub (62210
+  around: add_turn                                          # jmp si1
+  take: count_down
+
+arcs
+  angle -> less.angle
+  less.less -> reduce_work.less
+  reduce_work.less -> within when < 0
+  reduce_work.less -> within.angle
+  within.more -> reduced
+  reduce_work.less -> fold when else
+  reduce_work.less -> fold.past
+  fold.folded -> reduce_work.folded
+  reduce_work.folded -> folded when >= 0
+  reduce_work.folded -> folded.source
+  folded.target -> reduced
+  reduce_work.folded -> more when else
+  reduce_work.folded -> more.angle
+  more.more -> reduce_work.more
+  reduce_work.more -> past when >= 0
+  reduce_work.more -> past.angle
+  past.less -> reduced
+  reduce_work.more -> under when else
+  reduce_work.more -> under.angle
+  under.less -> reduce_work.under
+  reduce_work.more -> around when else
+  reduce_work.under -> around.angle
+  around.angle -> angle
+  reduce_work.more -> take when else
+  passes -> take.counter
+  take.counter -> passes

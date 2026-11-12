@@ -1,0 +1,4 @@
+# The angle reduction: the angle in, the reduced angle out.
+game record reduce_angle_call
+  angle: word = 0
+  reduced: word = 0

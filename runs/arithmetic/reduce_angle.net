@@ -1,0 +1,31 @@
+# The angle reduction (sin .. si3), a bundle: the angle, within a turn
+# either way, made 0 or more, folded into [0, pi/2] by its passes, and
+# shifted left 2.
+
+network reduce_angle
+  in angle: word
+  out reduced: word
+
+places
+  reduce_work.turned
+  reduce_work.left
+  reduce_work.quarter
+
+transitions
+  wrap: add_turn                                            # spa; si1: add (311040
+  keep: copy
+  passes: reduce_passes
+  scale: rotate_left_2                                      # si3: ral 2s
+
+arcs
+  angle -> wrap when < 0
+  angle -> wrap.angle
+  wrap.angle -> reduce_work.turned
+  angle -> keep when else
+  angle -> keep.source
+  keep.target -> reduce_work.turned
+  reduce_work.turned -> passes.angle
+  passes.angle -> reduce_work.left
+  passes.reduced -> reduce_work.quarter
+  reduce_work.quarter -> scale.angle
+  scale.rotated -> reduced

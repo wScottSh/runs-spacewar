@@ -1,0 +1,5 @@
+# si2: the angle past a quarter turn folded back below it.
+processor fold_back                                         # cma; add (62210
+  in past: word
+  out folded: word
+  set folded = -past + 062210

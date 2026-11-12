@@ -1,0 +1,5 @@
+# A quarter turn less (pi/2 is 062210).
+processor less_quarter                                      # sub (62210
+  in angle: word
+  out less: word
+  set less = angle - 062210

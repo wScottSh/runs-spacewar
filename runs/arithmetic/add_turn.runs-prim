@@ -1,0 +1,4 @@
+# si1: the angle a whole turn on (2 pi is 0311040).
+processor add_turn                                          # add (311040
+  inout angle: word
+  set angle = angle + 0311040
