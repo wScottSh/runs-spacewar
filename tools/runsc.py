@@ -4740,11 +4740,6 @@ class Storage:
             yield at
 
 
-def guard_reads(g: graph.Graph) -> dict[str, set[str]]:
-    reads = {t: {a.place for a in g.arcs if a.transition == t and a.into and a.io} for t in g.transitions}
-    return reads
-
-
 def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dict[tuple[str, str], str],
                  sigs: dict, io: set[str], moves: set[str]) -> str | None:
     """The first read, on any path through the order, of a value whose word
@@ -4826,7 +4821,7 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
     3. names, for the ties left, which decide nothing in the image."""
     guard = graph.guards(g)
     rank = {decl[k]: n for n, k in enumerate(ARRIVAL) if k in decl}
-    reads = guard_reads(g)
+    reads = {t: {a.place for a in g.arcs if a.transition == t and a.into and a.io} for t in g.transitions}
     moves = moves_off_ac(g, sigs, at, io, copier)
     plain, tests = graph.units(g)
     dep = graph.depends(g)
@@ -4891,7 +4886,7 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
     st = Storage(g, sigs, copier, prog)
     bundles = {p for p in g.transitions.values() if sigs[p].bundle}
     word = {(b, n): f"{b}_call.{n}" for b in bundles for n in sigs[b].inputs + sigs[b].outputs}
-    io = {x.split(".")[-1] if "." not in x else x for x in decl.get("io", [])}
+    io = set(decl.get("io", []))
     io |= {decl["io_param"]} if "io_param" in decl else set()
     io |= {f for d in (declaration(b) for b in bundles) for f in d.get("io", []) + [d.get("io_param", "")] if f}
     tried = []
