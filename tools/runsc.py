@@ -4776,8 +4776,8 @@ class Storage:
 
         given = getattr(prog, "inlined_words", {})
 
-        named = {a.place for a in g.arcs if not a.io and not a.guard and (r := prog.routines.get(g.transitions[a.transition]))
-                 and a.place.split(".")[0] in r.reads | r.writes}
+        named = {a.place for a in g.arcs if not a.io and not a.guard
+                 and (r := prog.routines.get(g.transitions[a.transition])) and a.place.split(".")[0] in r.reads | r.writes}
 
         def word(p):
             """A table entry is its own word; an input or output of a bundle
