@@ -51,7 +51,7 @@ RECORDS = ["objects", "ship_flight", "ship_outlines", "ships", "random", "spaces
 # The arithmetic routines' own words that have a place in core.
 SCRATCH = [(rec, fld) for rec, fld in pdp1.FIELDS
            if rec in ("square_root_call", "multiply_call", "integer_multiply_call", "divide_call", "sine_call",
-                      "sine_work", "square_root_work")]
+                      "sine_work", "square_root_work", "square_root_passes_call")]
 TWO_PI = 0o311040
 
 

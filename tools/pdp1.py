@@ -47,7 +47,7 @@ FIELDS = {
     ("tunables", "collision_radius"): "me1", ("tunables", "collision_radius_half"): "me2",
     ("outline_setting", "separate_outlines"): "ddd", ("tunables", "hyperspatial_uncertainty"): "hur",
     ("explosion_count", "particles"): "mxc",
-    ("square_root_work", "remainder"): "sqt", ("square_root_work", "passes_left"): "sq1",
+    ("square_root_work", "remainder"): "sqt", ("square_root_passes_call", "passes_left"): "sq1",
     ("square_root_call", "root"): "sq2",
     ("multiply_call", "entry"): "mpy", ("multiply_call", "partial"): "mp2",
     ("integer_multiply_call", "entry"): "imp",
