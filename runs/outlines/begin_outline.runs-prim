@@ -1,0 +1,6 @@
+# the first side begins.
+processor begin_outline
+  inout strokes: stroke[0304]
+  inout code: word
+  set strokes[code] = begin
+  set code = code + 1

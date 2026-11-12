@@ -1,0 +1,21 @@
+# An outline decoded, one stroke a direction code: what the walk does at
+# each. The first side begins, then each side starts at the nose, takes the
+# outline's steps and stores and restores, and ends. The strokes lie in the
+# free core after the object table (nnn). The tape does not load them, and
+# a new game decodes the outlines into them before anything walks them.
+enum stroke
+  begin                     # the first side begins
+  nose                      # a side starts at the nose
+  down                      # 0, 1
+  out                       # 2
+  out_down                  # 3
+  in                        # 4
+  in_down                   # 5
+  store                     # 6, the first of a pair
+  restore                   # 6, the second
+  end                       # 7: the other side, or the end of the outline
+
+# Two outlines, each a begin, a nose and at most 0140 codes.
+presentation record outline_code[0304]
+  stroke: stroke
+  back: word                # an end's nose: where the other side starts

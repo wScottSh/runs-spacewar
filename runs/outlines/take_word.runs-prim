@@ -1,0 +1,8 @@
+# setup \occ, 6; ocg, lio .: the next outline word, six codes to read.
+processor take_word
+  in words: word[020]
+  in table: word
+  out codes_left: word
+  out codes: word
+  set codes_left = -6
+  set codes = words[table]

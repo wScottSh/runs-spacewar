@@ -1,0 +1,6 @@
+# oc3, the 3 code: a step out and down.
+processor step_out_down
+  inout strokes: stroke[0304]
+  inout code: word
+  set strokes[code] = out_down
+  set code = code + 1

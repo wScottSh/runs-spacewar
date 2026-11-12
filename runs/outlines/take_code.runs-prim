@@ -1,0 +1,8 @@
+# och: the next direction code, rotated in from the left of the word.
+processor take_code
+  out direction: word
+  inout codes: word
+  out rest: word
+  set direction = 0                                         # cla
+  set (direction, codes) = rcl(direction, codes, 3)
+  set rest = codes                                          # dio \oci

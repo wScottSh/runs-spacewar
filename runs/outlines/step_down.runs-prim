@@ -1,0 +1,6 @@
+# oc1, the 0 and 1 codes: a step of the pen down.
+processor step_down
+  inout strokes: stroke[0304]
+  inout code: word
+  set strokes[code] = down
+  set code = code + 1

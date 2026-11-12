@@ -1,0 +1,12 @@
+# What the next 6 code of an outline compiles.
+enum six_code
+  store
+  restore
+
+# The outline compiler's own words.
+presentation record outline_compiler
+  table: word = 0           # ocg: the outline word it reads, a place in outlines
+  codes_left: word = 0      # occ: codes still to read in that word, counting up
+  codes_rest: word = 0      # oci: the word, rotated past the codes read
+  six: six_code = store     # program flag 6
+  start_over: word = 0      # ocm: where the outline's nose is, where the other side starts

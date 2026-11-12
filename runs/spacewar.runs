@@ -123,71 +123,6 @@ presentation stream scoreboard
 # spaceship walks its own (draw_outline). ship_outlines.outline keeps where each
 # ship's strokes start.
 
-# The ships' outlines (ot1, ot2), what the compiler reads. Each word holds
-# six 3-bit direction codes, read from the left, that trace one side of a
-# ship from its nose down to its tail, as it stands on its tail:
-#   0, 1 down   2 out   3 out and down   4 in   5 in and down
-#   6 store the pen's position, and at the next 6 restore it
-#   7 the end: draw the other side, then go back to the spaceship
-presentation record outlines[020]
-  codes: word =
-    0111131                 # ot1: the needle, the first ship's
-    0111111
-    0111111
-    0111163
-    0311111
-    0146111
-    0111114
-    0700000
-    0013113                 # ot2: the wedge, the second ship's, and the first's when they share
-    0113111
-    0116313
-    0131111
-    0161151
-    0111633
-    0365114
-    0700000
-
-# An outline decoded, one stroke a direction code: what the walk does at
-# each. The first side begins, then each side starts at the nose, takes the
-# outline's steps and stores and restores, and ends. The strokes lie in the
-# free core after the object table (nnn). The tape does not load them, and
-# a new game decodes the outlines into them before anything walks them.
-enum stroke
-  begin                     # the first side begins
-  nose                      # a side starts at the nose
-  down                      # 0, 1
-  out                       # 2
-  out_down                  # 3
-  in                        # 4
-  in_down                   # 5
-  store                     # 6, the first of a pair
-  restore                   # 6, the second
-  end                       # 7: the other side, or the end of the outline
-
-# Two outlines, each a begin, a nose and at most 0140 codes.
-presentation record outline_code[0304]
-  stroke: stroke
-  back: word                # an end's nose: where the other side starts
-
-presentation record outline_call
-  code: word = 0            # oc's entry word: where in outline_code the next stroke goes; at
-                            #   the end, the slot after the outline
-  table: word = 0           # the word after the call: where in outlines the outline starts
-
-# What the next 6 code of an outline compiles.
-enum six_code
-  store
-  restore
-
-# The outline compiler's own words.
-presentation record outline_compiler
-  table: word = 0           # ocg: the outline word it reads, a place in outlines
-  codes_left: word = 0      # occ: codes still to read in that word, counting up
-  codes_rest: word = 0      # oci: the word, rotated past the codes read
-  six: six_code = store     # program flag 6
-  start_over: word = 0      # ocm: where the outline's nose is, where the other side starts
-
 # The central star's line: how far each dot moves along x and along y.
 # Each is the sign and the three bits just below a display coordinate, so a
 # dot moves less than one point.
@@ -386,11 +321,6 @@ game record handoff
 # shifts to the next; the high half is the dot's own local.
 presentation record explosion_dot
   low: word = 0             # IO: each dot's y
-
-# The outline compiler's carries in AC and IO.
-presentation record outline_reading
-  codes: word = 0           # IO: the outline word, rotated
-  direction: word = 0       # AC: the next direction code, which the compiler dispatches on
 
 # The point the outline's walk is at, carried in AC and IO.
 presentation record outline_point

@@ -1,0 +1,6 @@
+# ock, a side starts at the nose.
+processor start_at_nose
+  inout strokes: stroke[0304]
+  inout code: word
+  set strokes[code] = nose
+  set code = code + 1

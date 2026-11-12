@@ -776,7 +776,15 @@ class Bindings:
     def copies_of(self, path: Path, section: str, p: dict) -> list[dict]:
         """A declaration that names a routine with Ports declares each copy of
         it. One laid out at each run (inline) lays out every copy; a called
-        subroutine is one routine, so all its runs share one wiring."""
+        subroutine is one routine, so all its runs share one wiring. A key
+        that names a routine it runs (args_done, exit_after, loaded) names
+        that routine's one copy."""
+        for key in ("args_done", "exit_after", "loaded"):
+            if p.get(key) in self.prog.templates:
+                runs_of = [c for c, (t, _) in self.prog.copies.items() if t == p[key]]
+                if len(runs_of) != 1:
+                    raise BindError(f"{path.name}: {key} {p[key]!r} is run {len(runs_of)} ways; it names one run")
+                p = {**p, key: runs_of[0]}
         name = p.get("routine")
         if name not in self.prog.templates:
             return [p]

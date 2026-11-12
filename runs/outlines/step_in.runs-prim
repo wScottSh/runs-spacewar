@@ -1,0 +1,6 @@
+# oc4, the 4 code: a step in.
+processor step_in
+  inout strokes: stroke[0304]
+  inout code: word
+  set strokes[code] = in
+  set code = code + 1

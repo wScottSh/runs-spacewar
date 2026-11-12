@@ -1,0 +1,4 @@
+# idx ocg: the next outline word.
+processor next_word
+  inout table: word
+  set table = table + 1

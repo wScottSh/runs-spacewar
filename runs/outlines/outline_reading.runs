@@ -1,0 +1,4 @@
+# The outline compiler's carries in AC and IO.
+presentation record outline_reading
+  codes: word = 0           # IO: the outline word, rotated
+  direction: word = 0       # AC: the next direction code, which the compiler dispatches on

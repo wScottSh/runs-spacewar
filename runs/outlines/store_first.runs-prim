@@ -1,0 +1,4 @@
+# clf 6: the next 6 code stores.
+processor store_first
+  out six: six_code
+  set six = store

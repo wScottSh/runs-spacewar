@@ -1,0 +1,5 @@
+# dap ocm: the other side starts where the strokes' code is now.
+processor mark_start
+  in code: word
+  out start_over: word
+  set start_over = code

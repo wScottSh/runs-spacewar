@@ -1,0 +1,9 @@
+# The 7 code: the end, which sends the first side's walk back to the nose.
+processor end_outline
+  inout strokes: stroke[0304]
+  inout backs: word[0304]
+  inout code: word
+  in start_over: word
+  set strokes[code] = end
+  set backs[code] = start_over
+  set code = code + 1

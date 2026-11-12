@@ -1,0 +1,4 @@
+# count \occ: one code fewer left in the word.
+processor count_code
+  inout codes_left: word
+  set codes_left = codes_left + 1

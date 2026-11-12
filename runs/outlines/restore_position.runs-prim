@@ -1,0 +1,6 @@
+# the second 6 code: restore it.
+processor restore_position
+  inout strokes: stroke[0304]
+  inout code: word
+  set strokes[code] = restore
+  set code = code + 1

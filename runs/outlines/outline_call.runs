@@ -1,0 +1,5 @@
+# The outline compiler's own words (oc): what a caller hands it and gets back.
+presentation record outline_call
+  code: word = 0            # oc's entry word: where in outline_code the next stroke goes; at
+                            #   the end, the slot after the outline
+  table: word = 0           # the word after the call: where in outlines the outline starts

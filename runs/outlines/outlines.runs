@@ -1,0 +1,24 @@
+# The ships' outlines (ot1, ot2), what the compiler reads. Each word holds
+# six 3-bit direction codes, read from the left, that trace one side of a
+# ship from its nose down to its tail, as it stands on its tail:
+#   0, 1 down   2 out   3 out and down   4 in   5 in and down
+#   6 store the pen's position, and at the next 6 restore it
+#   7 the end: draw the other side, then go back to the spaceship
+presentation record outlines[020]
+  codes: word =
+    0111131                 # ot1: the needle, the first ship's
+    0111111
+    0111111
+    0111163
+    0311111
+    0146111
+    0111114
+    0700000
+    0013113                 # ot2: the wedge, the second ship's, and the first's when they share
+    0113111
+    0116313
+    0131111
+    0161151
+    0111633
+    0365114
+    0700000

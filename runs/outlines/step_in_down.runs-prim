@@ -1,0 +1,6 @@
+# oc5, the 5 code: a step in and down.
+processor step_in_down
+  inout strokes: stroke[0304]
+  inout code: word
+  set strokes[code] = in_down
+  set code = code + 1

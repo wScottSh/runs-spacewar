@@ -1,4 +1,4 @@
-"""The outline compiler of outlines.runs against SIMH running the oracle
+"""The outline compiler of runs/outlines/ against SIMH running the oracle
 image's oc, word for word: the strokes it decodes, each encoded as the
 words its member's arm of draw_outline compiles to (its TEMPLATE).
 

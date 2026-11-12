@@ -1,0 +1,4 @@
+# stf 6: the next 6 code restores.
+processor six_stored
+  out six: six_code
+  set six = restore
