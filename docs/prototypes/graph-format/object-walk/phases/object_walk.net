@@ -1,0 +1,24 @@
+# Variant: collisions as a phase of their own, then the calc routines.
+
+network object_walk
+  inout table: objects
+  inout seen: word
+
+places
+  collided: objects
+  walked: objects
+
+transitions
+  collide_all: collide_slot(slot) for slot in 0 .. 026
+  calc_all: calc_slot(slot) for slot in 0 .. 026
+  last_slot: last_object(027)
+
+arcs
+  table -> collide_all.table
+  seen -> collide_all.seen
+  collide_all.table -> collided
+  collide_all.seen -> seen
+  collided -> calc_all.table
+  calc_all.table -> walked
+  walked -> last_slot.table
+  last_slot.table -> table

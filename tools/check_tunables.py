@@ -48,8 +48,9 @@ def calls_for(b: runsc.Bound, n: int) -> tuple[list[Inputs], str]:
 
 def check_routine(prog: runs.Program, sym: dict, b: runsc.Bound, n: int) -> int:
     name = b.name
+    label = SYMBOLS[prog.copies.get(name, (name,))[0]]      # a copy's label is its template's
     calls, domain = calls_for(b, n)
-    want = simh.run_jda(pdp1.SIMH, pdp1.ORACLE, sym[SYMBOLS[name]], calls, op="xct", timeout=3600)
+    want = simh.run_jda(pdp1.SIMH, pdp1.ORACLE, sym[label], calls, op="xct", timeout=3600)
     m = runs.Machine(prog)
     h = m.state["handoff"]
     inputs = [b.ac_param, b.io_param]
@@ -67,7 +68,7 @@ def check_routine(prog: runs.Program, sym: dict, b: runsc.Bound, n: int) -> int:
             differ += 1
             if differ <= 5:
                 print(f"  {name}(AC {c.ac:06o}, IO {c.io:06o}): " + "; ".join(bad))
-    print(f"{name} ({SYMBOLS[name]}): {len(calls)} calls ({domain}), {len(calls) - differ} match, {differ} differ")
+    print(f"{name} ({label}): {len(calls)} calls ({domain}), {len(calls) - differ} match, {differ} differ")
     return 1 if differ or len(want) != len(calls) else 0
 
 
@@ -95,7 +96,9 @@ def main() -> int:
     # what each XCT routine takes and leaves in AC and IO, as runsc derives it from the text
     bound = runsc.Bindings(prog, sorted(runsc.BINDINGS.glob("*.toml"))).bound
     for n, place in enumerate(p for p in places if p.get("convention") == "XCT"):
-        failed |= check_routine(prog, sym, bound[place["routine"]], n)
+        name = place["routine"]           # a routine with Ports: its one copy (runsc copies_of)
+        name = next((c for c, (t, _) in prog.copies.items() if t == name), name)
+        failed |= check_routine(prog, sym, bound[name], n)
     return failed
 
 

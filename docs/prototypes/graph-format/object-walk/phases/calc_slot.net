@@ -1,0 +1,22 @@
+network calc_slot(slot)
+  inout table: objects
+
+places
+  calculated: objects
+
+transitions
+  calc: calc(slot)
+  charge: charge_time(slot)
+  give: copy
+  idle: copy
+
+arcs
+  table[slot].routine -> calc when != none
+  table -> calc.table
+  calc.table -> calculated
+  calculated[slot].cycles -> charge
+  calculated -> give.source
+  give.target -> table
+  table[slot].routine -> idle when else
+  table -> idle.source
+  idle.target -> table

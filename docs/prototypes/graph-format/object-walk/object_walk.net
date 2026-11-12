@@ -1,0 +1,23 @@
+# The object walk (ml1 .. mq1), a fold over the object table. Each step takes
+# the table's current value and gives the next, so slot k's collisions and
+# calc routine come after slot k - 1's and before slot k + 1's: the order is
+# the chain's. The last slot has no later one to test.
+
+network object_walk
+  inout table: objects
+  inout seen: word
+
+places
+  walked: objects
+
+transitions
+  each_slot: object_step(slot) for slot in 0 .. 026
+  last_slot: last_object(027)
+
+arcs
+  table -> each_slot.table
+  seen -> each_slot.seen
+  each_slot.table -> walked
+  each_slot.seen -> seen
+  walked -> last_slot.table
+  last_slot.table -> table

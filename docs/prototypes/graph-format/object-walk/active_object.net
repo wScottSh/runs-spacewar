@@ -1,0 +1,35 @@
+# An object in use. It is counted and tested against every later object
+# when it can collide (an explosion and a ship in hyperspace cannot). Then
+# its calc routine runs on the table the collisions left, and its time is
+# charged.
+
+network active_object(slot)
+  inout seen: word
+  inout table: objects
+
+places
+  collided: objects
+  calculated: objects
+
+transitions
+  count: count_object
+  collide: collide_pair(slot, later) for later in slot + 1 .. 027
+  cannot_collide: copy
+  calc: calc(slot)                                          # mq4
+  charge: charge_time(slot)
+  give: copy
+
+arcs
+  seen -> count.seen
+  count.seen -> seen
+  table[slot].routine -> collide when != explosion and != in_hyperspace
+  table -> collide.table
+  collide.table -> collided
+  table[slot].routine -> cannot_collide when else
+  table -> cannot_collide.source
+  cannot_collide.target -> collided
+  collided -> calc.table
+  calc.table -> calculated
+  calculated[slot].cycles -> charge
+  calculated -> give.source
+  give.target -> table

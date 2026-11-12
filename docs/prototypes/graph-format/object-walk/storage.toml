@@ -1,0 +1,11 @@
+# PDP-1 only: where a value lives when no inout and no table entry places it.
+# A bundle's boundary lives where its user's wires put it; the root's is here.
+"object_walk.table" = "objects"
+"object_walk.seen" = "frame.objects_seen"
+# AC between the torpedo's Processors (handoff: the words a run passes AC in).
+"torpedo.coordinate_x" = "handoff.coordinate"
+"torpedo.coordinate_y" = "handoff.coordinate"
+"torpedo.pull_x" = "handoff.acceleration"
+"torpedo.pull_y" = "handoff.acceleration"
+"torpedo.position_x" = "handoff.position"
+"torpedo.position_y" = "handoff.position"

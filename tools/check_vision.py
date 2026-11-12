@@ -162,14 +162,17 @@ def in_place(prog, routines, home) -> list[tuple[str, str]]:
     records = {n for n, r in prog.records.items() if not r.stream}
     sites: dict[tuple[str, str], list[str]] = {}
     updates: dict[tuple[str, str], set[str]] = {}
-    for r in routines.values():
+    # A Processor with Ports writes the Fields its runs wire to its out and
+    # inout Ports: each copy is its body with those Fields in place of them.
+    for r in prog.routines.values():
         if r.kind != "processor":
             continue
+        name = prog.copies.get(r.name, (r.name,))[0]
         read = held_reads(r.body, records, set())[0]
         for f in fields_set(r.body, records):
-            sites.setdefault(f, []).append(r.name)
+            sites.setdefault(f, []).append(name)
             if f in read:
-                updates.setdefault(f, set()).add(r.name)
+                updates.setdefault(f, set()).add(name)
     by_record: dict[str, list[str]] = {}
     for f, who in sorted(sites.items()):
         if len(who) > 1 or f in updates:

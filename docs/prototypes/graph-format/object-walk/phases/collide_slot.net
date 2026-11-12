@@ -1,0 +1,21 @@
+network collide_slot(slot)
+  inout table: objects
+  inout seen: word
+
+transitions
+  active: collide_active(slot)
+  idle: copy
+  idle_count: copy
+
+arcs
+  table[slot].routine -> active when != none
+  table -> active.table
+  seen -> active.seen
+  active.table -> table
+  active.seen -> seen
+  table[slot].routine -> idle when else
+  table -> idle.source
+  idle.target -> table
+  table[slot].routine -> idle_count when else
+  seen -> idle_count.source
+  idle_count.target -> seen

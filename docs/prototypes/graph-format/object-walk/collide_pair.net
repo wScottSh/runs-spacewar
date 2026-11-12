@@ -1,0 +1,31 @@
+# One pair: the object in slot against a later one that can collide. Both
+# explode when they come within an octagon around each other.
+
+network collide_pair(slot, later)
+  inout table: objects
+
+transitions
+  test: collision
+  cannot_collide: copy
+
+arcs
+  table[later].routine -> test when != none and != explosion and != in_hyperspace
+  table[slot].x -> test.x_a
+  table[later].x -> test.x_b
+  table[slot].y -> test.y_a
+  table[later].y -> test.y_b
+  table[slot].cycles -> test.cycles_a
+  table[later].cycles -> test.cycles_b
+  tunables.collision_radius -> test.radius
+  tunables.collision_radius_half -> test.radius_half
+  table[slot].routine -> test.routine_a
+  table[later].routine -> test.routine_b
+  table[slot].counter -> test.counter_a
+  table[later].counter -> test.counter_b
+  test.routine_a -> table[slot].routine
+  test.routine_b -> table[later].routine
+  test.counter_a -> table[slot].counter
+  test.counter_b -> table[later].counter
+  table[later].routine -> cannot_collide when else
+  table -> cannot_collide.source
+  cannot_collide.target -> table

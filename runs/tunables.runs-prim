@@ -24,8 +24,9 @@ processor spaceship_acceleration                            # sac
   set handoff.thrust = handoff.thrust_direction >> 4
 
 processor torpedo_space_warpage                             # the
-  writes: handoff
-  set handoff.acceleration = handoff.coordinate >> 9
+  in coordinate: word
+  out acceleration: word
+  set acceleration = coordinate >> 9
 
 processor hyperspace_shots                                  # mhs: number of hyperspace jumps
   writes: handoff

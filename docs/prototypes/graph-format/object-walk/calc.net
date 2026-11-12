@@ -1,0 +1,34 @@
+# The calc routine the object's routine word names. Only the torpedo is a
+# bundle yet. The others still name the Records they touch, so each reads
+# and gives the whole table.
+
+network calc(slot)
+  inout table: objects
+
+transitions
+  first: first_spaceship(slot)
+  second: second_spaceship(slot)
+  flying: torpedo(slot)
+  exploding: explosion(slot)
+  away: in_hyperspace(slot)
+  back: breakout(slot)
+
+arcs
+  table[slot].routine -> first when == first_spaceship
+  table -> first
+  first -> table
+  table[slot].routine -> second when == second_spaceship
+  table -> second
+  second -> table
+  table[slot].routine -> flying when == torpedo
+  table -> flying.table
+  flying.table -> table
+  table[slot].routine -> exploding when == explosion
+  table -> exploding
+  exploding -> table
+  table[slot].routine -> away when == in_hyperspace
+  table -> away
+  away -> table
+  table[slot].routine -> back when == breakout
+  table -> back
+  back -> table

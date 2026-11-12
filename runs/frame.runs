@@ -63,23 +63,43 @@ network restart_countdown                                   # mdn
 # not counted. An explosion and a ship in hyperspace cannot collide; core
 # keeps that in the routine word's sign bit.
 network object_loop                                         # ml1
+  run object_walk
+  run expensive_planetarium                                 # mq3
+  run central_star
+  run spare_time
+
+# The object walk, a fold over the table: each slot's step takes the table
+# and gives the next.
+# Generated from docs/prototypes/graph-format/object-walk/*.net by its load.py.
+network object_walk
   for slot in 0 .. 026:
     if objects.routine[slot] != none:
       run count_object
+        seen: frame.objects_seen
       if objects.routine[slot] != explosion and objects.routine[slot] != in_hyperspace:
-        for other in slot + 1 .. 027:
-          if objects.routine[other] != none and objects.routine[other] != explosion and objects.routine[other] != in_hyperspace:
-            run collision(slot, other)
+        for later in slot + 1 .. 027:
+          if objects.routine[later] != none and objects.routine[later] != explosion and objects.routine[later] != in_hyperspace:
+            run collision
+              x_a: objects.x[slot]
+              x_b: objects.x[later]
+              y_a: objects.y[slot]
+              y_b: objects.y[later]
+              cycles_a: objects.cycles[slot]
+              cycles_b: objects.cycles[later]
+              radius: tunables.collision_radius
+              radius_half: tunables.collision_radius_half
+              routine_a: objects.routine[slot]
+              routine_b: objects.routine[later]
+              counter_a: objects.counter[slot]
+              counter_b: objects.counter[later]
       run calc(slot)                                        # mq4
       run charge_time(slot)
   if objects.routine[027] != none:
     run calc(027)
     run charge_time(027)
-  run expensive_planetarium                                 # mq3
-  run central_star
-  run spare_time
 
 # The calc routine the object's routine word names.
+# Generated from docs/prototypes/graph-format/object-walk/*.net by its load.py.
 network calc(slot)
   match objects.routine[slot]:
     none: unreachable

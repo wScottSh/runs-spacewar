@@ -9,9 +9,17 @@
 # left; then its slot is freed.
 network explosion(slot)                                     # mex
   run coast                                                 # cla
-  run inertia_x(slot)
+  run inertia_x
+    acceleration: handoff.acceleration
+    velocity: objects.dx[slot]
+    place: objects.x[slot]
+    position: handoff.position
   run coast                                                 # cla
-  run inertia_y(slot)
+  run inertia_y
+    acceleration: handoff.acceleration
+    velocity: objects.dy[slot]
+    place: objects.y[slot]
+    position: handoff.position
   run spread_particles
   run size_explosion(slot)
   run widen_spread
@@ -23,23 +31,44 @@ network explosion(slot)                                     # mex
     run count_particle
     if explosion_count.particles >= 0:                      # count \mxc, mz1
       break
-  run count_down(slot)                                      # count i ma1, mxr
+  run count_down                                      # count i ma1, mxr
+    counter: objects.counter[slot]
   if objects.counter[slot] >= 0:
     run free_slot(slot)
 
 # A torpedo flies straight, bent only by the torpedo space warpage, until
 # its life runs out and it explodes.
+# Generated from docs/prototypes/graph-format/object-walk/*.net by its load.py.
 network torpedo(slot)                                       # tcr
-  run count_down(slot)                                      # count i ma1, tc1
+  run count_down                                            # count i ma1, tc1
+    counter: objects.counter[slot]
   if objects.counter[slot] >= 0:
-    run explode_torpedo(slot)
+    run explode_torpedo
+      routine: objects.routine[slot]
+      counter: objects.counter[slot]
   else:
-    run warp_from_x(slot)                                   # tc1
+    run warp_from_x                                         # tc1
+      x: objects.x[slot]
+      coordinate: handoff.coordinate
     run torpedo_space_warpage
-    run inertia_y(slot)
+      coordinate: handoff.coordinate
+      acceleration: handoff.acceleration
+    run inertia_y
+      acceleration: handoff.acceleration
+      velocity: objects.dy[slot]
+      place: objects.y[slot]
+      position: handoff.position
     run warp_from_y
+      position: handoff.position
+      coordinate: handoff.coordinate
     run torpedo_space_warpage
-    run inertia_x(slot)
+      coordinate: handoff.coordinate
+      acceleration: handoff.acceleration
+    run inertia_x
+      acceleration: handoff.acceleration
+      velocity: objects.dx[slot]
+      place: objects.x[slot]
+      position: handoff.position
     run plot_torpedo(slot)
 
 # A ship in hyperspace is not drawn and does not collide. When its time is
@@ -47,7 +76,8 @@ network torpedo(slot)                                       # tcr
 # heading, and breakout begins.
 network in_hyperspace(slot)                                 # hp1
   requires: slot < 2
-  run count_down(slot)                                      # count i ma1, hp2
+  run count_down                                      # count i ma1, hp2
+    counter: objects.counter[slot]
   if objects.counter[slot] >= 0:
     run begin_breakout(slot)
     run next_random
@@ -67,7 +97,8 @@ network in_hyperspace(slot)                                 # hp1
 # survives only if a random number outweighs the uncertainty.
 network breakout(slot)                                      # hp3
   requires: slot < 2
-  run count_down(slot)                                      # count i ma1, hp6
+  run count_down                                      # count i ma1, hp6
+    counter: objects.counter[slot]
   if objects.counter[slot] < 0:
     run show_breakout(slot)                                 # hp6
   else:

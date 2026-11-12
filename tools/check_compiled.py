@@ -169,6 +169,10 @@ def compiled(prog: runs.Program, name: str, bound: set[str]):
 def bound_places(prog: runs.Program):
     specs = [tomllib.loads(b.read_text()) for b in sorted(runsc.BINDINGS.glob("*.toml")) if b.name != runsc.DEVICES]
     places = [p for spec in specs for p in spec.get("place", []) + spec.get("inline", []) + spec.get("code", [])]
+    # a declaration naming a routine with Ports declares each of its copies (runsc copies_of)
+    places = [{**p, "routine": c} if p.get("routine") in prog.templates else p for p in places
+              for c in ([c for c, (t, _) in prog.copies.items() if t == p["routine"]]
+                        if p.get("routine") in prog.templates else [None])]
     return specs, places, {p["routine"] for p in places if "routine" in p}
 
 

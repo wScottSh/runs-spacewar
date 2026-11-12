@@ -61,11 +61,19 @@ network accelerate(slot)                                    # bsg
   run aim_thrust_y
   run spaceship_acceleration                                # xct sac
   run push_y
-  run inertia_y(slot)                                       # diff \mdy, my1, (sar 3s
+  run inertia_y                                       # diff \mdy, my1, (sar 3s
+    acceleration: handoff.acceleration
+    velocity: objects.dy[slot]
+    place: objects.y[slot]
+    position: handoff.position
   run aim_thrust_x
   run spaceship_acceleration
   run push_x
-  run inertia_x(slot)                                       # diff \mdx, mx1, (sar 3s
+  run inertia_x                                       # diff \mdx, mx1, (sar 3s
+    acceleration: handoff.acceleration
+    velocity: objects.dx[slot]
+    place: objects.x[slot]
+    position: handoff.position
   run aim_nose(slot)                                        # sp1
   run aim_outline
   run mark_center
@@ -76,7 +84,8 @@ network accelerate(slot)                                    # bsg
 network after_outline(slot)                                 # sq6
   run next_random                                           # ranct
   run exhaust(slot)
-  run count_down(slot)                                      # count i ma1, sr5: the tube reloads
+  run count_down                                      # count i ma1, sr5: the tube reloads
+    counter: objects.counter[slot]
   if objects.counter[slot] >= 0:
     run trigger(slot)
     if handoff.torpedo_button < 0:

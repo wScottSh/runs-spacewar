@@ -230,16 +230,22 @@ processor next_random
 # eighth of the velocity the position. The original passes the axis as the
 # macro's arguments; here each axis is its own Processor. The new position
 # is left in AC, where the torpedo takes it up.
-processor inertia_x(slot)                                   # diff \mdx, mx1, (sar 3s
-  writes: objects, handoff
-  let velocity = handoff.acceleration + objects.dx[slot]
-  set objects.dx[slot] = velocity
-  set handoff.position = (velocity >> 3) + objects.x[slot]
-  set objects.x[slot] = handoff.position
+processor inertia_x                                         # diff \mdx, mx1, (sar 3s
+  in acceleration: word
+  inout velocity: word
+  inout place: word
+  out position: word
+  let sum = acceleration + velocity
+  set velocity = sum
+  set position = (sum >> 3) + place
+  set place = position
 
-processor inertia_y(slot)                                   # diff \mdy, my1, (sar 3s
-  writes: objects, handoff
-  let velocity = handoff.acceleration + objects.dy[slot]
-  set objects.dy[slot] = velocity
-  set handoff.position = (velocity >> 3) + objects.y[slot]
-  set objects.y[slot] = handoff.position
+processor inertia_y                                         # diff \mdy, my1, (sar 3s
+  in acceleration: word
+  inout velocity: word
+  inout place: word
+  out position: word
+  let sum = acceleration + velocity
+  set velocity = sum
+  set position = (sum >> 3) + place
+  set place = position

@@ -164,7 +164,7 @@ def main() -> int:
     def counted_run(name, args=()):
         before = list(m.state["objects"]["routine"])
         plain_run(name, args)
-        if name == "collision" and m.state["objects"]["routine"] != before:
+        if prog.copies.get(name, (name,))[0] == "collision" and m.state["objects"]["routine"] != before:
             hits[0] += 1
     m.run = counted_run
     for k, ((st, _), w) in enumerate(zip(cases, want)):

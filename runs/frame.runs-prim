@@ -22,35 +22,42 @@ processor count_down_restart
   set frame.restart_delay = frame.restart_delay + 1
 
 processor count_object
-  writes: frame
-  set frame.objects_seen = frame.objects_seen + 1
+  inout seen: word
+  set seen = seen + 1
 
 # Both objects explode when they come within an octagon around each other:
 # |dx| and |dy| below the collision radius, and |dx| + |dy| below one and a
 # half of it. The explosion lasts longer the more time the two calc
 # routines take.
-processor collision(slot, other)
-  reads: tunables
-  writes: objects
-  let dx = objects.x[slot] - objects.x[other]
+processor collision
+  in x_a: word
+  in x_b: word
+  in y_a: word
+  in y_b: word
+  in cycles_a: word
+  in cycles_b: word
+  in radius: word
+  in radius_half: word
+  inout routine_a: calc_routine
+  inout routine_b: calc_routine
+  inout counter_a: word
+  inout counter_b: word
+  let dx = x_a - x_b
   if dx < 0:
     set dx = -dx
-  if dx - tunables.collision_radius >= 0:
-    return
-  let dy = objects.y[slot] - objects.y[other]
-  if dy < 0:
-    set dy = -dy
-  set dy = dy - tunables.collision_radius
-  if dy >= 0:
-    return
-  if dy + dx - tunables.collision_radius_half >= 0:
-    return
-  set objects.routine[slot] = explosion
-  set objects.routine[other] = explosion
-  let frames = objects.cycles[slot] + objects.cycles[other]
-  set frames = (-frames >> 8) + 1
-  set objects.counter[slot] = frames
-  set objects.counter[other] = frames
+  if dx - radius < 0:
+    let dy = y_a - y_b
+    if dy < 0:
+      set dy = -dy
+    set dy = dy - radius
+    if dy < 0:
+      if dy + dx - radius_half < 0:
+        set routine_a = explosion
+        set routine_b = explosion
+        let frames = cycles_a + cycles_b
+        set frames = (-frames >> 8) + 1
+        set counter_a = frames
+        set counter_b = frames
 
 processor charge_time(slot)                                 # mq4
   writes: pacing

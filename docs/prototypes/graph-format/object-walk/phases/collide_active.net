@@ -1,0 +1,18 @@
+network collide_active(slot)
+  inout seen: word
+  inout table: objects
+
+transitions
+  count: count_object
+  collide: collide_pair(slot, later) for later in slot + 1 .. 027
+  cannot_collide: copy
+
+arcs
+  seen -> count.seen
+  count.seen -> seen
+  table[slot].routine -> collide when != explosion and != in_hyperspace
+  table -> collide.table
+  collide.table -> table
+  table[slot].routine -> cannot_collide when else
+  table -> cannot_collide.source
+  cannot_collide.target -> table

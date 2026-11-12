@@ -1,9 +1,9 @@
 # The Processors the calc routines of objects.runs fire.
 
 # Every calc routine counts its object's frames up toward 0.
-processor count_down(slot)                                  # count i ma1
-  writes: objects
-  set objects.counter[slot] = objects.counter[slot] + 1
+processor count_down                                        # count i ma1
+  inout counter: word
+  set counter = counter + 1
 
 # The explosion.
 
@@ -68,19 +68,21 @@ processor free_slot(slot)                                   # dzm i ml1
 
 # The torpedo.
 
-processor explode_torpedo(slot)
-  writes: objects
-  set objects.routine[slot] = explosion
-  set objects.counter[slot] = -2
+processor explode_torpedo
+  out routine: calc_routine
+  out counter: word
+  set routine = explosion
+  set counter = -2
 
-processor warp_from_x(slot)                                 # lac i mx1; sar 9s
-  reads: objects
-  writes: handoff
-  set handoff.coordinate = objects.x[slot] >> 9
+processor warp_from_x                                       # lac i mx1; sar 9s
+  in x: word
+  out coordinate: word
+  set coordinate = x >> 9
 
-processor warp_from_y                                      # diff leaves y in AC; sar 9s
-  writes: handoff
-  set handoff.coordinate = handoff.position >> 9
+processor warp_from_y                                       # diff leaves y in AC; sar 9s
+  in position: word
+  out coordinate: word
+  set coordinate = position >> 9
 
 processor plot_torpedo(slot)                                # dispt i, i my1, 1
   reads: objects
