@@ -1,0 +1,5 @@
+# Started at 4, the control word comes from the control boxes (or the
+# operator's own routine in the control word slot).
+processor use_control_boxes                                 # law cwr; dac \cwg
+  out source: control_source
+  set source = control_boxes

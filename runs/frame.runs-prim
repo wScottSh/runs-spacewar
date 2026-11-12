@@ -1,12 +1,5 @@
 # The main loop's own Processors.
 
-processor use_test_word                                     # a1
-  writes: controls
-  set controls.source = test_word
-
-processor use_control_boxes                                 # a40
-  writes: controls
-  set controls.source = control_boxes
 
 processor post_scores
   reads: score

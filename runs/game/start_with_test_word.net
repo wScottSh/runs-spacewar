@@ -1,0 +1,22 @@
+# Started at 5 (a1), a top Network: the control word comes from the test
+# word switches, and the game goes on from the step between games. The
+# console and the scores core held at power-on come in; the scores leave.
+
+network start_with_test_word
+  requires: console, score
+  produces: scoreboard
+  in switches: console
+  inout tally: score
+
+places
+  controls.source
+
+transitions
+  use: use_test_word                                        # law mg2; dac \cwg
+  begin: between_games
+
+arcs
+  use.source -> controls.source
+  switches -> begin.switches
+  tally -> begin.tally
+  begin.tally -> tally

@@ -1,0 +1,17 @@
+# Started at 4 (a40), a top Network: the control word comes from the
+# control boxes, and a new match begins. The console comes in.
+
+network start_with_control_boxes
+  requires: console
+  in switches: console
+
+places
+  controls.source
+
+transitions
+  use: use_control_boxes                                    # law cwr; dac \cwg
+  begin: new_match
+
+arcs
+  use.source -> controls.source
+  switches -> begin.switches

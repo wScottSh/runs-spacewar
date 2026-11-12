@@ -10,17 +10,6 @@
 # presentation: the points and the scores leave, the console and the
 # words core held at power-on come in.
 
-network start_with_test_word                                # a1: started at 5
-  reads: console, score
-  writes: scoreboard
-  run use_test_word
-  run between_games
-
-network start_with_control_boxes                            # a40: started at 4
-  reads: console
-  run use_control_boxes
-  run new_match
-
 
 # The scores show on the console lights, ship 1's in AC and ship 2's in IO,
 # while the machine waits. Continuing with switch 040 off clears them and

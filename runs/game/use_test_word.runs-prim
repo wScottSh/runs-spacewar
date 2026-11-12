@@ -1,0 +1,4 @@
+# Started at 5, the control word comes from the test word switches.
+processor use_test_word                                     # law mg2; dac \cwg
+  out source: control_source
+  set source = test_word
