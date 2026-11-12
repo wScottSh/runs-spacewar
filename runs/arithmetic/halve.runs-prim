@@ -1,0 +1,7 @@
+processor halve                                             # rcr 1s
+  in value: word
+  inout low: word
+  out half: word
+  let h = value
+  set (h, low) = rcr(h, low, 1)
+  set half = h

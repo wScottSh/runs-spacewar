@@ -1,0 +1,3 @@
+processor division_overflows
+  out outcome: division
+  set outcome = overflows

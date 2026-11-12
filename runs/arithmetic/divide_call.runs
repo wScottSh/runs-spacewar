@@ -1,0 +1,15 @@
+# Whether a quotient fits a word. The caller sees it as a skip: dvd and idv
+# return past one more word when it fits.
+enum division
+  fits
+  overflows                 # |high dividend| >= |divisor|
+
+# The divide subroutine's own words (dvd): what a caller hands it and gets
+# back. The divisor is the word after the call, like multiply's second factor.
+game record divide_call
+  high: word = 0            # dvd: jda leaves the dividend's high half here; the remainder at return
+  low: word = 0             # IO: the dividend's low half
+  divisor: word = 0
+  quotient: word = 0        # idv: |divisor|, then the quotient's magnitude
+  result: word = 0          # AC at return: the quotient, or |divisor| signed like one on overflow
+  outcome: division = overflows

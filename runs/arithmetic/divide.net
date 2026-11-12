@@ -1,0 +1,99 @@
+# divide (dvd), a bundle. The 36-bit dividend over the divisor: the quotient,
+# and the remainder with the dividend's sign in place of the dividend's high
+# half. When the quotient would not fit, |divisor| comes back signed like a
+# quotient and the dividend's high half stays.
+
+network divide
+  inout high: word
+  in low: word
+  in divisor: word
+  out quotient: word
+  out result: word
+  out outcome: division
+
+places
+  divide_work.divisor_magnitude
+  divide_work.dividend_high
+  divide_work.dividend_low
+  divide_work.difference
+  divide_work.remainder_bits
+  divide_work.quotient_bits
+  divide_work.cleared
+  divide_work.half
+  divide_work.shifted_out
+  divide_work.dividend_sign
+  divide_work.remainder
+  divide_work.quotient_sign
+
+transitions
+  magnitude_of_divisor: magnitude
+  magnitude_of_dividend: magnitude_double
+  compare: subtract
+  steps: division_steps
+  give_quotient: copy
+  clear_low: clear
+  halve: halve
+  take_dividend_sign: copy
+  sign_of_remainder: sign_like
+  give_remainder: copy
+  sign_of_quotient: exclusive_or
+  fits: division_fits
+  keep_divisor: copy
+  keep_high: copy
+  keep_low: copy
+  overflows: division_overflows
+  sign_of_result: sign_like_in_place
+
+arcs
+  divisor -> magnitude_of_divisor.value
+  magnitude_of_divisor.magnitude -> divide_work.divisor_magnitude
+  high -> magnitude_of_dividend.high
+  low -> magnitude_of_dividend.low
+  magnitude_of_dividend.magnitude -> divide_work.dividend_high
+  magnitude_of_dividend.low -> divide_work.dividend_low
+  divide_work.dividend_high -> compare.a
+  divide_work.divisor_magnitude -> compare.b
+  compare.difference -> divide_work.difference
+  divide_work.difference -> steps when < 0
+  divide_work.difference -> steps.high
+  divide_work.dividend_low -> steps.low
+  divide_work.divisor_magnitude -> steps.divisor
+  steps.high -> divide_work.remainder_bits
+  steps.low -> divide_work.quotient_bits
+  divide_work.quotient_bits -> give_quotient.source
+  give_quotient.target -> quotient
+  divide_work.difference -> clear_low when < 0
+  clear_low.value -> divide_work.cleared
+  divide_work.remainder_bits -> halve.value
+  divide_work.cleared -> halve.low
+  halve.low -> divide_work.shifted_out
+  halve.half -> divide_work.half
+  divide_work.difference -> take_dividend_sign when < 0
+  high -> take_dividend_sign.source
+  take_dividend_sign.target -> divide_work.dividend_sign
+  divide_work.half -> sign_of_remainder.value
+  divide_work.dividend_sign -> sign_of_remainder.sign
+  sign_of_remainder.signed -> divide_work.remainder
+  divide_work.difference -> give_remainder when < 0
+  divide_work.remainder -> give_remainder.source
+  give_remainder.target -> high
+  divide_work.difference -> sign_of_quotient when < 0
+  divisor -> sign_of_quotient.a
+  divide_work.remainder -> sign_of_quotient.b
+  sign_of_quotient.result -> divide_work.quotient_sign
+  divide_work.difference -> fits when < 0
+  fits.outcome -> outcome
+  divide_work.difference -> keep_divisor when else
+  divide_work.divisor_magnitude -> keep_divisor.source
+  keep_divisor.target -> quotient
+  divide_work.difference -> keep_high when else
+  high -> keep_high.source
+  keep_high.target -> high
+  divide_work.difference -> keep_low when else
+  divide_work.dividend_low -> keep_low.source
+  keep_low.target -> divide_work.quotient_sign
+  divide_work.difference -> overflows when else
+  overflows.outcome -> outcome
+  quotient -> sign_of_result.value
+  divide_work.quotient_sign -> sign_of_result.sign
+  sign_of_result.signed -> result

@@ -1,0 +1,14 @@
+# Every value divide computes on the way, each written once.
+game record divide_work
+  divisor_magnitude: word = 0
+  dividend_high: word = 0       # |the dividend|'s high half
+  dividend_low: word = 0        # |the dividend|'s low half
+  difference: word = 0          # negative when the quotient fits
+  remainder_bits: word = 0      # the remainder after the steps, doubled
+  quotient_bits: word = 0
+  cleared: word = 0
+  half: word = 0                # the remainder
+  shifted_out: word = 0         # the remainder's low bit, which nothing reads
+  dividend_sign: word = 0
+  remainder: word = 0           # signed like the dividend
+  quotient_sign: word = 0       # negative when the quotient is

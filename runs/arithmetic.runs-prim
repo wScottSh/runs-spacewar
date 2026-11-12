@@ -130,41 +130,6 @@ network cosine                                              # cos
   run cosine_angle
   run sine
 
-# BBN divide (dvd). The 36-bit dividend over the divisor: the quotient, and
-# the remainder with the dividend's sign. When the quotient would not fit,
-# |divisor| comes back signed like a quotient and the dividend's high half
-# stays.
-processor divide                                            # dvd
-  writes: divide_call
-  set divide_call.outcome = overflows
-  let magnitude = divide_call.divisor                       # dv1
-  if magnitude < 0:
-    set magnitude = -magnitude
-  set divide_call.quotient = magnitude
-  let high = divide_call.high
-  if high < 0:                                              # negate the 36 bits
-    set high = -high
-    set (high, divide_call.low) = rcr(high, divide_call.low, 18)
-    set high = -high
-    set (high, divide_call.low) = rcr(high, divide_call.low, 18)
-  set high = high - divide_call.quotient                    # dv2
-  if high < 0:
-    for step in 1 .. 022:
-      set (high, divide_call.low) = dis(high, divide_call.low, divide_call.quotient)
-    set high = high + divide_call.quotient                  # restore the last step's remainder
-    set divide_call.quotient = divide_call.low
-    set divide_call.low = 0
-    set (high, divide_call.low) = rcr(high, divide_call.low, 1)
-    set divide_call.low = divide_call.high
-    if divide_call.low < 0:                                 # the remainder takes the dividend's sign
-      set high = -high
-    set divide_call.high = high
-    set divide_call.low = divide_call.divisor ^ divide_call.high  # negative when the quotient is
-    set divide_call.outcome = fits
-  set divide_call.result = divide_call.quotient             # dve
-  if divide_call.low < 0:
-    set divide_call.result = -divide_call.result
-
 # BBN integer divide (idv): the dividend is one word, shifted right 17 into
 # the 36-bit pair. IO's sign on entry lands in the low half's lowest bit.
 processor integer_divide_dividend                           # idv

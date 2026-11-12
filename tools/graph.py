@@ -226,7 +226,9 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
 
 
 def depends(g: Graph) -> dict[str, set[str]]:
-    """t -> the transitions that write a place t reads or its guard reads."""
+    """t -> the transitions that write a place t reads or its guard reads.
+    An inout of the network is read as its in value and written as its out
+    value: its writers come after its readers."""
     guard = guards(g)
     writers: dict[str, set[str]] = {}
     for a in g.arcs:
@@ -234,8 +236,11 @@ def depends(g: Graph) -> dict[str, set[str]]:
             writers.setdefault(a.place, set()).add(a.transition)
     out: dict[str, set[str]] = {t: set() for t in g.transitions}
     for a in g.arcs:
-        if a.into:
+        if a.into and not (a.place in g.ports and g.ports[a.place][0] == "inout"):
             out[a.transition] |= writers.get(a.place, set())
+        elif a.into:
+            for w in writers.get(a.place, set()) - {a.transition}:
+                out[w].add(a.transition)
     for t in g.transitions:
         if guard[t]:
             out[t] |= writers.get(guard[t][0], set())

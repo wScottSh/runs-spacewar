@@ -4602,12 +4602,13 @@ def memory_words() -> set[str]:
     return out
 
 
-def operands(body) -> tuple[set[str], set[str]]:
+def operands(body) -> tuple[set[str], set[str], set[str]]:
     """The names a body uses as the operand of mus or dis, which the PDP-1
-    reads from memory; and those it uses as the high half of a pair
-    operation, which it holds in AC."""
+    reads from memory; as the high half of a pair operation, which it holds
+    in AC; and as the low half, which it holds in IO."""
     memory: set[str] = set()
     ac: set[str] = set()
+    io: set[str] = set()
 
     def walk(x):
         if isinstance(x, tuple) and x[:1] == ("call",) and x[1] in PAIR_OPS:
@@ -4615,43 +4616,63 @@ def operands(body) -> tuple[set[str], set[str]]:
                 memory.add(x[2][2][1])
             if x[2][0][0] == "name":
                 ac.add(x[2][0][1])
+            if x[2][1][0] == "name":
+                io.add(x[2][1][1])
         if isinstance(x, (tuple, list)):
             for y in x:
                 walk(y)
     walk(body)
-    return memory, ac
+    return memory, ac, io
 
 
 class Storage:
-    """Where each place of a graph lives on the PDP-1, by these rules in turn:
+    """Where each place of a graph lives on the PDP-1.
 
-    - a fresh value takes its dead predecessor's word: the two ends of an
-      inout share one word, and an output of the network shares the word
-      of the value a copy gives it, unless the declarations give each its
-      own, or one is held in AC (the high half of a pair operation) and the
-      other has a word in memory;
-    - a word the declarations give;
-    - a value a bundle takes or gives lives in that bundle's word;
+    Places share a word by two rules, in turn: the two ends of an inout (a
+    fresh value takes its dead predecessor's word), then the two ends of a
+    copy that gives a place both sides of a test write (the value is
+    already where the other side leaves it). Two places never share when the declarations
+    give each its own word, or when one is held in AC (the high half of a
+    pair operation) and the other has a word in memory.
+
+    A class of places that share then lives in, the first that applies:
+    a word the declarations give; the word of the bundle that takes or
+    gives it; else one of `options`, which the caller tries in turn:
+
     - a value that must be in memory (the operand of mus or dis, or what a
-      bundle takes by name) and has no word takes a memory word of the
-      network's own call Record, the first in which every value is read
-      before the next is written (`free`, tried in turn by the caller);
-    - else a register value, the Network's own scratch, which runsc keeps
-      in AC, or in IO where the routine's `io` names it."""
+      bundle takes by name): a memory word of the network's call Record;
+    - the low half of a pair operation: the routine's IO word;
+    - the high half: a register value (the Network's own scratch, in AC);
+    - any other: a register value in AC, else the routine's IO word.
+
+    The caller keeps the first choice under which some order reads every
+    value from its word before the next value takes it (network_order)."""
 
     def __init__(self, g: graph.Graph, sigs: dict, copier: dict[str, str], prog: runs.Program):
         self.g = g
         declared = declared_fields()
+        decl = declaration(g.name)
         self.parent = {p: p for p in g.places}
 
         def word(p):
             return g.field(p) if g.field(p) in declared else None
 
+        memory: set[str] = set()
         in_ac: set[str] = set()
-        for t, proc in g.transitions.items():
-            if not sigs[proc].bundle:
-                held = operands(prog.routines[proc].body)[1]
-                in_ac |= {a.place for a in g.arcs if a.transition == t and a.io in held}
+        in_io: set[str] = set()
+        ends: dict[str, dict[str, list[str]]] = {}
+        for t, proc in sorted(g.transitions.items()):
+            ends[t] = {}
+            for a in g.arcs:
+                if a.transition == t and a.io:
+                    ends[t].setdefault(a.io, []).append(a.place)
+            if sigs[proc].bundle:
+                byname = declaration(proc).get("byname")
+                memory |= {p for n, ps in ends[t].items() if f"{proc}_call.{n}" == byname for p in ps}
+                continue
+            mem, ac, io = operands(prog.routines[proc].body)
+            for names, into in ((mem, memory), (ac, in_ac), (io, in_io)):
+                into |= {p for n in names for p in ends[t].get(n, [])}
 
         def share(a, b):
             ra, rb = self.find(a), self.find(b)
@@ -4666,50 +4687,57 @@ class Storage:
                 ra, rb = rb, ra
             self.parent[rb] = ra
 
+        writers: dict[str, int] = {}
+        for a in g.arcs:
+            if not a.into:
+                writers[a.place] = writers.get(a.place, 0) + 1
         bundle_word: dict[str, str] = {}
-        memory: set[str] = set()
         for t, proc in sorted(g.transitions.items()):
-            s = sigs[proc]
-            ends: dict[str, list[str]] = {}
-            for a in g.arcs:
-                if a.transition == t and a.io:
-                    ends.setdefault(a.io, []).append(a.place)
-            if s.bundle:
-                byname = declaration(proc).get("byname")
-                for n, ps in ends.items():
+            if sigs[proc].bundle:
+                for n, ps in ends[t].items():
                     for p in ps:
                         bundle_word.setdefault(p, f"{proc}_call.{n}")
-                        if f"{proc}_call.{n}" == byname:
-                            memory.add(p)
                 continue
-            for n in s.inout:
-                share(*ends[n])
-            if proc in copier.values() and ends["target"][0] in g.ports:
-                share(ends["source"][0], ends["target"][0])
-            for n in operands(prog.routines[proc].body)[0]:
-                memory |= set(ends[n])
-        self.where: dict[str, str] = {}
-        self.free: list[tuple[list[str], list[str]]] = []    # (a class that needs memory, the words it may take)
+            for n in sigs[proc].inout:
+                share(*ends[t][n])
+        for t, proc in sorted(g.transitions.items()):
+            if proc in copier.values() and writers[ends[t]["target"][0]] > 1:
+                share(ends[t]["source"][0], ends[t]["target"][0])
         own = [f"{g.call}.{f}" for f in prog.records[g.call].fields] if g.ports else []
         in_memory = [f for f in own if f in memory_words()]
+        io_words = [f for f in own if f == decl.get("io_param") or f in decl.get("io", [])]
+        self.where: dict[str, str] = {}
+        self.options: list[tuple[list[str], list[str]]] = []    # (a class, the words it may take)
         for root in dict.fromkeys(self.find(p) for p in g.places):
             cls = [q for q in g.places if self.find(q) == root]
             words = sorted({word(q) for q in cls} - {None})
             bundles = sorted({bundle_word[q] for q in cls if q in bundle_word})
-            w = words[0] if words else bundles[0] if bundles else root.split(".")[-1]
+            local = root.split(".")[-1]
+            w = words[0] if words else bundles[0] if bundles else local
             for q in cls:
                 self.where[q] = w
-            if not words and not bundles and memory & set(cls):
-                self.free.append((cls, in_memory))
+            if words or bundles:
+                continue
+            if memory & set(cls):
+                self.options.append((cls, in_memory))
+            elif in_io & set(cls):
+                self.options.append((cls, io_words or [local]))
+            elif not in_ac & set(cls) and io_words:
+                self.options.append((cls, [local] + io_words))
 
     def find(self, p: str) -> str:
         while self.parent[p] != p:
             p = self.parent[p]
         return p
 
-    @property
-    def owns(self) -> list[str]:
-        return sorted({w for w in self.where.values() if "." not in w})
+    def choices(self):
+        """Each choice of words, the fewest classes off their first option first."""
+        picks = list(itertools.product(*(range(len(ws)) for _, ws in self.options)))
+        for pick in sorted(picks, key=lambda p: (sum(1 for k in p if k), p)):
+            at = dict(self.where)
+            for (cls, ws), k in zip(self.options, pick):
+                at.update({p: ws[k] for p in cls})
+            yield at
 
 
 def guard_reads(g: graph.Graph) -> dict[str, set[str]]:
@@ -4867,10 +4895,7 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
     io |= {decl["io_param"]} if "io_param" in decl else set()
     io |= {f for d in (declaration(b) for b in bundles) for f in d.get("io", []) + [d.get("io_param", "")] if f}
     tried = []
-    for words in itertools.product(*(ws for _, ws in st.free)):
-        at = dict(st.where)
-        for (cls, _), w in zip(st.free, words):
-            at.update({p: w for p in cls})
+    for at in st.choices():
         try:
             order = network_order(g, sigs, at, word, decl, io, copier)
         except BindError as e:
@@ -4879,8 +4904,7 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
         owns = sorted({w for w in at.values() if "." not in w})
         skip = {decl["skips"][0]} if "skips" in decl else set()
         return graph.lower(g, sigs, order, graph.Lowering(at, word, copier, owns, skip))
-    raise BindError(tried[0] if tried else f"{g.where}: {g.name}: a value must be in memory, and "
-                    f"{g.call} has no word in memory for it")
+    raise BindError(tried[0] if tried else f"{g.where}: {g.name}: no word for a value")
 
 
 def pdp1_program(root: Path | None = None) -> runs.Program:

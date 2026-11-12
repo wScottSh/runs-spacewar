@@ -1,0 +1,11 @@
+processor magnitude_double                                  # sma; jmp; cma; rcr 9s; rcr 9s; cma; rcr 9s; rcr 9s
+  in high: word
+  inout low: word
+  out magnitude: word
+  let m = high
+  if m < 0:
+    set m = -m
+    set (m, low) = rcr(m, low, 18)
+    set m = -m
+    set (m, low) = rcr(m, low, 18)
+  set magnitude = m
