@@ -97,6 +97,11 @@ A copy takes a value of any kind: its two ends may hold one Record whole
 a Record whole and its entries are one value: a read of an entry sees the
 writer of the whole, and a read of the whole the writers of its entries.
 
+A top Network, one nothing runs, names its boundary with presentation
+(CONTEXT.md 273-276): `requires: console, score` are the Records the
+host writes before it fires, `produces: display, lights` those it reads
+after. They lower to the Network's `reads:` and `writes:`.
+
 `lower` writes one Network for a graph, in an order and with each place at
 a word that the caller chooses. runs.load lowers every graph with
 `written_once`: every place its own field, in an order derived from the
@@ -144,6 +149,7 @@ class Graph:
     params: list[str] = field(default_factory=list)       # which slot, as `network torpedo(slot)`
     args: dict[str, str] = field(default_factory=dict)    # transition -> the slot it passes, "(slot)"
     requires: str = ""                                    # `requires: slot < 2`, on the lowered Network
+    boundary: dict[str, list[str]] = field(default_factory=dict)   # a top Network's requires: and produces: Records
     assumes: list[tuple[str, str]] = field(default_factory=list)   # `assumes: place != member`: a precondition
     bound: str | None = None                              # a loop bundle's counter that starts at a stated count
     locals: dict[str, str] = field(default_factory=dict)  # a place the network holds itself -> its Record or stream
@@ -238,6 +244,8 @@ def parse(path: Path) -> Graph:
             section = line.strip()
             if section not in ("places", "transitions", "arcs"):
                 raise GraphError(f"{where}: unknown section {section!r}")
+        elif section is None and (m := re.fullmatch(r"\s+(requires|produces): (\w+(?:, \w+)*)", line)):
+            g.boundary[m[1]] = [x.strip() for x in m[2].split(",")]
         elif section is None and line.strip().startswith("requires:"):
             g.requires = line.strip()
         elif section is None and line.strip().startswith("assumes:"):
@@ -753,6 +761,10 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
     if take and g.bound:
         fold, take = fold_guard(g, take, low), None
         order = [t for t in order if t != taker(g)]
+    facts = tested_copies(g, sigs, low)
+    tested = {p: low.at[src] for p, (_, src) in facts.items()}
+    dropped = {t for t, _ in facts.values()}
+    order = [t for t in order if t not in dropped]
     body = steps(g, sigs, [t for t in order if t != take] + ([take] if take and not g.over else []), low)
     for place in sorted({gd[0][0] for gd, _, _ in body if len(gd) == 1}):
         then = [i for i, (gd, _, _) in enumerate(body) if gd and gd[-1][0] == place and gd[-1][1] != "else"]
@@ -767,8 +779,9 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
         body = stop_side_first(g, body)
     head = f"network {g.name}({', '.join(g.params)})" if g.params else f"network {g.name}"
     requires = ([g.requires] if g.requires else []) + [f"requires: {low.at[p]} != {m}" for p, m in g.assumes]
-    owns = [n for n in low.owns if n != g.stated]
-    out = [head] + [f"  {r}" for r in requires] + [f"  owns {n}: word" for n in owns]
+    owns = [n for n in low.owns if n != g.stated and n not in {low.at[p] for p in facts}]
+    contract = [f"  {'reads' if k == 'requires' else 'writes'}: {', '.join(rs)}" for k, rs in g.boundary.items()]
+    out = [head] + contract + [f"  {r}" for r in requires] + [f"  owns {n}: word" for n in owns]
     ports = {n: (d, typ) for n, (d, typ) in g.ports.items() if typ not in g.wholes and n != g.stated}
     if low.wired:
         out += [f"  {'out' if d == 'out' else 'inout'} {n}: {typ}" for n, (d, typ) in ports.items()]
@@ -788,18 +801,19 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
                 and not complement(g, *test)                       # the next side of one test
             if test[0] in matches and not complement(g, *test):
                 if not side:
-                    out.append(pad(gd, depth) + f"match {low.at[test[0]]}:")
+                    out.append(pad(gd, depth) + f"match {tested.get(test[0], low.at[test[0]])}:")
                     out += [pad(gd, depth) + f"  {m}: unreachable" for m in matches[test[0]]]
                 out.append(pad(gd, depth) + f"  {test[1][3:]}:")
                 continue
             if test[1] == "else" and not side:          # the test's only side with work is its else
-                out.append(pad(gd, depth) + f"if {negation(g, test[0], low.at[test[0]])}:")
+                out.append(pad(gd, depth) + f"if {negation(g, test[0], tested.get(test[0], low.at[test[0]]))}:")
                 continue
             out.append(pad(gd, depth) + ("else:" if test[1] == "else" else
-                                         f"{'elif' if side else 'if'} {low.at[test[0]]} {test[1]}:"))
+                                         f"{'elif' if side else 'if'} {tested.get(test[0], low.at[test[0]])} "
+                                         f"{test[1]}:"))
         opened = gd
         out += [pad(gd, len(gd)) + line for line in lines]
-    head = 1 + len(requires) + len(owns) + (len(ports) if low.wired else 0)
+    head = 1 + len(contract) + len(requires) + len(owns) + (len(ports) if low.wired else 0)
     if len(out) == head:
         raise GraphError(f"{g.where}: {g.name} lowers to no statement")
     if fold:
@@ -813,6 +827,33 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
         out[head:] = [f"  if {c} < 0:", f"    loop at most {LOOP_BOUND:#o}:".replace("0o", "0"),
                       *("    " + x for x in out[head:]), f"      if {c} >= 0:", "        break"]
     return "\n".join(out) + "\n"
+
+
+def tested_copies(g: Graph, sigs: dict[str, Signature], low: Lowering) -> dict[str, tuple[str, str]]:
+    """A copy whose place only tests read, of a place nothing in the network
+    writes (the fact a test nested in a side reads: `restart_work.second_routine`):
+    the place -> (the copy, its source). Lowered, each test reads the source
+    itself, which holds the same value wherever the test stands, and the copy
+    is no statement."""
+    writers = written_by(g)
+    chain = chains(g)
+    out = {}
+    for t, proc in g.transitions.items():
+        if proc not in low.copier.values() or sigs[proc].bundle:
+            continue
+        src = next(a.place for a in g.arcs if a.transition == t and a.io == "source")
+        dst = next(a.place for a in g.arcs if a.transition == t and a.io == "target")
+        reads = [a for a in g.arcs if a.place == dst and a.into]
+        root = re.match(r"\w+", src)[0]
+        later = {w for p, ws in writers.items() if re.match(r"\w+", p)[0] == root for w in ws}
+
+        def after_test(w):
+            """w runs under the test, or on another side of a test the copy is under."""
+            return any(gd[0] == dst for gd in chain[w]) or \
+                any(exclusive(g, x, y) for x, y in zip(chain[w], chain[t]))
+        if reads and all(a.guard for a in reads) and writers.get(dst) == {t} and all(map(after_test, later)):
+            out[dst] = (t, src)
+    return out
 
 
 def dispatches(g: Graph) -> dict[str, list[str]]:

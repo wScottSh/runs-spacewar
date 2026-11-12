@@ -261,7 +261,6 @@ game record handoff
   torpedo_button: word = 0  # AC: the fire button, if it counts as pressed, in the sign bit
   rocket_button: word = 0   # IO: the control word rotated, the rocket button in the sign bit
   hyperspace_buttons: word = 0  # AC: the rotate buttons not newly pressed; 0 when both are
-  torpedoes_left: word = 0  # AC: 1 + a ship's torpedo count, below 0 while it has one to fire
   scores_switch: word = 0   # AC: test word switch 040, which halts between games to show the scores
 
 # The explosion's dot in AC and IO: IO carries the low half from one dot's

@@ -13,7 +13,7 @@ repeat = "frame"
 # ship has none left, encoded spa i, not the sma a test falling into its
 # arm takes: the 1962 programmer's choice of word for the same condition.
 [inverse_skip]
-"handoff.torpedoes_left" = "restart_countdown"
+"restart_work.second_left" = "restart_countdown"
 
 # The outlines' code lies in the free core right after the table (nnn),
 # up to the star catalog.

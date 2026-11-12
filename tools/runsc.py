@@ -166,6 +166,35 @@ def constant_slots(prog: runs.Program, tree):
     return go(tree)
 
 
+def conjoined(stmts: list) -> list:
+    """`if A: (if B: X else: T) else: T` is `if A and B: X else: T` when both
+    T run the same Network last (a shared tail): C's &&, one test after the
+    other, each failing to the one tail. The frame's restart check (law ss1;
+    xor mtb; sza; jmp mdn; law ss2; xor mtb 1; sza; jmp mdn)."""
+    out = []
+    for s in stmts:
+        if s[0] == "if":
+            arms = [(c, conjoined(b)) for c, b in s[1]]
+            other = conjoined(s[2])
+            if len(arms) == 1 and len(arms[0][1]) == 1 and arms[0][1][0][0] == "if" and len(arms[0][1][0][1]) == 1:
+                inner = arms[0][1][0]
+                if tail_key(inner[2]) is not None and tail_key(inner[2]) == tail_key(other):
+                    arms = [(("bin", "and", arms[0][0], inner[1][0][0]), inner[1][0][1])]
+            out.append(("if", arms, other, s[3]))
+        elif s[0] in ("loop", "slots"):
+            out.append((*s[:-2], conjoined(s[-2]), s[-1]))
+        elif s[0] == "shared":
+            out.append((s[0], s[1], conjoined(s[2]), s[-1]))
+        else:
+            out.append(s)
+    return out
+
+
+def tail_key(stmts: list):
+    """The shared tail a branch is, when it is one and nothing else."""
+    return stmts[0][1] if len(stmts) == 1 and stmts[0][0] == "shared" else None
+
+
 def mark_homes(tree, fields: set[str]):
     """tree with each slot of one of fields marked as where its cursor may
     have its home: ("index", field, slot, "home")."""
@@ -715,6 +744,8 @@ class Bindings:
                     spec[section] = [q for p in spec[section] for q in self.copies_of(path, section, p)]
             if carry := spec.get("walk", {}).get("carry"):
                 spec["walk"]["carry"] = [self.one_copy(path, "carry", c) for c in carry]
+            if after := spec.get("walk", {}).get("set_after"):
+                spec["walk"]["set_after"] = self.one_copy(path, "set_after", after)
         for word in ("constants", "variables"):
             # a program with no literal constant, or no pool word, has none
             if sum(p.get("machine") == word for s in self.specs.values() for p in s.get("place", [])) > 1:
@@ -822,7 +853,7 @@ class Bindings:
 
     def one_copy(self, path: Path, key: str, name: str) -> str:
         """A key that names one run of a routine with inputs and outputs
-        (args_done, a walk's carry) names its one copy."""
+        (args_done, a walk's carry or set_after) names its one copy."""
         if name not in self.prog.templates:
             return name
         runs_of = [c for c, (t, _) in self.prog.copies.items() if t == name]
@@ -1803,7 +1834,7 @@ class Unit:
         self.args_done_after = self.binds.bound[r.name].args_done if r.name in self.binds.bound else None
         self.current = self.binds.bound[r.name]
         self.copies = 0
-        stmts = self.flat(r)
+        stmts = conjoined(self.flat(r))
         runs_at: list[str] = []
 
         def collect(items):
@@ -4649,7 +4680,8 @@ def declaration(name: str) -> dict:
 
 
 def declared_fields() -> set[str]:
-    """Every field the declarations give a word or a register."""
+    """Every field the declarations give a word or a register, or name as a
+    key (the field an inverse_skip's test reads)."""
     out: set[str] = set()
 
     def walk(v):
@@ -4659,7 +4691,8 @@ def declared_fields() -> set[str]:
             for x in v:
                 walk(x)
         elif isinstance(v, dict):
-            for x in v.values():
+            for k, x in v.items():
+                walk(k)
                 walk(x)
     for f in sorted(BINDINGS.glob("*.toml")):
         d = tomllib.loads(f.read_text())
@@ -4743,19 +4776,25 @@ class Storage:
 
         given = getattr(prog, "inlined_words", {})
 
+        named = {a.place for a in g.arcs if not a.io and not a.guard and (r := prog.routines.get(g.transitions[a.transition]))
+                 and a.place.split(".")[0] in r.reads | r.writes}
+
         def word(p):
             """A table entry is its own word; an input or output of a bundle
-            laid out inline, its user's word; any other place, the one the
-            declarations give. Two places of this network that a [share]
-            declares one word are named by the one a transition writes
-            (outline.net: ship_nose.x in, pen.x out, one word, sx1)."""
+            laid out inline, its user's word; a field of a Record that a
+            routine naming its Records reads or writes, that field; any
+            other place, the one the declarations give. Two places of this
+            network that a [share] declares one word are named by the one a
+            transition writes (outline.net: ship_nose.x in, pen.x out, one
+            word, sx1)."""
             f = g.field(p)
             if g.port(p) and (g.name, g.port(p)) in given and g.port(p) == p:
                 return given[g.name, p]
             pair = ({f, shared[f]} if f in shared else {f}) | {a for a, b in shared.items() if b == f}
             if len(pair & fields) == 2:
                 return min(pair & fields, key=lambda x: (x not in written, x))
-            return f if g.port(p) in g.records or g.whole(p) or re.sub(r"\[\w+\]", "", f) in declared else None
+            return f if g.port(p) in g.records or g.whole(p) or p in named \
+                or re.sub(r"\[\w+\]", "", f) in declared else None
 
         memory: set[str] = set()
         in_ac: set[str] = set()
@@ -4919,7 +4958,7 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
             if t in calls:
                 holds.update({w: CALLED for w in io})
             if sigs[proc].bundle:
-                for a in ins + outs:
+                for a in ins + [o for o in outs if o.io]:
                     holds[word[proc, a.io]] = a.place
                 ac = None
             for a in outs:

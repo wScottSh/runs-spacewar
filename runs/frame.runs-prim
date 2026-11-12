@@ -1,44 +1,5 @@
 # The main loop's own Processors.
 
-processor begin_frame                                       # ml0: load \mtc, -4000
-  writes: pacing
-  let budget = -04000
-  set pacing.spare_time = budget
-
-processor hold_restart                                      # md1: twice a torpedo's life
-  reads: handoff
-  writes: frame
-  set frame.restart_delay = handoff.torpedo_life << 1
-
-# Whether a ship has a torpedo left to fire: 1 + its count, which counts
-# up, is below 0 while it has.
-processor torpedoes_left(ship)
-  reads: ship_flight
-  writes: handoff
-  set handoff.torpedoes_left = 1 + ship_flight.torpedoes[ship]
-
-processor count_down_restart
-  writes: frame
-  set frame.restart_delay = frame.restart_delay + 1
-
-# The survivors score: a ship whose routine word is still its own calc
-# routine survived. Program flags 1 and 2 light for the survivors, but flag
-# 2 is cleared again at once.
-processor score_survivors                                   # mdn, once the delay runs out
-  reads: objects
-  writes: score, lights
-  set lights.first_survived = on                            # stf 1
-  set lights.second_survived = on                           # stf 2
-  if objects.routine[0] != first_spaceship:
-    set lights.first_survived = off
-  if objects.routine[0] == first_spaceship:
-    set score.first = score.first + 1
-  if objects.routine[1] != second_spaceship:
-    set lights.second_survived = off
-  if objects.routine[1] == second_spaceship:
-    set score.second = score.second + 1
-  set lights.second_survived = off
-
 processor use_test_word                                     # a1
   writes: controls
   set controls.source = test_word

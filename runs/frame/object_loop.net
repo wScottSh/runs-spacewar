@@ -1,0 +1,60 @@
+# The object loop (ml1), a bundle: the object walk, then the heavens over
+# the points it drew (the stars of the Expensive Planetarium, then the
+# central star, which draws from the generator the walk leaves), and then
+# the spare-time loop burns what the walk left of the frame's budget.
+
+network object_loop                                         # ml1
+  in switches: console
+  inout table: objects
+  inout clock: frame
+  inout time: pacing
+  inout seed: random
+  inout fleet: ships
+  inout sky: planetarium
+  inout stars: magnitudes
+  inout points: display
+
+places
+  charged: pacing
+  stepped: random
+  drawn: display
+  shown: display
+  starred: display
+
+transitions
+  walk: object_walk                                         # ml1 .. mq3
+  heavens: expensive_planetarium                            # mq3: background
+  star: central_star                                        # jsp blp
+  spare: spare_time                                         # count \mtc, .
+  give_time: copy
+
+arcs
+  table -> walk.table
+  walk.table -> table
+  clock -> walk.clock
+  walk.clock -> clock
+  time -> walk.time
+  walk.time -> charged
+  seed -> walk.seed
+  walk.seed -> stepped
+  fleet -> walk.fleet
+  walk.fleet -> fleet
+  points -> walk.points
+  walk.points -> drawn
+  switches -> heavens.switches
+  sky -> heavens.sky
+  heavens.sky -> sky
+  stars -> heavens.stars
+  heavens.stars -> stars
+  drawn -> heavens.points
+  heavens.points -> shown
+  switches -> star.switches
+  stepped -> star.seed
+  star.seed -> seed
+  shown -> star.points
+  star.points -> starred
+  charged -> spare.budget
+  starred -> spare.points
+  spare.points -> points
+  charged -> give_time.source
+  give_time.target -> time

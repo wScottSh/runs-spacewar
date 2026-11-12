@@ -1,0 +1,6 @@
+# The frame's instruction budget (ml0: load \mtc, -4000): what the spare-time
+# loop burns, less each calc routine's time.
+processor begin_frame
+  out spare: word
+  let budget = -04000
+  set spare = budget

@@ -21,53 +21,6 @@ network start_with_control_boxes                            # a40: started at 4
   run use_control_boxes
   run new_match
 
-# Which device the control word comes from is the operator's choice of
-# start address, and the compiled outlines are what the start's new game
-# compiled: both are set before the first frame.
-network frame                                               # ml0
-  reads: console, score, controls, outline_code
-  writes: display, scoreboard, lights
-  run begin_frame
-  # The restart checks: while both ships fly on their own calc routines and
-  # one still has torpedoes, the restart delay is held; otherwise it counts
-  # down, and then the survivors score.
-  if objects.routine[0] == first_spaceship and objects.routine[1] == second_spaceship:
-    run torpedoes_left(0)                                   # law 1; add ntr
-    if handoff.torpedoes_left < 0:
-      run hold_restart_for_torpedoes
-    else:
-      run torpedoes_left(1)                                 # law 1; add ntr 1
-      if handoff.torpedoes_left < 0:
-        run hold_restart_for_torpedoes
-      else:
-        run restart_countdown
-  else:
-    run restart_countdown
-
-network hold_restart_for_torpedoes                          # md1
-  run torpedo_life                                          # xct tlf
-  run hold_restart
-  run object_loop
-
-network restart_countdown                                   # mdn
-  run count_down_restart                                    # count \ntd, ml1
-  if frame.restart_delay < 0:
-    run object_loop
-  else:
-    run score_survivors
-    run between_games
-
-# The object loop (ml1): each active object that can collide is tested
-# against every later one that can, then its calc routine runs and its time
-# is charged to the frame. The last object has no later one to test, and is
-# not counted. An explosion and a ship in hyperspace cannot collide; core
-# keeps that in the routine word's sign bit.
-network object_loop                                         # ml1
-  run object_walk
-  run expensive_planetarium                                 # mq3
-  run central_star
-  run spare_time
-
 # After a game (a). In a match the game count steps on, and a tie at the end
 # adds a game. The machine halts to show the scores after every game with
 # test word switch 040 on, and at the end of a match.

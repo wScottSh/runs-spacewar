@@ -1,5 +1,12 @@
 # The object walk as a threaded fold
 
+> **Moved to the real source.** The walk and calc are network files in
+> `runs/frame/` (object_walk, object_slots, active_object, collide_pairs,
+> calc), read by `tools/graph.py`. The fold syntax here became loop bundles
+> over slots (`counter slot: 0 .. 026`), and the else sides became copies
+> and n-way tests. `load.py` and the tables below stand as the record of the
+> prototype; `load.py` no longer matches `runs/`.
+
 Prototype for "Threading a Record several Processors write" (#57), part of #54.
 The object table is written by collision and by each calc routine during the
 walk. Here the walk is a set of bundles in the arc-list format (`../two-level/`).

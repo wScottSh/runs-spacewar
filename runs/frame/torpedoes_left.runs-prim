@@ -1,0 +1,6 @@
+# Whether a ship has a torpedo left to fire: 1 + its count, which counts
+# up, is below 0 while it has (law 1; add ntr).
+processor torpedoes_left
+  in torpedoes: word
+  out left: word
+  set left = 1 + torpedoes

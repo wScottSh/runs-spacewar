@@ -9,12 +9,14 @@ network object_walk
   inout time: pacing
   inout seed: random
   inout fleet: ships
+  inout points: display
 
 places
   walked: objects
   charged: pacing
   stepped: random
   moved: ships
+  drawn: display
   calculated: objects
 
 transitions
@@ -26,6 +28,7 @@ transitions
   idle_time: copy
   idle_seed: copy
   idle_fleet: copy
+  idle_points: copy
 
 arcs
   table -> slots.table
@@ -38,6 +41,8 @@ arcs
   slots.seed -> stepped
   fleet -> slots.fleet
   slots.fleet -> moved
+  points -> slots.points
+  slots.points -> drawn
   walked[027].routine -> last when != none
   walked -> last.table
   last.table -> calculated
@@ -45,6 +50,8 @@ arcs
   last.seed -> seed
   moved -> last.fleet
   last.fleet -> fleet
+  drawn -> last.points
+  last.points -> points
   walked[027].routine -> charge when != none
   calculated[027].cycles -> charge.cycles
   charged.spare_time -> charge.spare
@@ -63,3 +70,6 @@ arcs
   walked[027].routine -> idle_fleet when else
   moved -> idle_fleet.source
   idle_fleet.target -> fleet
+  walked[027].routine -> idle_points when else
+  drawn -> idle_points.source
+  idle_points.target -> points

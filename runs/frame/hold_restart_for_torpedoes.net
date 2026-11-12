@@ -1,0 +1,44 @@
+# While both ships fly and one still has a torpedo, the restart delay is
+# held at twice a torpedo's life (md1), and the object loop runs.
+
+network hold_restart_for_torpedoes                          # md1
+  in switches: console
+  inout table: objects
+  inout clock: frame
+  inout time: pacing
+  inout seed: random
+  inout fleet: ships
+  inout sky: planetarium
+  inout stars: magnitudes
+  inout points: display
+
+places
+  handoff.torpedo_life
+  held: frame
+
+transitions
+  life: torpedo_life                                        # xct tlf
+  hold: hold_restart                                        # sal 1s; dac \ntd
+  loop: object_loop                                         # jmp ml1
+
+arcs
+  life -> handoff.torpedo_life
+  handoff.torpedo_life -> hold.life
+  hold.delay -> held.restart_delay
+  held -> loop.clock
+  loop.clock -> clock
+  switches -> loop.switches
+  table -> loop.table
+  loop.table -> table
+  time -> loop.time
+  loop.time -> time
+  seed -> loop.seed
+  loop.seed -> seed
+  fleet -> loop.fleet
+  loop.fleet -> fleet
+  sky -> loop.sky
+  loop.sky -> sky
+  stars -> loop.stars
+  loop.stars -> stars
+  points -> loop.points
+  loop.points -> points

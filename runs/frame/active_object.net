@@ -10,6 +10,7 @@ network active_object(slot)
   inout time: pacing
   inout seed: random
   inout fleet: ships
+  inout points: display
 
 places
   collided: objects
@@ -42,6 +43,8 @@ arcs
   calc.seed -> seed
   fleet -> calc.fleet
   calc.fleet -> fleet
+  points -> calc.points
+  calc.points -> points
   calculated[slot].cycles -> charge.cycles
   time.spare_time -> charge.spare
   charge.spare -> time.spare_time

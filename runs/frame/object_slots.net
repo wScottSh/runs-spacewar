@@ -10,6 +10,7 @@ network object_slots
   inout time: pacing
   inout seed: random
   inout fleet: ships
+  inout points: display
 
 transitions
   take: count_down                                          # index ml1, (lac mtb nob-1, ml1
@@ -30,6 +31,8 @@ arcs
   active.seed -> seed
   fleet -> active.fleet
   active.fleet -> fleet
+  points -> active.points
+  active.points -> points
   table[slot].routine -> idle when else
   table -> idle.source
   idle.target -> table

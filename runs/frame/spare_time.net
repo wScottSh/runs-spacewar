@@ -1,19 +1,24 @@
 # The spare-time loop (count \mtc, .), a bundle: it burns the rest of the
 # frame's instruction budget. The first token is taken from the budget,
 # then the passes take the rest. It is pacing: nothing in the game reads
-# the budget, so its effects are presentation.
+# the budget, so its effects are presentation. The frame's points pass
+# through it unchanged: the scope shows them until the budget is spent.
 
 network spare_time
+  in budget: pacing
+  inout points: display
 
 places
-  pacing.spare_time
   spare_time_work.counted
 
 transitions
   first: count_down                                         # count \mtc, the first time
   passes: burn_time
+  shown: copy
 
 arcs
-  pacing.spare_time -> first.counter
+  budget.spare_time -> first.counter
   first.counter -> spare_time_work.counted
   spare_time_work.counted -> passes.budget
+  points -> shown.source
+  shown.target -> points

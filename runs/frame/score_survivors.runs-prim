@@ -1,0 +1,21 @@
+# The survivors score (mdn, once the delay runs out): a ship whose routine
+# word is still its own calc routine survived. Program flags 1 and 2 light
+# for the survivors, but flag 2 is cleared again at once.
+processor score_survivors
+  in first_routine: calc_routine
+  in second_routine: calc_routine
+  inout first: word
+  inout second: word
+  out first_light: light
+  out second_light: light
+  set first_light = on                                      # stf 1
+  set second_light = on                                     # stf 2
+  if first_routine != first_spaceship:
+    set first_light = off
+  if first_routine == first_spaceship:
+    set first = first + 1
+  if second_routine != second_spaceship:
+    set second_light = off
+  if second_routine == second_spaceship:
+    set second = second + 1
+  set second_light = off

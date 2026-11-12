@@ -9,6 +9,7 @@ network calc(slot)
   inout table: objects
   inout seed: random
   inout fleet: ships
+  inout points: display
 
 transitions
   first: first_spaceship(slot)                              # ss1
@@ -22,6 +23,8 @@ arcs
   table[slot].routine -> first when == first_spaceship
   table -> first
   first -> table
+  points -> first
+  first -> points
   seed -> first
   first -> seed
   fleet -> first
@@ -29,6 +32,8 @@ arcs
   table[slot].routine -> second when == second_spaceship
   table -> second
   second -> table
+  points -> second
+  second -> points
   seed -> second
   second -> seed
   fleet -> second
@@ -36,19 +41,27 @@ arcs
   table[slot].routine -> flying when == torpedo
   table -> flying.table
   flying.table -> table
+  points -> flying
+  flying -> points
   table[slot].routine -> exploding when == explosion
   table -> exploding
   exploding -> table
+  points -> exploding
+  exploding -> points
   seed -> exploding
   exploding -> seed
   table[slot].routine -> away when == in_hyperspace
   table -> away.table
   away.table -> table
+  points -> away
+  away -> points
   seed -> away.seed
   away.seed -> seed
   table[slot].routine -> back when == breakout
   table -> back.table
   back.table -> table
+  points -> back
+  back -> points
   fleet -> back.fleet
   back.fleet -> fleet
   seed -> back.seed

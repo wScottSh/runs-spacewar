@@ -1,0 +1,66 @@
+# The restart countdown (mdn): the delay counts up one a frame. While it is
+# below 0 the object loop runs; when it runs out the survivors score and the
+# game ends (jmp a).
+
+network restart_countdown                                   # mdn
+  in switches: console
+  inout table: objects
+  inout clock: frame
+  inout time: pacing
+  inout seed: random
+  inout fleet: ships
+  inout sky: planetarium
+  inout stars: magnitudes
+  inout points: display
+  inout tally: score
+  out lamps: lights
+
+places
+  counted: frame
+  scored: score
+
+transitions
+  count: count_down                                         # count \ntd, ml1
+  loop: object_loop                                         # ml1
+  survivors: score_survivors                                # stf 1 .. clf 2
+  next: between_games                                       # jmp a
+  keep: copy
+
+arcs
+  clock.restart_delay -> count.counter
+  count.counter -> counted.restart_delay
+  counted.restart_delay -> loop when < 0
+  counted -> loop.clock
+  loop.clock -> clock
+  switches -> loop.switches
+  table -> loop.table
+  loop.table -> table
+  time -> loop.time
+  loop.time -> time
+  seed -> loop.seed
+  loop.seed -> seed
+  fleet -> loop.fleet
+  loop.fleet -> fleet
+  sky -> loop.sky
+  loop.sky -> sky
+  stars -> loop.stars
+  loop.stars -> stars
+  points -> loop.points
+  loop.points -> points
+  counted.restart_delay -> survivors when else
+  table[0].routine -> survivors.first_routine
+  table[1].routine -> survivors.second_routine
+  tally.first -> survivors.first
+  survivors.first -> scored.first
+  tally.second -> survivors.second
+  survivors.second -> scored.second
+  survivors.first_light -> lamps.first_survived
+  survivors.second_light -> lamps.second_survived
+  counted.restart_delay -> next when else
+  scored -> next
+  next -> tally
+  table -> next
+  next -> table
+  counted.restart_delay -> keep when else
+  counted -> keep.source
+  keep.target -> clock

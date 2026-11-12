@@ -1,0 +1,6 @@
+# While both ships fly and one has a torpedo left, the restart waits twice
+# a torpedo's life (md1: xct tlf; sal 1s; dac \ntd).
+processor hold_restart
+  in life: word
+  out delay: word
+  set delay = life << 1

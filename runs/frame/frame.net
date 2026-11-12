@@ -1,0 +1,153 @@
+# One pass of the main loop is one frame (ml0 .. ml0), a top Network the
+# host fires once each frame: the frame's instruction budget, then the
+# restart checks. While both ships fly on their own calc routines and one
+# still has torpedoes, the restart delay is held; otherwise it counts down,
+# and then the survivors score. Its inputs and outputs are the game's
+# boundary with presentation: the console comes in; the points, the scores
+# and the lights leave. Which device the control word comes from is the
+# operator's choice of start address, and the compiled outlines are what the
+# start's new game compiled: both are set before the first frame.
+
+network frame                                               # ml0
+  requires: console, score, controls, outline_code
+  produces: display, scoreboard, lights
+  in switches: console
+  in flight: ship_flight
+  inout table: objects
+  inout clock: frame
+  out time: pacing
+  inout seed: random
+  inout fleet: ships
+  inout sky: planetarium
+  inout stars: magnitudes
+  inout points: display
+  inout tally: score
+  out lamps: lights
+
+places
+  budgeted: pacing
+  restart_work.second_routine
+  restart_work.first_left
+  restart_work.second_left
+
+transitions
+  begin: begin_frame                                        # load \mtc, -4000
+  second_ship: copy_calc_routine
+  first_left: torpedoes_left                                # law 1; add ntr
+  second_left: torpedoes_left                               # law 1; add ntr 1
+  hold_first: hold_restart_for_torpedoes                    # md1
+  hold_second: hold_restart_for_torpedoes
+  count_first: restart_countdown                            # mdn
+  count_second: restart_countdown
+  count_third: restart_countdown
+
+arcs
+  begin.spare -> budgeted.spare_time
+  table[0].routine -> second_ship when == first_spaceship          # law ss1; xor mtb; sza
+  table[1].routine -> second_ship.source
+  second_ship.target -> restart_work.second_routine
+  table[0].routine -> count_first when else                         # jmp mdn
+  restart_work.second_routine -> first_left when == second_spaceship # law ss2; xor mtb 1; sza
+  flight[0].torpedoes -> first_left.torpedoes
+  first_left.left -> restart_work.first_left
+  restart_work.second_routine -> count_second when else             # jmp mdn
+  restart_work.first_left -> hold_first when < 0                     # spa; jmp md1
+  restart_work.first_left -> second_left when else
+  flight[1].torpedoes -> second_left.torpedoes
+  second_left.left -> restart_work.second_left
+  restart_work.second_left -> hold_second when < 0
+  restart_work.second_left -> count_third when else                 # spa i; jmp mdn
+  switches -> hold_first.switches
+  table -> hold_first.table
+  hold_first.table -> table
+  clock -> hold_first.clock
+  hold_first.clock -> clock
+  budgeted -> hold_first.time
+  hold_first.time -> time
+  seed -> hold_first.seed
+  hold_first.seed -> seed
+  fleet -> hold_first.fleet
+  hold_first.fleet -> fleet
+  sky -> hold_first.sky
+  hold_first.sky -> sky
+  stars -> hold_first.stars
+  hold_first.stars -> stars
+  points -> hold_first.points
+  hold_first.points -> points
+  switches -> hold_second.switches
+  table -> hold_second.table
+  hold_second.table -> table
+  clock -> hold_second.clock
+  hold_second.clock -> clock
+  budgeted -> hold_second.time
+  hold_second.time -> time
+  seed -> hold_second.seed
+  hold_second.seed -> seed
+  fleet -> hold_second.fleet
+  hold_second.fleet -> fleet
+  sky -> hold_second.sky
+  hold_second.sky -> sky
+  stars -> hold_second.stars
+  hold_second.stars -> stars
+  points -> hold_second.points
+  hold_second.points -> points
+  switches -> count_first.switches
+  table -> count_first.table
+  count_first.table -> table
+  clock -> count_first.clock
+  count_first.clock -> clock
+  budgeted -> count_first.time
+  count_first.time -> time
+  seed -> count_first.seed
+  count_first.seed -> seed
+  fleet -> count_first.fleet
+  count_first.fleet -> fleet
+  sky -> count_first.sky
+  count_first.sky -> sky
+  stars -> count_first.stars
+  count_first.stars -> stars
+  points -> count_first.points
+  count_first.points -> points
+  tally -> count_first.tally
+  count_first.tally -> tally
+  count_first.lamps -> lamps
+  switches -> count_second.switches
+  table -> count_second.table
+  count_second.table -> table
+  clock -> count_second.clock
+  count_second.clock -> clock
+  budgeted -> count_second.time
+  count_second.time -> time
+  seed -> count_second.seed
+  count_second.seed -> seed
+  fleet -> count_second.fleet
+  count_second.fleet -> fleet
+  sky -> count_second.sky
+  count_second.sky -> sky
+  stars -> count_second.stars
+  count_second.stars -> stars
+  points -> count_second.points
+  count_second.points -> points
+  tally -> count_second.tally
+  count_second.tally -> tally
+  count_second.lamps -> lamps
+  switches -> count_third.switches
+  table -> count_third.table
+  count_third.table -> table
+  clock -> count_third.clock
+  count_third.clock -> clock
+  budgeted -> count_third.time
+  count_third.time -> time
+  seed -> count_third.seed
+  count_third.seed -> seed
+  fleet -> count_third.fleet
+  count_third.fleet -> fleet
+  sky -> count_third.sky
+  count_third.sky -> sky
+  stars -> count_third.stars
+  count_third.stars -> stars
+  points -> count_third.points
+  count_third.points -> points
+  tally -> count_third.tally
+  count_third.tally -> tally
+  count_third.lamps -> lamps
