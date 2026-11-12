@@ -77,26 +77,7 @@ network accelerate(slot)                                    # bsg
   run aim_nose(slot)                                        # sp1
   run aim_outline
   run mark_center
-  run draw_outline                                          # sp5, jmp .
-    start: ship_outlines.outline[slot]
-    strokes: outline_code.stroke
-    backs: outline_code.back
-    down_x: pen.down_x
-    down_y: pen.down_y
-    x: pen.x
-    y: pen.y
-    out_x: pen.out_x
-    out_y: pen.out_y
-    out_down_x: pen.out_down_x
-    out_down_y: pen.out_down_y
-    in_down_x: pen.in_down_x
-    in_down_y: pen.in_down_y
-    saved_x: pen.saved_x
-    saved_y: pen.saved_y
-    side: pen.side
-    point_x: outline_point.x
-    point_y: outline_point.y
-    points: display
+  run outline(slot)                                         # sp5, jmp .
   run after_outline(slot)                                   # the outline jumps back to sq6
 
 # The exhaust flame, the torpedo tube and the hyperfield generators.

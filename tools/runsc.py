@@ -1280,12 +1280,16 @@ class Bindings:
             for r in self.prog.routines.values() for s in walk(r.body) if s[0] == "set"))
 
     def after_walk(self, name: str) -> str:
-        """The routine a Network runs right after a walk: where leaving it goes."""
+        """The routine a Network runs right after a walk: where leaving it goes.
+        A walk a Network runs last leaves where that Network does (a bundle
+        that runs it, outline.net)."""
         for r in self.prog.routines.values():
             items = [s for s in r.body if s[0] == "run"]
             for a, b in zip(items, items[1:]):
                 if a[1] == name:
                     return b[1]
+            if items and items[-1][1] == name and r.kind == "network" and len(items) == len(r.body):
+                return self.after_walk(r.name)
         raise BindError(f"{name}: no Network runs a routine after it, where leaving the walk goes")
 
     def coded(self, dotted: str) -> bool:
@@ -1868,7 +1872,15 @@ class Unit:
                         raise BindError(f"{s[-1]}: {name} is a block, entered by a jump that does not come back: "
                                         f"run it as the last thing {r.name} does")
                     if callee.code:
-                        # code a Record holds jumps back to the routine the Network runs next
+                        # code a Record holds jumps back to the routine the Network runs next;
+                        # a walk that ends its Network, to the one run after that Network
+                        if n + 1 >= len(items) and r.kind == "network" and not in_slots:
+                            self.walk_back = self.binds.after_walk(r.name)
+                            if (callee.back or self.walk_back) != self.walk_back:
+                                raise BindError(f"{s[-1]}: {name} jumps back to {callee.back}, "
+                                                f"not {self.walk_back}")
+                            callee.back = self.walk_back
+                            continue
                         if n + 1 >= len(items) or items[n + 1][0] != "run":
                             raise BindError(f"{s[-1]}: {name} runs code that jumps back: run where next")
                         callee.back = items[n + 1][1]
@@ -1880,7 +1892,13 @@ class Unit:
                 inner = self.prog.routines.get(name)
                 if inner is None:
                     raise BindError(f"{s[-1]}: {name} is neither ported nor bound")
+                self.walk_back = None
                 body = self.flat(inner, dict(zip(inner.params, args)), last)
+                if self.walk_back:                 # it ends in a walk, which jumps back into the run after it
+                    back, self.walk_back = self.walk_back, None
+                    if n + 1 >= len(items) or items[n + 1][:3] != ("run", back, args):
+                        raise BindError(f"{s[-1]}: {name} ends in a walk that jumps back to {back}, so run "
+                                        f"{back}({', '.join(a[1] for a in args)}) comes next")
                 if inner.kind == "processor":
                     body = self.own_copy(body, s[-1])
                 if name == self.current.exit_after:
@@ -4644,6 +4662,14 @@ def declared_fields() -> set[str]:
     return out
 
 
+def shared_fields() -> dict[str, str]:
+    """Each field a [share] declares in another's word -> that field."""
+    out: dict[str, str] = {}
+    for f in sorted(BINDINGS.glob("*.toml")):
+        out |= tomllib.loads(f.read_text()).get("share", {})
+    return out
+
+
 def memory_words() -> set[str]:
     """The fields the declarations give a word in memory: each routine's
     entry word, its cells, and the fields of a `fields` list."""
@@ -4703,7 +4729,9 @@ class Storage:
 
     def __init__(self, g: graph.Graph, sigs: dict, copier: dict[str, str], prog: runs.Program):
         self.g = g
-        declared = declared_fields()
+        declared, shared = declared_fields(), shared_fields()
+        fields = {g.field(q) for q in g.places}
+        written = {g.field(a.place) for a in g.arcs if not a.into}
         decl = declaration(g.name)
         self.parent = {p: p for p in g.places}
 
@@ -4712,10 +4740,15 @@ class Storage:
         def word(p):
             """A table entry is its own word; an input or output of a bundle
             laid out inline, its user's word; any other place, the one the
-            declarations give."""
+            declarations give. Two places of this network that a [share]
+            declares one word are named by the one a transition writes
+            (outline.net: ship_nose.x in, pen.x out, one word, sx1)."""
             f = g.field(p)
             if g.port(p) and (g.name, g.port(p)) in given and g.port(p) == p:
                 return given[g.name, p]
+            pair = ({f, shared[f]} if f in shared else {f}) | {a for a, b in shared.items() if b == f}
+            if len(pair & fields) == 2:
+                return min(pair & fields, key=lambda x: (x not in written, x))
             return f if g.port(p) in g.records or g.whole(p) or re.sub(r"\[\w+\]", "", f) in declared else None
 
         memory: set[str] = set()

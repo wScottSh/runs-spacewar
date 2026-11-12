@@ -1,0 +1,74 @@
+# A ship's outline (sp5), a bundle: the walk over its compiled strokes,
+# from the slot ship_outlines.outline holds for it. The pen starts at the
+# nose and is left at the tail, where the flame starts; the mirror and the
+# stored position the walk leaves are its own.
+
+network outline(slot)
+  inout points: display
+
+places
+  ship_outlines.outline[slot]
+  outline_code.stroke
+  outline_code.back
+  ship_nose.x
+  ship_nose.y
+  pen.x
+  pen.y
+  pen.down_x
+  pen.down_y
+  pen.out_x
+  pen.out_y
+  pen.out_down_x
+  pen.out_down_y
+  pen.in_down_x
+  pen.in_down_y
+  pen.saved_x
+  pen.saved_y
+  pen.side
+  outline_point.x
+  outline_point.y
+  walked_pen.out_x
+  walked_pen.out_y
+  walked_pen.out_down_x
+  walked_pen.out_down_y
+  walked_pen.in_down_x
+  walked_pen.in_down_y
+  walked_pen.saved_x
+  walked_pen.saved_y
+  walked_pen.side
+
+transitions
+  walk: draw_outline                                        # sp5, jmp .
+
+arcs
+  ship_outlines.outline[slot] -> walk.start
+  outline_code.stroke -> walk.strokes
+  outline_code.back -> walk.backs
+  pen.down_x -> walk.down_x
+  pen.down_y -> walk.down_y
+  ship_nose.x -> walk.x
+  walk.x -> pen.x
+  ship_nose.y -> walk.y
+  walk.y -> pen.y
+  pen.out_x -> walk.out_x
+  walk.out_x -> walked_pen.out_x
+  pen.out_y -> walk.out_y
+  walk.out_y -> walked_pen.out_y
+  pen.out_down_x -> walk.out_down_x
+  walk.out_down_x -> walked_pen.out_down_x
+  pen.out_down_y -> walk.out_down_y
+  walk.out_down_y -> walked_pen.out_down_y
+  pen.in_down_x -> walk.in_down_x
+  walk.in_down_x -> walked_pen.in_down_x
+  pen.in_down_y -> walk.in_down_y
+  walk.in_down_y -> walked_pen.in_down_y
+  pen.saved_x -> walk.saved_x
+  walk.saved_x -> walked_pen.saved_x
+  pen.saved_y -> walk.saved_y
+  walk.saved_y -> walked_pen.saved_y
+  pen.side -> walk.side
+  walk.side -> walked_pen.side
+  walk.point_x -> outline_point.x
+  walk.point_y -> outline_point.y
+  points -> walk.points
+  walk.points -> points

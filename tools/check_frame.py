@@ -44,7 +44,7 @@ from pdp1cc.gate.simh import Inputs, STUB, CALL
 from oracle_check import built_listing
 
 RECORDS = ["objects", "ship_flight", "ship_outlines", "ships", "random", "frame", "pacing", "burn_time_call", "tunables", "spaceship",
-           "star_wait_work", "wait_in_star_call", "flame_dots_call", "heading", "ship_nose", "pen", "planetarium", "magnitudes"]
+           "star_wait_work", "wait_in_star_call", "flame_dots_call", "heading", "ship_nose", "pen", "walked_pen", "planetarium", "magnitudes"]
 NEG = lambda v: v ^ runs.MASK
 JMP = 0o600000
 
@@ -87,7 +87,7 @@ def a_frame(m: runs.Machine, rng: random.Random, outlines) -> tuple[dict, int]:
             if typ == "word":
                 st[rec][f] = runs.W(rng.randrange(1 << 18))
     outlines.b.share_one_word(st, ["pacing", "burn_time_call", "spaceship", "star_wait_work", "wait_in_star_call", "flame_dots_call",
-                                  "ship_nose", "pen"])
+                                  "ship_nose", "pen", "walked_pen"])
     st["launch"]["slot"] = runs.W(rng.randrange(0o30))
     sense = rng.randrange(1 << 6)
     for name, n in pdp1.SWITCHES.items():

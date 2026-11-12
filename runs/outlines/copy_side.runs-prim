@@ -1,0 +1,5 @@
+# A side of the outline, given on to a fresh place (a network's inout).
+processor copy_side
+  in source: side
+  out target: side
+  set target = source

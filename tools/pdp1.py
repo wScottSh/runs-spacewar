@@ -31,7 +31,8 @@ ORACLE = ROOT / "build/oracle.rim"
 
 # Record field: the Macro symbol of its first word (a collection's array).
 # A word that holds a chain of values maps from each Record field in the chain (mtc: the budget, then the
-# spare-time loop's tokens; ssn: the star wait, then its tokens; src: the flame, then its tokens); a check
+# spare-time loop's tokens; ssn: the star wait, then its tokens; src: the flame, then its tokens; scm and
+# the rest of the pen: aim_outline's, then the walk's, walked_pen); a check
 # compares the one written last (Binding.outlived).
 FIELDS = {
     ("objects", "routine"): "mtb", ("objects", "x"): "nx1", ("objects", "y"): "ny1",
@@ -69,6 +70,9 @@ FIELDS = {
     ("pen", "out_x"): "scm", ("pen", "out_y"): "ssm", ("pen", "out_down_x"): "ssc",
     ("pen", "out_down_y"): "csm", ("pen", "in_down_x"): "csn", ("pen", "in_down_y"): "ssd",
     ("pen", "saved_x"): "ssa", ("pen", "saved_y"): "ssi",
+    ("walked_pen", "out_x"): "scm", ("walked_pen", "out_y"): "ssm", ("walked_pen", "out_down_x"): "ssc",
+    ("walked_pen", "out_down_y"): "csm", ("walked_pen", "in_down_x"): "csn", ("walked_pen", "in_down_y"): "ssd",
+    ("walked_pen", "saved_x"): "ssa", ("walked_pen", "saved_y"): "ssi",
     ("outline_compiler", "codes_left"): "occ", ("outline_compiler", "codes_rest"): "oci",
     ("outline_compiler", "start_over"): "ocm",
     ("outline_code", "stroke"): "nnn",
@@ -117,7 +121,8 @@ START = {v["at"]: v["network"] for v in DEVICES["start"]}
 # [flags]. SIMH's PF holds flag n as bit 1 << (6 - n).
 FLAGS = {tuple(f.split(".")): n for f, n in DEVICES["lights"].items()} | {
     tuple(f.split(".")): n for b in sorted((ROOT / "pdp1").glob("*.toml"))
-    for f, n in tomllib.loads(b.read_text()).get("flags", {}).items()}
+    for f, n in tomllib.loads(b.read_text()).get("flags", {}).items()} | {
+    ("walked_pen", "side"): 5}          # the walk's side, an inout's fresh place in pen.side's flag
 
 # The Expensive Planetarium lays out each magnitude's words in its code
 # (dislis: fpo, flo), with no symbol of their own: each instance of the
