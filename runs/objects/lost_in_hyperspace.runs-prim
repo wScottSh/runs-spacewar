@@ -1,0 +1,5 @@
+processor lost_in_hyperspace(slot)
+  writes: objects
+  set objects.routine[slot] = explosion
+  set objects.counter[slot] = -010
+  set objects.cycles[slot] = 02000

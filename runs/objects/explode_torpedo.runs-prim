@@ -1,0 +1,5 @@
+processor explode_torpedo
+  out routine: calc_routine
+  out counter: word
+  set routine = explosion
+  set counter = -2

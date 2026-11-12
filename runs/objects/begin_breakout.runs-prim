@@ -1,0 +1,4 @@
+processor begin_breakout(slot)
+  writes: objects
+  set objects.routine[slot] = breakout
+  set objects.cycles[slot] = 7

@@ -1,0 +1,5 @@
+# The count of dots left is the game's: each dot draws two random numbers
+# from the generator hyperspace also draws from.
+processor count_particle
+  writes: explosion_count
+  set explosion_count.particles = explosion_count.particles + 1

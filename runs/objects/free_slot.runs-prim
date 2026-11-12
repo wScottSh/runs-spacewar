@@ -1,0 +1,3 @@
+processor free_slot(slot)                                   # dzm i ml1
+  writes: objects
+  set objects.routine[slot] = none

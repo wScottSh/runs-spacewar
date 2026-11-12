@@ -1,0 +1,4 @@
+# Every calc routine counts its object's frames up toward 0.
+processor count_down                                        # count i ma1
+  inout counter: word
+  set counter = counter + 1

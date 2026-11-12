@@ -1,0 +1,6 @@
+processor recharge_hyperfield(slot)
+  requires: slot < 2
+  reads: handoff, tunables
+  writes: ships
+  set ships.recharge[slot] = handoff.recharge_time
+  set ships.uncertainty[slot] = ships.uncertainty[slot] + tunables.hyperspatial_uncertainty

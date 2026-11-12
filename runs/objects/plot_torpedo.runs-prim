@@ -1,0 +1,4 @@
+processor plot_torpedo(slot)                                # dispt i, i my1, 1
+  reads: objects
+  writes: display
+  emit display: objects.x[slot], objects.y[slot], 1

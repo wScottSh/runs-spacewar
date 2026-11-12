@@ -1,0 +1,3 @@
+processor coast                                             # cla: no force
+  writes: handoff
+  set handoff.acceleration = 0

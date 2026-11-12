@@ -1,4 +1,4 @@
-"""The calc routine Processors of objects.runs-prim against SIMH running the
+"""The calc routine Processors of runs/objects/ against SIMH running the
 oracle image.
 
 Each call starts from one set of Records: the object table, the spaceship

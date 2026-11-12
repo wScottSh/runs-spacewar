@@ -1,0 +1,4 @@
+processor warp_from_y                                       # diff leaves y in AC; sar 9s
+  in position: word
+  out coordinate: word
+  set coordinate = position >> 9

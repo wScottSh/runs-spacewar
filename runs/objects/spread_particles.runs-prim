@@ -1,0 +1,5 @@
+# The explosion's spread is presentation: which of mst's shifts spreads
+# the dots, set before the count and widened after it.
+processor spread_particles                                  # law mst; dap msh: scr 1s
+  writes: explosion_cloud
+  set explosion_cloud.spread = 1

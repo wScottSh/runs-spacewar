@@ -1,0 +1,8 @@
+processor end_breakout(slot)
+  requires: slot < 2
+  writes: objects, ships
+  set objects.routine[slot] = ships.saved_routine[slot]
+  set objects.cycles[slot] = 02000
+  set ships.jumps_left[slot] = ships.jumps_left[slot] + 1
+  if ships.jumps_left[slot] >= 0:
+    set ships.jumps_left[slot] = 0

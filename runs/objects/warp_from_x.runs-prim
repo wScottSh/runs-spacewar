@@ -1,0 +1,4 @@
+processor warp_from_x                                       # lac i mx1; sar 9s
+  in x: word
+  out coordinate: word
+  set coordinate = x >> 9

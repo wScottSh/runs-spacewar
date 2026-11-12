@@ -1,0 +1,6 @@
+# A ship survives breaking out only if a random number outweighs its
+# uncertainty: the sum's sign decides.
+processor weigh_breakout(slot)                              # random; ior (400000; add i \mh4
+  reads: random, ships
+  writes: breakout_check
+  set breakout_check.margin = (random.number | 0400000) + ships.uncertainty[slot]
