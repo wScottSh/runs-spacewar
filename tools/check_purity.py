@@ -21,7 +21,7 @@ import runs
 
 
 def report(root: Path) -> tuple[runs.Program, list[str]]:
-    prog = runs.check(runs.load(sorted(root.glob("*.runs")) + sorted(root.glob("*.runs-prim"))), sides=False)
+    prog = runs.check(runs.load(runs.source_files(root)), sides=False)
     return prog, runs.impurities(prog)
 
 

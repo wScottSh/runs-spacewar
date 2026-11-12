@@ -21,7 +21,7 @@ def scan(root: Path) -> tuple[dict[str, str], dict[str, list[dict]]]:
     """Each declaration's file, and each Record's fields as the text
     writes them."""
     home, fields = {}, {}
-    for path in sorted(root.glob("*.runs")) + sorted(root.glob("*.runs-prim")):
+    for path in runs.source_files(root):
         current = None
         for line in path.read_text().splitlines():
             if m := DECLARATION.match(line):
@@ -41,7 +41,7 @@ def scan(root: Path) -> tuple[dict[str, str], dict[str, list[dict]]]:
 def main() -> int:
     root = Path(sys.argv[1]) if len(sys.argv) > 1 else runs.source()
     # The kind rules are left out so the drawing can show where they break.
-    prog = runs.check(runs.load(sorted(root.glob("*.runs")) + sorted(root.glob("*.runs-prim"))), sides=False)
+    prog = runs.check(runs.load(runs.source_files(root)), sides=False)
     home, fields = scan(root)
     kinds = {n: r.side for n, r in prog.records.items()}
     shown = runs.presentation_routines(prog) if any(kinds.values()) else set()

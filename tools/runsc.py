@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import itertools
 import re
 import sys
 import tomllib
@@ -26,6 +27,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import folds
+import graph
 import runs
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -4554,6 +4556,338 @@ class Occupancy:
         raise BindError(f"{where}: runsc cannot follow shared words through {op}")
 
 
+# ------------------------------------------------------------- network files
+
+# A network file states no order and no word (tools/graph.py). runs.load
+# lowers each with every place its own field, in the wiring's order; the
+# PDP-1 back end lowers it with the words the original keeps its values in,
+# and in the original's order among the transitions the wiring leaves free.
+
+ARRIVAL = ("entry", "io_param", "byname")     # the jda call form: AC into the entry word, then IO, then by name
+
+
+def declaration(name: str) -> dict:
+    """A routine's own entry of the declarations, or {}."""
+    found = [p for f in sorted(BINDINGS.glob("*.toml")) if f.name != DEVICES
+             for p in tomllib.loads(f.read_text()).get("place", []) if p.get("routine") == name]
+    return found[0] if len(found) == 1 else {}
+
+
+def declared_fields() -> set[str]:
+    """Every field the declarations give a word or a register."""
+    out: set[str] = set()
+
+    def walk(v):
+        if isinstance(v, str) and re.fullmatch(r"\w+\.\w+", v):
+            out.add(v)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x)
+        elif isinstance(v, dict):
+            for x in v.values():
+                walk(x)
+    for f in sorted(BINDINGS.glob("*.toml")):
+        walk(tomllib.loads(f.read_text()))
+    return out
+
+
+def memory_words() -> set[str]:
+    """The fields the declarations give a word in memory: each routine's
+    entry word, its cells, and the fields of a `fields` list."""
+    out: set[str] = set()
+    for f in sorted(BINDINGS.glob("*.toml")):
+        for p in tomllib.loads(f.read_text()).get("place", []):
+            out |= {p["entry"]} if "entry" in p else set()
+            out |= set(p.get("cells", [])) | set(p.get("fields", []))
+    return out
+
+
+def operands(body) -> tuple[set[str], set[str]]:
+    """The names a body uses as the operand of mus or dis, which the PDP-1
+    reads from memory; and those it uses as the high half of a pair
+    operation, which it holds in AC."""
+    memory: set[str] = set()
+    ac: set[str] = set()
+
+    def walk(x):
+        if isinstance(x, tuple) and x[:1] == ("call",) and x[1] in PAIR_OPS:
+            if x[1] in ("mus", "dis") and x[2][2][0] == "name":
+                memory.add(x[2][2][1])
+            if x[2][0][0] == "name":
+                ac.add(x[2][0][1])
+        if isinstance(x, (tuple, list)):
+            for y in x:
+                walk(y)
+    walk(body)
+    return memory, ac
+
+
+class Storage:
+    """Where each place of a graph lives on the PDP-1, by these rules in turn:
+
+    - a fresh value takes its dead predecessor's word: the two ends of an
+      inout share one word, and an output of the network shares the word
+      of the value a copy gives it, unless the declarations give each its
+      own, or one is held in AC (the high half of a pair operation) and the
+      other has a word in memory;
+    - a word the declarations give;
+    - a value a bundle takes or gives lives in that bundle's word;
+    - a value that must be in memory (the operand of mus or dis, or what a
+      bundle takes by name) and has no word takes a memory word of the
+      network's own call Record, the first in which every value is read
+      before the next is written (`free`, tried in turn by the caller);
+    - else a register value, the Network's own scratch, which runsc keeps
+      in AC, or in IO where the routine's `io` names it."""
+
+    def __init__(self, g: graph.Graph, sigs: dict, copier: dict[str, str], prog: runs.Program):
+        self.g = g
+        declared = declared_fields()
+        self.parent = {p: p for p in g.places}
+
+        def word(p):
+            return g.field(p) if g.field(p) in declared else None
+
+        in_ac: set[str] = set()
+        for t, proc in g.transitions.items():
+            if not sigs[proc].bundle:
+                held = operands(prog.routines[proc].body)[1]
+                in_ac |= {a.place for a in g.arcs if a.transition == t and a.io in held}
+
+        def share(a, b):
+            ra, rb = self.find(a), self.find(b)
+            if ra == rb:
+                return
+            ca = [p for p in self.parent if self.find(p) == ra]
+            cb = [p for p in self.parent if self.find(p) == rb]
+            wa, wb = {word(p) for p in ca} - {None}, {word(p) for p in cb} - {None}
+            if wa and wb and wa != wb or wa and in_ac & set(cb) or wb and in_ac & set(ca):
+                return
+            if wb and not wa:
+                ra, rb = rb, ra
+            self.parent[rb] = ra
+
+        bundle_word: dict[str, str] = {}
+        memory: set[str] = set()
+        for t, proc in sorted(g.transitions.items()):
+            s = sigs[proc]
+            ends: dict[str, list[str]] = {}
+            for a in g.arcs:
+                if a.transition == t and a.io:
+                    ends.setdefault(a.io, []).append(a.place)
+            if s.bundle:
+                byname = declaration(proc).get("byname")
+                for n, ps in ends.items():
+                    for p in ps:
+                        bundle_word.setdefault(p, f"{proc}_call.{n}")
+                        if f"{proc}_call.{n}" == byname:
+                            memory.add(p)
+                continue
+            for n in s.inout:
+                share(*ends[n])
+            if proc in copier.values() and ends["target"][0] in g.ports:
+                share(ends["source"][0], ends["target"][0])
+            for n in operands(prog.routines[proc].body)[0]:
+                memory |= set(ends[n])
+        self.where: dict[str, str] = {}
+        self.free: list[tuple[list[str], list[str]]] = []    # (a class that needs memory, the words it may take)
+        own = [f"{g.call}.{f}" for f in prog.records[g.call].fields] if g.ports else []
+        in_memory = [f for f in own if f in memory_words()]
+        for root in dict.fromkeys(self.find(p) for p in g.places):
+            cls = [q for q in g.places if self.find(q) == root]
+            words = sorted({word(q) for q in cls} - {None})
+            bundles = sorted({bundle_word[q] for q in cls if q in bundle_word})
+            w = words[0] if words else bundles[0] if bundles else root.split(".")[-1]
+            for q in cls:
+                self.where[q] = w
+            if not words and not bundles and memory & set(cls):
+                self.free.append((cls, in_memory))
+
+    def find(self, p: str) -> str:
+        while self.parent[p] != p:
+            p = self.parent[p]
+        return p
+
+    @property
+    def owns(self) -> list[str]:
+        return sorted({w for w in self.where.values() if "." not in w})
+
+
+def guard_reads(g: graph.Graph) -> dict[str, set[str]]:
+    reads = {t: {a.place for a in g.arcs if a.transition == t and a.into and a.io} for t in g.transitions}
+    return reads
+
+
+def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dict[tuple[str, str], str],
+                 sigs: dict, io: set[str], moves: set[str]) -> str | None:
+    """The first read, on any path through the order, of a value whose word
+    holds another by then; or of a value runsc keeps in AC after AC was used
+    for another. A guard's place is read once, by its test, before the
+    first transition of its side."""
+    guard = graph.guards(g)
+    tests = sorted({guard[t][0] for t in order if guard[t]})
+    sides = {p: sorted({guard[t] for t in order if guard[t] and guard[t][0] == p}) for p in tests}
+    in_ac = lambda w: "." not in w and w not in io  # noqa: E731
+    for path in itertools.product(*sides.values()):
+        taken = set(path)
+        holds: dict[str, str] = {}
+        ac: str | None = None
+        opened = None
+
+        def read(t, place):
+            w = at[place]
+            if place in g.ports and w not in holds and g.field(place) == w:
+                return None
+            if holds.get(w, place) != place:
+                return f"{t} reads {place}, but {w} holds {holds[w]}"
+            if in_ac(w) and ac != place:
+                return f"{t} reads {place} in AC, but AC holds {ac}"
+            return None
+        for t in order:
+            if guard[t] and guard[t] not in taken:
+                continue
+            if guard[t] and guard[t] != opened and (bad := read(t, guard[t][0])):
+                return bad
+            opened = guard[t]
+            proc = g.transitions[t]
+            ins = [a for a in g.arcs if a.transition == t and a.into and a.io]
+            outs = [a for a in g.arcs if a.transition == t and not a.into]
+            for a in ins:
+                if bad := read(t, a.place):
+                    return bad
+            if sigs[proc].bundle:
+                for a in ins + outs:
+                    holds[word[proc, a.io]] = a.place
+                ac = None
+            for a in outs:
+                holds[at[a.place]] = a.place
+            written_ac = [a.place for a in outs if in_ac(at[a.place])]
+            if written_ac:
+                ac = written_ac[0]
+            elif t not in moves:
+                ac = None
+    return None
+
+
+def moves_off_ac(g: graph.Graph, sigs: dict, at: dict[str, str], io: set[str], copier: dict[str, str]) -> set[str]:
+    """The transitions that leave AC alone: a copy or a constant into IO, or
+    a copy whose two ends share a word (no code at all)."""
+    out = set()
+    for t, proc in g.transitions.items():
+        if sigs[proc].bundle:
+            continue
+        wired = {a.io: at[a.place] for a in g.arcs if a.transition == t and a.io}
+        if proc in copier.values() and (wired["source"] == wired["target"] or io & {wired["source"], wired["target"]}):
+            out.add(t)
+        elif not sigs[proc].inputs and len(sigs[proc].outputs) == 1 and wired[sigs[proc].outputs[0]] in io:
+            out.add(t)
+    return out
+
+
+def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, decl: dict,
+                  io: set[str], copier: dict[str, str]) -> list[str]:
+    """The PDP-1 back end's order among the transitions the wiring leaves
+    free (#63). Of the orders the wiring allows, it keeps those in which no
+    value is read after its word took another, nor read in AC after AC took
+    another; and among the transitions that may go next it takes, in turn:
+
+    1. an unguarded one before a test's side: work that does not depend on
+       a test is done before it (the graph's guards);
+    2. the one that reads the value the call hands over earliest: the jda
+       entry word, then IO, then the word after the call; one that reads
+       none goes after (the routine's declaration);
+    3. names, for the ties left, which decide nothing in the image."""
+    guard = graph.guards(g)
+    rank = {decl[k]: n for n, k in enumerate(ARRIVAL) if k in decl}
+    reads = guard_reads(g)
+    moves = moves_off_ac(g, sigs, at, io, copier)
+    plain, tests = graph.units(g)
+    dep = graph.depends(g)
+
+    def key(t):
+        return (guard[t] is not None, min((rank.get(g.field(p), len(ARRIVAL)) for p in reads[t]),
+                                          default=len(ARRIVAL)), t)
+
+    member = {t: p for p, sides in tests.items() for side in sides for t in side}
+
+    def unit_key(u):
+        return min(key(t) for side in tests[u] for t in side) if u in tests else key(u)
+
+    unit_of = lambda t: member.get(t, t)  # noqa: E731
+    before = {u: set() for u in plain + list(tests)}
+    for t, ds in dep.items():
+        for d in ds:
+            if unit_of(d) != unit_of(t):
+                before[unit_of(t)].add(unit_of(d))
+
+    def ok(prefix):
+        return path_hazards(g, prefix, at, word, sigs, io, moves) is None
+
+    def sides(u, prefix):
+        """Each order of u's sides, the test's side first."""
+        def inner(side_list, prefix):
+            if not side_list:
+                yield prefix
+                return
+            side = side_list[0]
+
+            def go(left, prefix):
+                if not left:
+                    yield from inner(side_list[1:], prefix)
+                    return
+                for t in sorted((t for t in left if not dep[t] & set(left)), key=key):
+                    nxt = prefix + [t]
+                    if ok(nxt):
+                        yield from go([x for x in left if x != t], nxt)
+            yield from go(list(side), prefix)
+        yield from inner(tests[u], prefix)
+
+    def go(placed, prefix):
+        if len(placed) == len(before):
+            yield prefix
+            return
+        for u in sorted((u for u in before if u not in placed and before[u] <= placed), key=unit_key):
+            if u in tests:
+                for nxt in sides(u, prefix):
+                    yield from go(placed | {u}, nxt)
+            elif ok(prefix + [u]):
+                yield from go(placed | {u}, prefix + [u])
+    for order in go(frozenset(), []):
+        return order
+    raise BindError(f"{g.where}: {g.name}: no order the wiring allows keeps every value in its word until read")
+
+
+def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[str, str]) -> str:
+    """runs.load's lowering for the PDP-1: each place in the word the
+    original keeps it in, in the original's order."""
+    decl = declaration(g.name)
+    st = Storage(g, sigs, copier, prog)
+    bundles = {p for p in g.transitions.values() if sigs[p].bundle}
+    word = {(b, n): f"{b}_call.{n}" for b in bundles for n in sigs[b].inputs + sigs[b].outputs}
+    io = {x.split(".")[-1] if "." not in x else x for x in decl.get("io", [])}
+    io |= {decl["io_param"]} if "io_param" in decl else set()
+    io |= {f for d in (declaration(b) for b in bundles) for f in d.get("io", []) + [d.get("io_param", "")] if f}
+    tried = []
+    for words in itertools.product(*(ws for _, ws in st.free)):
+        at = dict(st.where)
+        for (cls, _), w in zip(st.free, words):
+            at.update({p: w for p in cls})
+        try:
+            order = network_order(g, sigs, at, word, decl, io, copier)
+        except BindError as e:
+            tried.append(str(e))
+            continue
+        owns = sorted({w for w in at.values() if "." not in w})
+        skip = {decl["skips"][0]} if "skips" in decl else set()
+        return graph.lower(g, sigs, order, graph.Lowering(at, word, copier, owns, skip))
+    raise BindError(tried[0] if tried else f"{g.where}: {g.name}: a value must be in memory, and "
+                    f"{g.call} has no word in memory for it")
+
+
+def pdp1_program(root: Path | None = None) -> runs.Program:
+    """The RUNS source, its network files lowered for the PDP-1."""
+    return runs.program(root or runs.source(), lower=lower_for_pdp1)
+
+
 def write_tree(prog: runs.Program, out: Path) -> Path:
     """lift.toml under out, each unit compiled from RUNS: out's
     lift/ holds the generated C and nothing else. Returns the toml."""
@@ -4598,6 +4932,8 @@ def build(prog: runs.Program, out: Path = OUT) -> int:
     """Compile and assemble; pdp1cc prints the hash and, on a mismatch, the
     first word that differs. 0 when the image is the original's. RUNS the
     evaluator rejects before anything runs is not compiled."""
+    if prog.graphs and prog.lowering != lower_for_pdp1.__name__:
+        raise BindError(f"the network files are lowered by {prog.lowering}: build runsc.pdp1_program()")
     try:
         runs.check(prog)
     except runs.RunsError as e:
@@ -4610,6 +4946,6 @@ def build(prog: runs.Program, out: Path = OUT) -> int:
 
 
 if __name__ == "__main__":
-    code = build(runs.program(runs.source()))
+    code = build(pdp1_program())
     print(build.said, end="")
     sys.exit(code)

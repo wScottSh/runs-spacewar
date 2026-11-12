@@ -32,6 +32,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import graph
+
 MASK = 0o777777
 SIGN = 0o400000
 
@@ -250,9 +252,13 @@ class Line:
 
 
 def lines(path: Path) -> list[Line]:
-    root = Line([], str(path))
+    return lines_of(path.read_text(), str(path))
+
+
+def lines_of(text: str, path: str) -> list[Line]:
+    root = Line([], path)
     stack = [(-1, root)]
-    for n, raw in enumerate(path.read_text().splitlines(), 1):
+    for n, raw in enumerate(text.splitlines(), 1):
         text = raw.split("#", 1)[0].rstrip()
         if not text.strip():
             continue
@@ -501,6 +507,8 @@ class Program:
     display: str | None = None                              # type insn: the stream dpy plots on
     templates: dict[str, Routine] = field(default_factory=dict)    # the routines with Ports, as written
     copies: dict[str, tuple[str, tuple]] = field(default_factory=dict)  # copy -> (template, its wiring)
+    graphs: dict[str, "graph.Graph"] = field(default_factory=dict)     # the network files, each lowered to a Network
+    lowering: str = "written_once"                          # the function that lowered them
 
     def member(self, name: str) -> str | None:
         return next((e for e, ms in self.enums.items() if name in ms), None)
@@ -765,50 +773,124 @@ def expand_ports(prog: Program) -> None:
 
 
 
-def load(paths: list[Path]) -> Program:
+COPIER = "copy"       # the Processor that copies a word; copy_<enum> copies a value of the enum
+
+
+def signatures(prog: Program) -> dict[str, "graph.Signature"]:
+    """What a transition can name: each Processor with inputs and outputs,
+    and each network file."""
+    sigs = {}
+    for r in prog.routines.values():
+        if r.ports:
+            s = graph.Signature([], [])
+            for p in r.ports.values():
+                if p.direction in ("in", "inout"):
+                    s.inputs.append(p.name)
+                if p.direction in ("out", "inout"):
+                    s.outputs.append(p.name)
+                if p.direction == "inout":
+                    s.inout.add(p.name)
+                s.types[p.name] = kind_text(p.type, p.count)
+            sigs[r.name] = s
+    for g in prog.graphs.values():
+        if g.name in sigs:
+            raise RunsError(f"{g.where}: {g.name} is a Processor and a network file")
+        sigs[g.name] = g.signature()
+    return sigs
+
+
+def written_once(prog: Program, g: "graph.Graph", sigs: dict, copier: dict[str, str]) -> str:
+    return graph.written_once(g, sigs, copier)
+
+
+def lower_graphs(prog: Program, lower) -> None:
+    """Each network file checked and lowered to a Network (graph.py). A
+    bundle's call Record holds exactly its inputs and outputs."""
+    sigs = signatures(prog)
+    fields = {n: {f: typ for f, (typ, _) in r.fields.items()} for n, r in prog.records.items()}
+    copier = {"word": COPIER, **{e: f"{COPIER}_{e}" for e in prog.enums}}
+    for g in prog.graphs.values():
+        try:
+            graph.check(g, sigs, fields)
+        except graph.GraphError as e:
+            raise RunsError(str(e)) from e
+        if g.ports:
+            want = {n: typ for n, (_, typ) in g.ports.items()}
+            if fields.get(g.call) != want:
+                raise RunsError(f"{g.where}: the Record {g.call} must hold {g.name}'s inputs and outputs, "
+                                f"{want}, and nothing else")
+    for g in prog.graphs.values():
+        try:
+            text = lower(prog, g, sigs, copier)
+        except graph.GraphError as e:
+            raise RunsError(str(e)) from e
+        for line in lines_of(text, f"{g.where}, lowered"):
+            declare(prog, line)
+
+
+def load(paths: list[Path], lower=written_once) -> Program:
+    """Every source file: Records, Processors and Networks (*.runs,
+    *.runs-prim), and network files (*.net), each lowered by `lower` to a
+    Network (runs.load's own: every place its own field)."""
     prog = Program()
+    for path in paths:
+        if path.suffix == ".net":
+            try:
+                g = graph.parse(path)
+            except graph.GraphError as e:
+                raise RunsError(str(e)) from e
+            if g.name in prog.graphs:
+                raise RunsError(f"{path}: {g.name} defined twice")
+            prog.graphs[g.name] = g
+    paths = [p for p in paths if p.suffix != ".net"]
     files = [lines(path) for path in paths]
     machine_types(prog, files)
-    for path, file in zip(paths, files):
+    for file in files:
         for line in file:
-            t, where = line.toks, line.where
-            side = None
-            if t[0] in SIDES and t[1:2] in (["record"], ["stream"]):
-                side, t = t[0], t[1:]
-            kind = t[0]
-            if kind == "type":
-                continue
-            if kind == "enum":
-                prog.enums[t[1]] = [c.toks[0] for c in line.children]
-            elif kind in ("record", "stream"):
-                count = as_count(int(t[3], 8) if t[3].startswith("0") else int(t[3])) if len(t) > 2 else None
-                fields = {c.toks[0]: (c.toks[2], initial(c, count)) for c in line.children}
-                prog.records[t[1]] = Record(t[1], count, fields, kind == "stream", side)
-            elif kind in ("processor", "network"):
-                r = Routine(kind, t[1], params_of(t), [])
-                body = []
-                headers = ("reads", "writes", "requires")
-                for c in line.children:
-                    if c.toks[0] in PORT_HEADERS and c.toks[2:3] == [":"]:
-                        port = port_of(c)
-                        if port.name in r.ports or port.name in r.owns:
-                            raise RunsError(f"{c.where}: {r.name} names {port.name} twice")
-                        (r.owns if port.direction == "owns" else r.ports)[port.name] = port
-                    elif c.toks[0] in headers and c.toks[1:2] == [":"]:
-                        if c.toks[0] == "requires":
-                            r.requires.append(whole(c.toks[2:], c.where))
-                        else:
-                            getattr(r, c.toks[0]).update(x for x in c.toks[2:] if x != ",")
-                    else:
-                        body.append(c)
-                r.body = block(body)
-                if r.name in prog.routines:
-                    raise RunsError(f"{where}: {r.name} defined twice")
-                prog.routines[r.name] = r
-            else:
-                raise RunsError(f"{where}: unknown declaration {kind!r}")
+            declare(prog, line)
+    lower_graphs(prog, lower)
+    prog.lowering = lower.__name__
     expand_ports(prog)
     return prog
+
+
+def declare(prog: Program, line: Line) -> None:
+    t, where = line.toks, line.where
+    side = None
+    if t[0] in SIDES and t[1:2] in (["record"], ["stream"]):
+        side, t = t[0], t[1:]
+    kind = t[0]
+    if kind == "type":
+        return
+    if kind == "enum":
+        prog.enums[t[1]] = [c.toks[0] for c in line.children]
+    elif kind in ("record", "stream"):
+        count = as_count(int(t[3], 8) if t[3].startswith("0") else int(t[3])) if len(t) > 2 else None
+        fields = {c.toks[0]: (c.toks[2], initial(c, count)) for c in line.children}
+        prog.records[t[1]] = Record(t[1], count, fields, kind == "stream", side)
+    elif kind in ("processor", "network"):
+        r = Routine(kind, t[1], params_of(t), [])
+        body = []
+        headers = ("reads", "writes", "requires")
+        for c in line.children:
+            if c.toks[0] in PORT_HEADERS and c.toks[2:3] == [":"]:
+                port = port_of(c)
+                if port.name in r.ports or port.name in r.owns:
+                    raise RunsError(f"{c.where}: {r.name} names {port.name} twice")
+                (r.owns if port.direction == "owns" else r.ports)[port.name] = port
+            elif c.toks[0] in headers and c.toks[1:2] == [":"]:
+                if c.toks[0] == "requires":
+                    r.requires.append(whole(c.toks[2:], c.where))
+                else:
+                    getattr(r, c.toks[0]).update(x for x in c.toks[2:] if x != ",")
+            else:
+                body.append(c)
+        r.body = block(body)
+        if r.name in prog.routines:
+            raise RunsError(f"{where}: {r.name} defined twice")
+        prog.routines[r.name] = r
+    else:
+        raise RunsError(f"{where}: unknown declaration {kind!r}")
 
 
 NETWORK_OPS = {"if", "for", "match", "run", "stop", "unreachable", "loop", "break", "wait"}
@@ -2179,5 +2261,15 @@ def check(prog: Program, sides: bool = True) -> Program:
     return prog
 
 
-def program(root: Path) -> Program:
-    return check(load(sorted(root.glob("*.runs")) + sorted(root.glob("*.runs-prim"))))
+SUFFIXES = (".runs", ".runs-prim", ".net")
+
+
+def source_files(root: Path) -> list[Path]:
+    """Every source file under root: Records, Processors, Networks and network
+    files; each kind in turn, root's own files before its directories'."""
+    found = [p for p in root.rglob("*") if p.suffix in SUFFIXES]
+    return sorted(found, key=lambda p: (SUFFIXES.index(p.suffix), p.parent != root, p))
+
+
+def program(root: Path, lower=written_once) -> Program:
+    return check(load(source_files(root), lower))

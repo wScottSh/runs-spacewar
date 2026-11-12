@@ -73,7 +73,7 @@ def main() -> int:
     rng = random.Random(1)
     words = a.words or [0, 0o777777, 0o252525, 0o525252, 0o011111, 0o707070] + \
         [rng.randrange(1 << 18) for _ in range(4)]
-    prog = runs.check(runs.load(sorted(a.runs.glob("*.runs")) + sorted(a.runs.glob("*.runs-prim"))))
+    prog = runs.check(runs.load(runs.source_files(a.runs)))
     failed = 0
     for w in words:
         if (diff := compare(prog, w, a.passes)) is not None:

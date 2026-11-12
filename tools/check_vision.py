@@ -51,7 +51,7 @@ COUNTS = ("in_place", "names_records", "control_flow", "mid_exit", "open_guards"
 
 
 def program(root: Path) -> tuple[runs.Program, list[Path]]:
-    paths = sorted(root.glob("*.runs")) + sorted(root.glob("*.runs-prim"))
+    paths = runs.source_files(root)
     return runs.check(runs.load(paths), sides=False), paths
 
 

@@ -34,7 +34,7 @@ MODES = {
 
 def unit_of(root: Path) -> dict[str, str]:
     out = {}
-    for path in sorted(root.glob("*.runs")) + sorted(root.glob("*.runs-prim")):
+    for path in runs.source_files(root):
         for m in re.finditer(r"^processor (\w+)", path.read_text(), re.M):
             out[m[1]] = path.stem
     return out
@@ -170,7 +170,7 @@ def leaf(st) -> tuple:
 
 def main() -> int:
     root = Path(sys.argv[1]) if len(sys.argv) > 1 else runs.source()
-    prog = runs.check(runs.load(sorted(root.glob("*.runs")) + sorted(root.glob("*.runs-prim"))), sides=False)
+    prog = runs.check(runs.load(runs.source_files(root)), sides=False)
     unit = unit_of(root)
     shown = runs.presentation_routines(prog)
     game = sorted(n for n, r in prog.routines.items() if r.kind == "processor" and n not in shown)

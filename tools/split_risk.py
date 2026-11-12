@@ -38,7 +38,7 @@ def defs(st):
     return d
 
 root = runs.source()
-prog = runs.check(runs.load(sorted(root.glob("*.runs")) + sorted(root.glob("*.runs-prim"))), sides=False)
+prog = runs.check(runs.load(runs.source_files(root)), sides=False)
 unit = unit_of(root)
 shown = runs.presentation_routines(prog)
 game = [n for n, r in prog.routines.items() if r.kind == "processor" and n not in shown]

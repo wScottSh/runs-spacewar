@@ -750,7 +750,7 @@ PROGRAM: list[runs.Program] = []
 
 def program() -> runs.Program:
     if not PROGRAM:
-        PROGRAM.append(runs.program(runs.source()))
+        PROGRAM.append(runsc.pdp1_program())
     return PROGRAM[0]
 
 
