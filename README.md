@@ -32,6 +32,6 @@ Then run the conversion's checks:
 tools/check_all.sh
 ```
 
-It prints `MATCH` when the image compiled from RUNS has the original's sha256, `8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf`, and then one line for each check.
+It prints `identical to the original` when the image compiled from RUNS has the original's sha256, `8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf`, and then one line for each check.
 
 The C lift has its own checks: the compiler's gate, its unit tests and the reference checks. `docs/c-lift/README.md` says how to run them.

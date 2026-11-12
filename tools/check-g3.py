@@ -103,7 +103,7 @@ def isolation() -> list[str]:
           f"{len(files) - len(problems)} identical")
     verdict = (build.stdout.strip().splitlines() or ["(no output)"])[-1]
     print(f"isolation: whole build in that tree: {verdict.strip()}")
-    if build.returncode != 0 or not verdict.endswith("MATCH"):
+    if build.returncode != 0 or not verdict.endswith("identical to the original"):
         problems.append("the build without source/ and build/ does not produce the oracle hash:\n"
                         + build.stdout + build.stderr)
     return problems

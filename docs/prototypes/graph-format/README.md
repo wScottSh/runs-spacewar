@@ -16,7 +16,7 @@ the same for all three. Only the network file differs:
 | reads poorly | one transition's wiring (scattered over arcs) | what touches a place (scattered over blocks) | the file itself: quotes, brackets, `label=` on every arc |
 | loader | `arcs/load.py`, 42 lines | `blocks/load.py`, 36 lines | `dot/load.py`, 50 lines |
 | Evaluator, 21453 SIMH cases | 21453 match | 21453 match | 21453 match |
-| image | MATCH `8744e9c9…` | MATCH | MATCH |
+| image | identical to the original (`8744e9c9…`) | identical | identical |
 
 The three loaders build the same graph: their output, with both generated sources,
 is the same byte for byte.
@@ -169,7 +169,7 @@ instructions in the image. `loop/unroll.py` writes multiply with the 17 steps as
 17 transitions of a one-`mus` Processor (`loop/multiply_step.runs-prim`), after a
 `clear`, in the arc-list format. The chain of values
 (`high_0 .. high_16`, `low_1 .. low_16`) derives the order. It needs no new syntax
-and builds MATCH, with 21453 of 21453 calls in both sources. The cost: the network
+and compiles to the original image, with 21453 of 21453 calls in both sources. The cost: the network
 file grows from 54 to 186 lines (18 transitions, 86 arcs), and a Record of 32 fields
 (`loop/multiply_steps_work.runs`) holds one value per step.
 

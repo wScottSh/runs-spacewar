@@ -166,7 +166,7 @@ Where play observes the layout, the RUNS source states the layout, and the decla
 
 A unit counts as converted when all of these pass:
 
-1. `uv run python tools/runsc.py` prints `MATCH`.
+1. `uv run python tools/runsc.py` prints `identical to the original`.
 2. `uv run python tools/check_compiled.py` passes.
 3. Each RUNS routine of the unit matches SIMH running the original, through the evaluator, over every input or a seeded random sample with the edge cases (`tools/check_*.py`).
 4. The checks of earlier units still pass (`tools/check_all.sh`).

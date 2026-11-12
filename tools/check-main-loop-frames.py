@@ -252,7 +252,7 @@ def build(work: Path) -> tuple[Image, list[tuple[str, int, int]], str]:
         spans.append((c.file.c.stem, line, line + n - 1))
         line += n
     sha = hashlib.sha256(rim.read_bytes()).hexdigest()
-    verdict = "MATCH" if status == 0 and sha == cfg["oracle_sha256"] else f"MISMATCH (rim {sha[:16]})"
+    verdict = "identical to the original" if status == 0 and sha == cfg["oracle_sha256"] else f"differs from the original (rim {sha[:16]})"
     return image(rim, lst), spans, verdict
 
 
@@ -528,7 +528,7 @@ def main() -> int:
     for note in sorted(notes):
         print(f"note: {note}")
     print(f"runtime: {time.time() - began:.1f}s")
-    return 1 if diffs or verdict != "MATCH" else 0
+    return 1 if diffs or verdict != "identical to the original" else 0
 
 
 if __name__ == "__main__":

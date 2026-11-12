@@ -84,7 +84,7 @@ routine = "inertia"` lays out both axes' copies. A called routine (`[[place]]`, 
 JSP) is one subroutine, so all its runs must share one wiring; more is a BindError that
 names the wirings. Minskytron's `keep` (six wirings, laid out inline) is the second
 PDP-1 program; `tools/check_ports_scratch.py` builds Spacewar with one
-`inertia` that has inputs and outputs and prints the original's `MATCH`.
+`inertia` that has inputs and outputs and compiles to the original image.
 
 ## The rules
 

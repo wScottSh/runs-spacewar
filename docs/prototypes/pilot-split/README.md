@@ -7,11 +7,11 @@ Networks share.
 
 | variant | split | Evaluator | image |
 |---|---|---|---|
-| `multiply_net` | `multiply` a Network: `magnitude` x2, `multiply_steps`, `copy` x2, `exclusive_or`, `negate_double`; owns `high`, `signs` | `check_multiply` 21453/21453 mpy and imp | MATCH |
-| `arith_net` | also `divide` a Network: `overflows`, `magnitude`, `copy` x6, `negate_double`, `subtract`, `divide_steps`, `remainder_bit`, `negate` x2, `exclusive_or`, `fits`; owns `high` | `check_divide` 27224/27224 dvd (13799 overflow, 13425 fit), 27227/27227 idv | MATCH |
-| `inertia_split`, `OWNED=1 DECL=drift` | `inertia` a Network: `sum`, `pass`, `drift`; owns `v` | | MATCH |
+| `multiply_net` | `multiply` a Network: `magnitude` x2, `multiply_steps`, `copy` x2, `exclusive_or`, `negate_double`; owns `high`, `signs` | `check_multiply` 21453/21453 mpy and imp | identical to the original |
+| `arith_net` | also `divide` a Network: `overflows`, `magnitude`, `copy` x6, `negate_double`, `subtract`, `divide_steps`, `remainder_bit`, `negate` x2, `exclusive_or`, `fits`; owns `high` | `check_divide` 27224/27224 dvd (13799 overflow, 13425 fit), 27227/27227 idv | identical to the original |
+| `inertia_split`, `OWNED=1 DECL=drift` | `inertia` a Network: `sum`, `pass`, `drift`; owns `v` | | identical to the original |
 | `sqrt_net` | `multiply_net`, and `square_root` a Network over a loop with `break` and nested `if`s, no `continue`: `square_root_start`, `increment` x2, `double`, `take_two_bits`, `copy` x2, `trial`, `negate`; owns `input_bits` (IO), `next` | not rerun on this source | differs at 00276: want 600255, got 600303 |
-| `sine_copies` | the series' moves as one `copy`, 6 wirings | | MATCH |
+| `sine_copies` | the series' moves as one `copy`, 6 wirings | | identical to the original |
 | `sine_atoms` | also the coefficients through one `add`, read from a constant Record | | refused: `sine_constants.c1 has no data word` |
 | `inertia_split`, `DECL=pieces` | `accumulate` + `drift`, no scratch: `drift` rereads the velocity | | 1 word longer a use (6 uses +6, 2 uses +2) |
 | `inertia_split`, `DECL=network` | the bundle itself declared `[[inline]]` | | lift C: `undeclared name 'acceleration'` |
@@ -30,7 +30,7 @@ the top of the routine (the first build declared `word next` three times, shadow
 and still built the image).
 
 Square root does not build the image today. A third change let a Network loop
-`continue`, as the original jumps back to `sq3` mid-body; that source built MATCH, and
+`continue`, as the original jumps back to `sq3` mid-body; that source compiled to the original image, and
 the change was reverted, because a bounded loop has no `break` or `continue`
 (`../../../../.github/CONTEXT.md` 344-347). `sqrt_net.txt` now nests the rest of the body under the opposite
 guards, with `if` only. It builds an image that differs at 00276 (want 600255, got

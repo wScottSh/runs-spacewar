@@ -16,7 +16,7 @@ This repo converts Spacewar! 3.1 into **pure** RUNS. The conversion is a reorgan
 
 Checks 1-4 exist to catch a change that breaks the image or the game; run them only when the commit changes something they read. `uv run -q python tools/gate_inputs.py` lists those changes: the RUNS source, the declarations, the sources, the oracle, and the tools `check_all.sh` reaches. Empty output (Markdown, `docs/`, a new report script nothing runs) means no check runs, and `check_all.sh` skips itself. A rule here that does nothing for its purpose in the case at hand is a defect to raise, not to follow. Every commit still gets its decisions row (5) and its push (6).
 
-1. `uv run -q python tools/runsc.py | tail -1` prints `MATCH` with sha256 `8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf`.
+1. `uv run -q python tools/runsc.py | tail -1` prints `identical to the original` with sha256 `8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf`.
 2. `tools/check_all.sh` passes. It prints each step's time and its own total; run it in the background and edit nothing under `runs/`, `pdp1/` or `tools/` while it runs.
 3. The purity report gains no line: `PYTHONPATH=tools uv run -q python tools/check_purity.py --against HEAD` exits 0. It allows a new line only where a Record just got its kind and revealed an impurity already there; the decisions row lists those.
 4. The PDP-1 declarations do not grow: `uv run -q python tools/check_declarations.py` exits 0. It counts entries, not lines: every scalar value and every list element of the TOML (`pdp1/DECLARATIONS`, below).
@@ -38,7 +38,7 @@ Purity is fixed. When a pure shape will not compile to the original image, the s
 1. Read the original for it: `source/spacewar3.1_complete.txt`, the lift in `lift/`, and the current RUNS.
 2. Name its data as Records, each with a kind, and its rules as Processors, each pure.
 3. Wire them into the Network. The Network as written today states them in the original's order (see Pure).
-4. Compile. On `MATCH`, run the checks of every commit. Otherwise try the next shape, then a general compiler rule, in the order above.
+4. Compile. When the image is identical to the original, run the checks of every commit. Otherwise try the next shape, then a general compiler rule, in the order above.
 5. Done when the interaction is pure, the image matches, `check_all.sh` passes, and the purity count fell.
 
 ## Evidence

@@ -184,9 +184,9 @@ def build(toml_path: Path) -> int:
     done, total = lifted_coverage(lst)
     print(f"  lifted coverage: {done}/{total} words ({100 * done / total:.1f}%) from compiled C")
     if got == want:
-        print(f"  rim {got}  MATCH")
+        print(f"  rim {got}  identical to the original")
         return 0
-    print(f"  rim {got}  MISMATCH (want {want})")
+    print(f"  rim {got}  differs from the original (want {want})")
     want_lst = root / cfg["oracle_listing"]
     if want_lst.exists():
         print("\n".join("  " + line for line in diagnose(lst, want_lst)))
