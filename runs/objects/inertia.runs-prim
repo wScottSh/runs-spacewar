@@ -1,8 +1,9 @@
 # The `diff` macro, inertia: the acceleration joins the velocity, and an
 # eighth of the velocity the position. The original passes the axis as the
-# macro's arguments; here each axis is its own Processor. The new position
-# is left in AC, where the torpedo takes it up.
-processor inertia_x                                         # diff \mdx, mx1, (sar 3s
+# macro's arguments (diff \mdx, mx1 or diff \mdy, my1); here each run wires
+# one axis. The new position is also given apart, as the original leaves
+# it in AC, where the torpedo takes it up.
+processor inertia                                           # diff \mdx, mx1, (sar 3s
   in acceleration: word
   inout velocity: word
   inout place: word

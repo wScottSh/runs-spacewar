@@ -63,7 +63,7 @@ network accelerate(slot)                                    # bsg
     direction: handoff.thrust_direction
     thrust: handoff.thrust
   run push_y
-  run inertia_y                                       # diff \mdy, my1, (sar 3s
+  run inertia                                       # diff \mdy, my1, (sar 3s
     acceleration: handoff.acceleration
     velocity: objects.dy[slot]
     place: objects.y[slot]
@@ -73,7 +73,7 @@ network accelerate(slot)                                    # bsg
     direction: handoff.thrust_direction
     thrust: handoff.thrust
   run push_x
-  run inertia_x                                       # diff \mdx, mx1, (sar 3s
+  run inertia                                       # diff \mdx, mx1, (sar 3s
     acceleration: handoff.acceleration
     velocity: objects.dx[slot]
     place: objects.x[slot]

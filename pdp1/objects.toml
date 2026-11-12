@@ -25,11 +25,7 @@ torpedo = { literal = true }
 display = "dpy"
 
 [[inline]]
-routine = "inertia_x"
-shifts = "xct"
-
-[[inline]]
-routine = "inertia_y"
+routine = "inertia"
 shifts = "xct"
 
 [[place]]

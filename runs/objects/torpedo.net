@@ -21,10 +21,10 @@ transitions
   explode: explode_torpedo
   warp_x: warp_from_x                                       # tc1
   warpage_y: torpedo_space_warpage
-  move_y: inertia_y
+  move_y: inertia
   warp_y: warp_from_y
   warpage_x: torpedo_space_warpage
-  move_x: inertia_x
+  move_x: inertia
   show: plot_torpedo(slot)
   give_counter: copy
   give_x: copy
