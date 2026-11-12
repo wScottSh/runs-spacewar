@@ -195,6 +195,12 @@ presentation record central_star
   slope_x: word = 0         # bx
   slope_y: word = 0         # by
 
+# Whether a loop of a fixed count is still at work. Once done, the passes
+# left do nothing: that is how a loop leaves early on a value it computes.
+enum progress
+  going
+  done
+
 # Which half of the central star's line is drawn (program flag 6).
 enum half
   first

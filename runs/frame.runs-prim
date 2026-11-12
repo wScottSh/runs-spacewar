@@ -69,10 +69,10 @@ processor charge_time(slot)                                 # mq4
 # and nothing in the game reads it after, so its effects are presentation.
 processor spare_time
   writes: pacing
-  loop at most 0400001:
-    set pacing.spare_time = pacing.spare_time + 1
-    if pacing.spare_time >= 0:
-      break
+  set pacing.spare_time = pacing.spare_time + 1
+  if pacing.spare_time < 0:
+    for pass in 1 .. -pacing.spare_time:
+      set pacing.spare_time = pacing.spare_time + 1
 
 # The survivors score: a ship whose routine word is still its own calc
 # routine survived. Program flags 1 and 2 light for the survivors, but flag

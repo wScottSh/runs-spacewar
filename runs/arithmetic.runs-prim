@@ -3,8 +3,8 @@
 
 # BBN integer square root (sqt), over its own words. Binary point right of
 # bit 17 in square_root_call.entry, between bits 8 and 9 in .root. Two bits
-# of input per pass, 18 passes: passes_left counts up from -022 to 0, and
-# each pass runs while it is below 0.
+# of input per pass, 18 passes: passes_left counts up from -022 to 0, one
+# pass a count.
 processor square_root                                       # sqt
   writes: square_root_call
   set square_root_call.passes_left = -023
@@ -12,8 +12,8 @@ processor square_root                                       # sqt
   let input_bits = square_root_call.entry
   set square_root_call.entry = 0
   set square_root_call.passes_left = square_root_call.passes_left + 1
-  for pass in 1 .. 022:
-    if square_root_call.passes_left < 0:
+  if square_root_call.passes_left < 0:
+    for pass in 1 .. -square_root_call.passes_left:
       set square_root_call.root = square_root_call.root << 1
       let next = square_root_call.entry
       set (next, input_bits) = rcl(next, input_bits, 2)
@@ -38,20 +38,25 @@ processor sine_reduce                                       # sin .. si3, mult (
   let a = sine_call.angle
   if a < 0:
     set a = a + 0311040                                     # si1
-  loop at most 2:                                           # two passes reduce every word (all 2^18 run)
-    set a = a - 062210
-    if a < 0:
-      set a = a + 062210
-      break
-    set a = -a + 062210                                     # si2: fold past pi/2 back
-    if a >= 0:
-      break
-    set a = a + 062210
-    if a >= 0:
+  let reducing = going
+  for pass in 1 .. 2:                                       # two passes reduce every word (all 2^18 run)
+    if reducing == going:
       set a = a - 062210
-      break
-    set a = a - 062210
-    set a = a + 0311040                                     # jmp si1
+      if a < 0:
+        set a = a + 062210
+        set reducing = done
+    if reducing == going:
+      set a = -a + 062210                                   # si2: fold past pi/2 back
+      if a >= 0:
+        set reducing = done
+    if reducing == going:
+      set a = a + 062210
+      if a >= 0:
+        set a = a - 062210
+        set reducing = done
+    if reducing == going:
+      set a = a - 062210
+      set a = a + 0311040                                   # jmp si1
   set multiply_call.entry = ral(a, 2)                       # si3
   set multiply_call.factor = 0242763                        # 2/pi
 

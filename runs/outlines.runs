@@ -17,30 +17,31 @@ network compile_outline                                     # jda oc, the outlin
   run start_at_nose                                         # ock: the pen starts at the nose
   run store_first                                           # clf 6: the first 6 code stores
   run take_word                                             # ocj
-  loop at most 0140:                                        # och: each code, from the left
-    run take_code
-    if outline_reading.direction == 7:                              # the end
-      run end_outline
-      break
-    elif outline_reading.direction == 0 or outline_reading.direction == 1:  # oc1: down
-      run step_down
-    elif outline_reading.direction == 2:                            # oc2: out
-      run step_out
-    elif outline_reading.direction == 3:                            # oc3: out and down
-      run step_out_down
-    elif outline_reading.direction == 4:                            # oc4: in
-      run step_in
-    elif outline_reading.direction == 5:                            # oc5: in and down
-      run step_in_down
-    elif outline_reading.direction == 6:                            # oc6: store, then restore
-      if outline_compiler.six == store:                     # szf 6
-        run six_stored
-        run store_position
-      else:
-        run six_restored                                    # oc9
-        run restore_position
-    run take_rest                                           # lio \oci
-    run count_code                                          # count \occ, och
-    if outline_compiler.codes_left >= 0:
-      run next_word                                         # idx ocg
-      run take_word                                         # jmp ocj
+  for code in 1 .. 0140:                                    # och: each code, from the left, until the end
+    if code == 1 or outline_reading.direction != 7:         # the passes after the end do nothing
+      run take_code
+      if outline_reading.direction == 7:                              # the end
+        run end_outline
+      elif outline_reading.direction == 0 or outline_reading.direction == 1:  # oc1: down
+        run step_down
+      elif outline_reading.direction == 2:                            # oc2: out
+        run step_out
+      elif outline_reading.direction == 3:                            # oc3: out and down
+        run step_out_down
+      elif outline_reading.direction == 4:                            # oc4: in
+        run step_in
+      elif outline_reading.direction == 5:                            # oc5: in and down
+        run step_in_down
+      elif outline_reading.direction == 6:                            # oc6: store, then restore
+        if outline_compiler.six == store:                     # szf 6
+          run six_stored
+          run store_position
+        else:
+          run six_restored                                    # oc9
+          run restore_position
+      if outline_reading.direction != 7:
+        run take_rest                                           # lio \oci
+        run count_code                                          # count \occ, och
+        if outline_compiler.codes_left >= 0:
+          run next_word                                         # idx ocg
+          run take_word                                         # jmp ocj

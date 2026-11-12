@@ -124,7 +124,7 @@ processor head_out(slot)
   set objects.dx[slot] = handoff.jump_low
   let angle_steps = -3
   set ship_flight.angle[slot] = random.number
-  loop at most 3:                   # bring the new heading within a turn
+  for pass in 1 .. -angle_steps:    # bring the new heading within a turn
     let heading = ship_flight.angle[slot]
     if heading >= 0:
       set heading = heading - 0311040
@@ -132,8 +132,6 @@ processor head_out(slot)
       set heading = heading + 0311040
     set ship_flight.angle[slot] = heading
     set angle_steps = angle_steps + 1
-    if angle_steps >= 0:
-      break
 
 processor time_breakout(slot)                               # dac i ma1
   reads: handoff

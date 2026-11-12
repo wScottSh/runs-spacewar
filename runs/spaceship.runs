@@ -111,16 +111,15 @@ network after_outline(slot)                                 # sq6
 network exhaust(slot)                                       # sq6
   run light_flame                                           # ranct sar 9s, sar 4s, \src
   if handoff.rocket_button < 0:                             # spi i: blasting
-    loop at most 040:                                       # sq7
-      run aim_flame
-      run burn_fuel(slot)
-      if ship_flight.fuel[slot] >= 0:                             # out of fuel
-        run empty_tank(slot)
-        break
-      run plot_flame
-      run count_flame
-      if spaceship.flame >= 0:
-        break
+    for dot in 1 .. 017:                                    # sq7: light_flame lights at most 15 dots
+      if dot == 1 or spaceship.flame < 0 and ship_flight.fuel[slot] < 0:
+        run aim_flame
+        run burn_fuel(slot)
+        if ship_flight.fuel[slot] >= 0:                     # out of fuel
+          run empty_tank(slot)
+        else:
+          run plot_flame
+          run count_flame                                   # count \src, sq7
 
 # A new torpedo takes the first free slot of the object table. When there
 # is none, the machine halts, and it halts again each time it is continued.

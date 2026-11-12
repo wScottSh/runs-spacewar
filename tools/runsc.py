@@ -22,9 +22,10 @@ import io
 import re
 import sys
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+import folds
 import runs
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -214,43 +215,28 @@ def sets_place(stmts: list, place, prog: runs.Program) -> bool:
                for s in walk(stmts))
 
 
-def counted_exits(stmts: list, prog: runs.Program, requires: list = ()) -> list:
-    """A step of a place f by one, then a counted loop of n passes whose
-    body is `if f < 0:` around the rest and a last step of f: once f
-    reaches 0 every pass after does nothing. That is the index-and-skip
-    loop on f (isp), left when f reaches 0, when n passes are enough: f
-    was last set to -m before the step, or the routine requires f + m >= 0 and
-    sets f only in the step, with m - 1 <= n; or n covers every negative
-    word. requires: the routine's, when stmts are its whole body."""
-    out: list = []
-    for s in stmts:
-        if s[0] == "if":
-            s = ("if", [(c, counted_exits(b, prog)) for c, b in s[1]], counted_exits(s[2], prog), s[3])
-        elif s[0] in ("loop", "for"):
-            s = (*s[:-2], counted_exits(s[-2], prog), s[-1])
-        step = out[-1] if out else None
-        f = step[1] if step and step[0] == "set" and step[2] == ("bin", "+", step[1], ("num", 1)) else None
-        if f and s[0] == "for" and s[2][0] == "num" and s[3][0] == "num" and len(s[4]) == 1 \
-                and not runs.mentions(s[4], {s[1]}):
-            n, (guard,), where = s[3][1] - s[2][1] + 1, s[4], s[-1]
-            if s[3][1] > 0o377777:
-                raise BindError(f"{where}: a counted loop's bounds are counts, at most 0377777")
-            arm = guard[1][0][1] if guard[0] == "if" and len(guard[1]) == 1 and not guard[2] \
-                and guard[1][0][0] == ("bin", "<", f, ("num", 0)) else []
-            rest = arm[:-1]
-            at = next((k for k in range(len(out) - 2, -1, -1) if sets_place([out[k]], f, prog)), None)
-            init = out[at] if at is not None and out[at][0] == "set" and out[at][1] == f else None
-            floor = [("neg", c[2][3]) for c in requires
-                     if c[:2] == ("bin", ">=") and c[3] == ("num", 0) and c[2][:3] == ("bin", "+", f)]
-            least = init[2] if init else floor[0] if floor and at is None else None
-            m = least[1][1] if least and least[0] == "neg" and least[1][0] == "num" else None
-            if arm and arm[-1] == step[:3] + arm[-1][3:] and not sets_place(rest, f, prog) \
-                    and (m is not None and m - 1 <= n or n >= 0o377777):
-                leave = ("if", [(("bin", ">=", f, ("num", 0)), [("break", where)])], [], where)
-                out[-1] = ("loop", ("num", n), [step, leave, *trailing_continues(rest)], where)
-                continue
-        out.append(s)
-    return out
+def lowered(prog: runs.Program, r: runs.Routine) -> list:
+    """A routine's body with its folds laid out as loops (folds.lower), its
+    members named as the parser names them."""
+    def bare_member(x):
+        if isinstance(x, tuple) and len(x) == 3 and x[0] == "member":
+            return ("name", x[2])
+        if isinstance(x, list):
+            return [bare_member(y) for y in x]
+        return tuple(bare_member(y) for y in x) if isinstance(x, tuple) else x
+    try:
+        own = routine_locals(r)
+        members = {m for ms in prog.enums.values() for m in ms} - own
+
+        def marked(x):
+            if isinstance(x, tuple) and len(x) == 2 and x[0] == "name" and x[1] in members:
+                return ("member", "", x[1])
+            if isinstance(x, list):
+                return [marked(y) for y in x]
+            return tuple(marked(y) for y in x) if isinstance(x, tuple) else x
+        return bare_member(folds.lower(marked(list(r.body)), prog))
+    except folds.FoldError as e:
+        raise BindError(str(e)) from None
 
 
 def trailing_continues(stmts: list) -> list:
@@ -386,6 +372,7 @@ class Walk:
     @staticmethod
     def of(prog: runs.Program, r: runs.Routine, held: set[str]) -> "Walk":
         where = r.body[0][-1] if r.body else r.name
+        r = replace(r, body=lowered(prog, r))
         shape = (f"{where}: {r.name} walks a collection held as code: `let at = <slot>`, then a loop of "
                  f"`let m = L.f[at]`, an if-chain on `m == <member>`, and `set at = at + 1`")
         if len(r.body) != 2 or r.body[0][0] != "let" or r.body[0][1][0] != "name" or r.body[1][0] != "loop":
@@ -1738,7 +1725,10 @@ class Unit:
         names = names or {}
         local_names = routine_locals(r)
         body = typed(self.prog, constant_slots(self.prog, substitute(list(r.body), names)), local_names, r.name)
-        body = counted_exits(body, self.prog, r.requires)
+        try:
+            body = folds.lower(body, self.prog)
+        except folds.FoldError as e:
+            raise BindError(str(e)) from None
         if r.kind == "processor":
             if (cleared := self.clears_table(r.name, body)) is not None:
                 return [cleared]

@@ -194,71 +194,74 @@ processor draw_outline(slot)                                # sp5, jmp .
   reads: ship_outlines, outline_code
   writes: pen, outline_point, display
   let at = ship_outlines.outline[slot]
-  loop at most 0304:
-    let stroke = outline_code.stroke[at]
-    if stroke == begin:
-      set pen.side = first                                  # stf 5
-    elif stroke == nose:
-      set outline_point.x = pen.x                             # lac \sx1
-      set outline_point.y = pen.y                             # lio \sy1
-    elif stroke == down:
-      set outline_point.x = outline_point.x + pen.down_x
-      set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)   # swap: only AC adds
-      set outline_point.x = outline_point.x - pen.down_y
-      set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)
-      emit display: outline_point.x, outline_point.y, 0
-    elif stroke == out:
-      set outline_point.x = outline_point.x + pen.out_x
-      set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)   # swap: only AC adds
-      set outline_point.x = outline_point.x + pen.out_y
-      set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)
-      emit display: outline_point.x, outline_point.y, 0
-    elif stroke == out_down:
-      set outline_point.x = outline_point.x + pen.out_down_x
-      set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)   # swap: only AC adds
-      set outline_point.x = outline_point.x - pen.out_down_y
-      set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)
-      emit display: outline_point.x, outline_point.y, 0
-    elif stroke == in:
-      set outline_point.x = outline_point.x - pen.out_x
-      set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)   # swap: only AC adds
-      set outline_point.x = outline_point.x - pen.out_y
-      set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)
-      emit display: outline_point.x, outline_point.y, 0
-    elif stroke == in_down:
-      set outline_point.x = outline_point.x + pen.in_down_x
-      set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)   # swap: only AC adds
-      set outline_point.x = outline_point.x - pen.in_down_y
-      set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)
-      emit display: outline_point.x, outline_point.y, 0
-    elif stroke == store:
-      set pen.saved_x = outline_point.x
-      set pen.saved_y = outline_point.y
-    elif stroke == restore:
-      set outline_point.x = pen.saved_x
-      set outline_point.y = pen.saved_y
-    elif stroke == end:
-      if pen.side == other:                                 # szf 5
-        set pen.x = outline_point.x                           # the tail, where the flame starts
-        set pen.y = outline_point.y
-        break                                               # jmp sq6
-      set pen.side = other                                  # clf 5: the other side
-      # The point is spent: AC and IO carry the mirror's words.
-      set outline_point.x = -pen.out_x                        # out is in
-      set pen.out_x = outline_point.x
-      set outline_point.x = -pen.out_y
-      set pen.out_y = outline_point.x
-      set outline_point.x = pen.out_down_y                    # out and down is in and down
-      set outline_point.y = pen.in_down_y
-      set pen.in_down_y = outline_point.x
-      set pen.out_down_y = outline_point.y
-      set outline_point.x = pen.out_down_x
-      set outline_point.y = pen.in_down_x
-      set pen.in_down_x = outline_point.x
-      set pen.out_down_x = outline_point.y
-      set at = outline_code.back[at]                        # the nose again
-      continue
-    set at = at + 1
+  let drawing = going
+  for stroke_count in 1 .. 0304:
+    if drawing == going:
+      let stroke = outline_code.stroke[at]
+      if stroke == begin:
+        set pen.side = first                                  # stf 5
+      elif stroke == nose:
+        set outline_point.x = pen.x                             # lac \sx1
+        set outline_point.y = pen.y                             # lio \sy1
+      elif stroke == down:
+        set outline_point.x = outline_point.x + pen.down_x
+        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)   # swap: only AC adds
+        set outline_point.x = outline_point.x - pen.down_y
+        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)
+        emit display: outline_point.x, outline_point.y, 0
+      elif stroke == out:
+        set outline_point.x = outline_point.x + pen.out_x
+        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)   # swap: only AC adds
+        set outline_point.x = outline_point.x + pen.out_y
+        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)
+        emit display: outline_point.x, outline_point.y, 0
+      elif stroke == out_down:
+        set outline_point.x = outline_point.x + pen.out_down_x
+        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)   # swap: only AC adds
+        set outline_point.x = outline_point.x - pen.out_down_y
+        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)
+        emit display: outline_point.x, outline_point.y, 0
+      elif stroke == in:
+        set outline_point.x = outline_point.x - pen.out_x
+        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)   # swap: only AC adds
+        set outline_point.x = outline_point.x - pen.out_y
+        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)
+        emit display: outline_point.x, outline_point.y, 0
+      elif stroke == in_down:
+        set outline_point.x = outline_point.x + pen.in_down_x
+        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)   # swap: only AC adds
+        set outline_point.x = outline_point.x - pen.in_down_y
+        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)
+        emit display: outline_point.x, outline_point.y, 0
+      elif stroke == store:
+        set pen.saved_x = outline_point.x
+        set pen.saved_y = outline_point.y
+      elif stroke == restore:
+        set outline_point.x = pen.saved_x
+        set outline_point.y = pen.saved_y
+      elif stroke == end:
+        if pen.side == other:                                 # szf 5
+          set pen.x = outline_point.x                           # the tail, where the flame starts
+          set pen.y = outline_point.y
+          set drawing = done                                # jmp sq6
+        if drawing == going:
+          set pen.side = other                                  # clf 5: the other side
+          # The point is spent: AC and IO carry the mirror's words.
+          set outline_point.x = -pen.out_x                        # out is in
+          set pen.out_x = outline_point.x
+          set outline_point.x = -pen.out_y
+          set pen.out_y = outline_point.x
+          set outline_point.x = pen.out_down_y                    # out and down is in and down
+          set outline_point.y = pen.in_down_y
+          set pen.in_down_y = outline_point.x
+          set pen.out_down_y = outline_point.y
+          set outline_point.x = pen.out_down_x
+          set outline_point.y = pen.in_down_x
+          set pen.in_down_x = outline_point.x
+          set pen.out_down_x = outline_point.y
+          set at = outline_code.back[at]                        # the nose again
+      if stroke != end:
+        set at = at + 1
 
 # The exhaust flame (network exhaust). How many dots, whether the rocket
 # fires, and the fuel each dot burns are the game's; the dots are the
@@ -401,8 +404,8 @@ processor spaceship_in_star(slot)                           # pof
     set objects.y[slot] = corner
     set spaceship.star_wait = objects.cycles[slot]
     set spaceship.star_wait = spaceship.star_wait + 1       # count \ssn, .
-    for pass in 1 .. 0377777:
-      if spaceship.star_wait < 0:
+    if spaceship.star_wait < 0:
+      for pass in 1 .. -spaceship.star_wait:
         set spaceship.star_wait = spaceship.star_wait + 1
     return
   set objects.routine[slot] = explosion                     # po1
