@@ -1,6 +1,4 @@
-# The `random` macro as a Processor with inputs and outputs: the
-# generator's next value. next_random is the same step on the Record, for
-# its callers that are not network files yet.
+# The `random` macro: the generator's next value.
 processor random_step
   inout number: word
   set number = (rar(number, 1) ^ 0355670) + 0355670

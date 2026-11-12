@@ -82,7 +82,8 @@ network accelerate(slot)                                    # bsg
 
 # The exhaust flame, the torpedo tube and the hyperfield generators.
 network after_outline(slot)                                 # sq6
-  run next_random                                           # ranct
+  run random_step                                           # ranct
+    number: random.number
   run exhaust(slot)
   run count_down                                      # count i ma1, sr5: the tube reloads
     counter: objects.counter[slot]

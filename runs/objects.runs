@@ -23,16 +23,20 @@ network explosion(slot)                                     # mex
   run spread_particles
   run size_explosion(slot)
   run widen_spread
-  run next_random                                           # mz1
+  run random_step                                           # mz1
+    number: random.number
   run scatter_particle                                      # dac mi1
-  run next_random
+  run random_step
+    number: random.number
   run plot_particle(slot)
   run count_particle                                        # count \mxc, mz1
   if explosion_count.particles < 0:                         # one dot a count
     for dot in 1 .. -explosion_count.particles:
-      run next_random
+      run random_step
+        number: random.number
       run scatter_particle
-      run next_random
+      run random_step
+        number: random.number
       run plot_particle(slot)
       run count_particle
   run count_down                                      # count i ma1, mxr

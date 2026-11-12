@@ -13,7 +13,8 @@
 # off, and with it the draws.
 network central_star                                        # blp
   if console.no_star == off:                                # szs 60
-    run next_random
+    run random_step
+      number: random.number
     run star_slope                                          # bx, by
       number: random.number
       slope_x: central_star.slope_x
@@ -21,7 +22,8 @@ network central_star                                        # blp
     run star_line                                           # jsp bpt
 
 network star_line                                           # bpt
-  run next_random
+  run random_step
+    number: random.number
   run draw_star
 
 # The Expensive Planetarium (bck), the `background` macro: the stars of the
