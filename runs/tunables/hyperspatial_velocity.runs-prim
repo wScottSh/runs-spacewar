@@ -1,0 +1,6 @@
+# A tunable the original keeps as an instruction and executes with xct,
+# so an operator could patch the rule, not just the number.
+processor hyperspatial_velocity                             # hr2: scale on the hyperspatially induced velocity
+  inout high: word
+  inout low: word
+  set (high, low) = scl(high, low, 4)

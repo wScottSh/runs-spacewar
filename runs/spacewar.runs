@@ -248,7 +248,6 @@ game record handoff
   thrust_direction: word = 0    # AC into sac: the sine or cosine of the heading, sar 9s
   thrust: word = 0              # AC out of sac
   torpedo_supply: word = 0  # AC out of tno
-  torpedo_life: word = 0    # AC out of tlf
   hyperspace_shots: word = 0    # AC out of mhs
   control_word: word = 0    # IO out of the control word routine (jsp i \cwg)
   capture_margin: word = 0  # AC: a ship's squared distance from the star, less the capture radius

@@ -1,0 +1,5 @@
+# A tunable the original keeps as an instruction and executes with xct,
+# so an operator could patch the rule, not just the number.
+processor time_before_breakout                              # hd1: time in hyperspace before breakout
+  out time: word
+  set time = -040

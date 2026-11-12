@@ -4897,12 +4897,13 @@ class Storage:
                 writers[a.place] = writers.get(a.place, 0) + 1
         bundle_word: dict[str, str] = {}
         for t, proc in sorted(g.transitions.items()):
-            if sigs[proc].bundle and declaration(proc):
+            if declaration(proc) and (sigs[proc].bundle or f"{proc}_call" in prog.records):
                 for n, ps in ends[t].items():
                     for p in ps:
                         if sigs[proc].types[n] not in g.wholes:     # a whole Record lives in its own words
                             bundle_word.setdefault(p, f"{proc}_call.{n}")
-                continue
+                if sigs[proc].bundle:
+                    continue
             for n in sigs[proc].inout:
                 share(*ends[t][n])
         called: dict[str, list[str]] = {}

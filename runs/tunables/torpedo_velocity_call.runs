@@ -1,0 +1,4 @@
+# The torpedo velocity's call: what it takes and gives, wherever it is run.
+game record torpedo_velocity_call
+  direction: word = 0
+  velocity: word = 0

@@ -50,7 +50,7 @@ arcs
   place.y -> set.y
   cleared_flight.angle -> place.angle
   place.angle -> set_flight.angle
-  supply -> handoff.torpedo_supply
+  supply.supply -> handoff.torpedo_supply
   handoff.torpedo_supply -> arm.supply
   tunables.fuel_supply -> arm.fuel_supply
   cleared_flight.torpedoes -> arm.torpedoes
@@ -59,7 +59,7 @@ arcs
   arm.fuel -> set_flight.fuel
   cleared.cycles -> arm.cycles
   arm.cycles -> set.cycles
-  shots -> handoff.hyperspace_shots
+  shots.shots -> handoff.hyperspace_shots
   handoff.hyperspace_shots -> give.shots
   cleared_ships.jumps_left -> give.jumps
   give.jumps -> set_ships.jumps_left

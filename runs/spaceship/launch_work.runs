@@ -6,3 +6,4 @@ game record launch_work
   velocity_x: word = 0      # the torpedo's own velocity, along the heading's sine
   velocity_y: word = 0      # and its cosine
   reload: word = 0          # the tube's reload time
+  life: word = 0            # the torpedo's life

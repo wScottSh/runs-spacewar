@@ -16,7 +16,7 @@ places
   launch_work.velocity_x
   launch_work.velocity_y
   launch_work.reload
-  handoff.torpedo_life
+  launch_work.life
   spaceship.torpedo_x
   spaceship.torpedo_y
   heading.sine
@@ -76,8 +76,8 @@ arcs
   launch_work.reload -> cool.time
   climbed[slot].counter -> cool.counter
   cool.counter -> cooled[slot].counter
-  life -> handoff.torpedo_life
-  handoff.torpedo_life -> arm.life
+  life.life -> launch_work.life
+  launch_work.life -> arm.life
   launch.slot -> arm.at
   cooled.counter -> arm.counters
   arm.counters -> table.counter

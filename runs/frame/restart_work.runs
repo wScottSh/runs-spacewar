@@ -3,3 +3,4 @@ game record restart_work
   second_routine: calc_routine = none   # the second ship's routine word, tested once the first flies
   first_left: word = 0      # 1 + the first ship's torpedo count: below 0 while it has one
   second_left: word = 0     # the same for the second ship
+  life: word = 0            # a torpedo's life, which the restart delay holds twice over

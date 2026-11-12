@@ -13,7 +13,7 @@ network hold_restart_for_torpedoes                          # md1
   inout points: display
 
 places
-  handoff.torpedo_life
+  restart_work.life
   held: frame
 
 transitions
@@ -22,8 +22,8 @@ transitions
   loop: object_loop                                         # jmp ml1
 
 arcs
-  life -> handoff.torpedo_life
-  handoff.torpedo_life -> hold.life
+  life.life -> restart_work.life
+  restart_work.life -> hold.life
   hold.delay -> held.restart_delay
   held -> loop.clock
   loop.clock -> clock

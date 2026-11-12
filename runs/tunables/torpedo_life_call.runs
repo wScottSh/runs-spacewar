@@ -1,0 +1,3 @@
+# The torpedo life's call: the value it gives, wherever it is run.
+game record torpedo_life_call
+  life: word = 0

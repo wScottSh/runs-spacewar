@@ -1,0 +1,5 @@
+# A tunable the original keeps as an instruction and executes with xct,
+# so an operator could patch the rule, not just the number.
+processor torpedo_life                                      # tlf
+  out life: word
+  set life = -0140

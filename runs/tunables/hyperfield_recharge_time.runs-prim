@@ -1,0 +1,5 @@
+# A tunable the original keeps as an instruction and executes with xct,
+# so an operator could patch the rule, not just the number.
+processor hyperfield_recharge_time                          # hd3: time to recharge the hyperfield generators
+  out time: word
+  set time = -0200

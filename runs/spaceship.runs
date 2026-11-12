@@ -60,6 +60,8 @@ network accelerate(slot)                                    # bsg
   run cosine                                                # jda cos
   run aim_thrust_y
   run spaceship_acceleration                                # xct sac
+    direction: handoff.thrust_direction
+    thrust: handoff.thrust
   run push_y
   run inertia_y                                       # diff \mdy, my1, (sar 3s
     acceleration: handoff.acceleration
@@ -68,6 +70,8 @@ network accelerate(slot)                                    # bsg
     position: handoff.position
   run aim_thrust_x
   run spaceship_acceleration
+    direction: handoff.thrust_direction
+    thrust: handoff.thrust
   run push_x
   run inertia_x                                       # diff \mdx, mx1, (sar 3s
     acceleration: handoff.acceleration
