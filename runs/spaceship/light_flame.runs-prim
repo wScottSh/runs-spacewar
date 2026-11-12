@@ -1,0 +1,13 @@
+# The flame: a random number of dots, 0 to 15, counting up; and the
+# control word turned so the rocket button is its sign.
+processor light_flame                                       # sq6: ranct sar 9s, sar 4s, \src
+  in number: word
+  in buttons: word
+  out flame: word
+  out rocket: word
+  let dots = number >> 13
+  if dots >= 0:
+    set dots = -dots
+  set flame = dots
+  set rocket = buttons                                     # lio \scw
+  set rocket = ral(rocket, 2)

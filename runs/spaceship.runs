@@ -106,14 +106,6 @@ network after_outline(slot)                                 # sq6
         run time_before_breakout                            # xct hd1
         run time_hyperspace(slot)
 
-# The exhaust flame: while the rocket fires, a random number of dots behind
-# the tail, each burning a unit of fuel until the tank is empty. The count
-# and the fuel are the game; the dots are presentation.
-network exhaust(slot)                                       # sq6
-  run light_flame                                           # ranct sar 9s, sar 4s, \src
-  if handoff.rocket_button < 0:                             # spi i: blasting
-    run flame(slot)                                         # sq7
-
 # A new torpedo takes the first free slot of the object table. When there
 # is none, the machine halts, and it halts again each time it is continued.
 network launch_torpedo(slot)                                # st1

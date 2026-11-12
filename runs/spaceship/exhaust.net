@@ -1,0 +1,30 @@
+# The exhaust flame (sq6), a bundle: a random number of dots, and whether
+# the rocket fires. While it fires, the flame is drawn behind the tail,
+# each dot burning a unit of fuel; otherwise the fuel stays.
+
+network exhaust(slot)
+  in seed: random
+  inout fleet: ship_flight
+
+places
+  spaceship.controls
+  spaceship.flame
+  exhaust_work.rocket
+
+transitions
+  light: light_flame                                        # ranct sar 9s, sar 4s, \src; lio \scw; ril 2s
+  burn: flame(slot)                                         # sq7
+  keep_fuel: copy
+
+arcs
+  seed.number -> light.number
+  spaceship.controls -> light.buttons
+  light.flame -> spaceship.flame
+  light.rocket -> exhaust_work.rocket
+  exhaust_work.rocket -> burn when < 0                      # spi i: blasting
+  spaceship.flame -> burn
+  fleet -> burn.fleet
+  burn.fleet -> fleet
+  exhaust_work.rocket -> keep_fuel when else
+  fleet[slot].fuel -> keep_fuel.source
+  keep_fuel.target -> fleet[slot].fuel

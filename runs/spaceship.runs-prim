@@ -185,18 +185,6 @@ processor mark_center                                       # cla cli; dpy-4000
   writes: display
   emit display: 0, 0, 0
 
-# The exhaust flame (network exhaust). How many dots, whether the rocket
-# fires, and the fuel each dot burns are the game's; the dots are the
-# presentation's.
-processor light_flame                                       # sq6: ranct sar 9s, sar 4s, \src
-  reads: random
-  writes: spaceship, handoff
-  let dots = random.number >> 13
-  if dots >= 0:
-    set dots = -dots
-  set spaceship.flame = dots
-  set handoff.rocket_button = spaceship.controls            # lio \scw
-  set handoff.rocket_button = ral(handoff.rocket_button, 2)
 
 processor plot_flame                                        # st2: yincr \sx1, \sy1, sub; dispt i, \sy1
   writes: pen, display
