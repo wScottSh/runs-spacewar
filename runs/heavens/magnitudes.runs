@@ -1,0 +1,29 @@
+# The catalog's four magnitudes, brightest first: where each one's stars
+# lie in star_catalog.words, how bright the scope plots them, and where its
+# next scan starts.
+presentation record magnitudes[4]
+  first: word =             # J: the magnitude's first star
+    0                       # 1j
+    022                     # 2j
+    044                     # 3j
+    0306                    # 4j
+  past: word =              # Q+2: the slot after its last star
+    022
+    044
+    0306
+    01652
+  intensity: int =          # B: 3 is the brightest
+    3
+    2
+    1
+    0
+  cursor: word =            # flo: where the next scan starts
+    0                       # the first magnitude's first star (1j)
+    022                     # the second's (2j)
+    044                     # the third's (3j)
+    0306                    # the fourth's (4j)
+
+# Whether a scan of the stars has plotted one yet (program flag 5).
+enum scan
+  looking
+  plotted

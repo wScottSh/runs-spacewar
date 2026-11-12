@@ -1,0 +1,11 @@
+# The central star's line: how far each dot moves along x and along y.
+# Each is the sign and the three bits just below a display coordinate, so a
+# dot moves less than one point.
+presentation record central_star
+  slope_x: word = 0         # bx
+  slope_y: word = 0         # by
+
+# Which half of the central star's line is drawn (program flag 6).
+enum half
+  first
+  mirrored

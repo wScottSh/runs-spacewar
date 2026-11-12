@@ -1,60 +1,3 @@
-# The Processors of heavens.runs.
-
-# The slope of the star's line, from the random number: two of its bits
-# rotated to just below a display coordinate's sign, with the sign.
-processor star_slope
-  reads: random
-  writes: central_star
-  let slope = rar(random.number, 9) & 0400340              # and (add 340
-  if slope < 0:
-    set slope = slope ^ 0377777                             # a ones' complement negative number
-  set central_star.slope_x = slope
-  set slope = ral(random.number, 4) & 0400340
-  if slope < 0:
-    set slope = slope ^ 0377777
-  set central_star.slope_y = slope
-
-# The line, 9 to 16 dots long from the center, then the same line mirrored
-# through the center. The original jumps into its run of 16 dots (bds) past
-# as many as the random number says (bjm), and runs the same run again for
-# the mirror. Only AC adds, so a dot exchanges y into AC to step it, and
-# back (swap).
-processor draw_star
-  reads: random, central_star
-  writes: display
-  let skipped = random.number >> 14                         # sar 9s; sar 5s: -7..7
-  if skipped < 0:
-    set skipped = -skipped
-  let half = first                                          # clf 6
-  let x = 0                                                 # cla cli: the center
-  let y = 0
-  emit display: x, y, 0
-  let drawing = going
-  for pass in 1 .. 2:                                       # the line, then its mirror
-    if drawing == going:
-      for dot in skipped .. 017:                            # bds: repeat 20, starp
-        set x = x + central_star.slope_x
-        set (x, y) = rcl(x, y, 18)                          # swap
-        set x = x + central_star.slope_y
-        set (x, y) = rcl(x, y, 18)                          # swap
-        emit display: x, y, 0
-      if half == mirrored:                                  # szf 6
-        set drawing = done
-    if drawing == going:
-      set half = mirrored                                   # stf 6: mirror the end of the line
-      set x = -x                                            #   through the center
-      set (x, y) = rcl(x, y, 18)
-      set x = -x
-      set (x, y) = rcl(x, y, 18)
-
-processor count_frames
-  writes: planetarium
-  set planetarium.alternate_frames = planetarium.alternate_frames + 1
-
-processor skip_a_frame
-  writes: planetarium
-  set planetarium.alternate_frames = -2
-
 # The stars of one magnitude (dislis J, Q, B): magnitude m, the stars from
 # its first slot up to its past one in the catalog, plotted at its
 # intensity.
@@ -107,16 +50,3 @@ processor show_magnitude(m)
       else:
         set star_x = star_y
         set star_y = star_y + 1
-
-processor count_steps
-  writes: planetarium
-  set planetarium.window_steps = planetarium.window_steps + 1
-
-# The window moves one step left, round the sky.
-processor move_window
-  writes: planetarium
-  set planetarium.window_steps = -020
-  let margin = -1 + planetarium.right_margin
-  if margin < 0:
-    set margin = margin + 020000
-  set planetarium.right_margin = margin

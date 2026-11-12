@@ -1,0 +1,6 @@
+# The Expensive Planetarium's own words: it draws every other frame, and
+# moves its window one step left every 16 of those.
+presentation record planetarium
+  alternate_frames: word = 0    # bcc: counting up
+  window_steps: word = 0        # bkc: counting up
+  right_margin: word = 010000   # fpr: the sky's x at the right edge of the screen

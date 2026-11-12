@@ -1,4 +1,4 @@
-"""The heavens of heavens.runs against SIMH running the oracle image: the
+"""The heavens of runs/heavens/ against SIMH running the oracle image: the
 Networks central_star (blp) and expensive_planetarium (bck), called as the
 main loop calls them (jsp), after check-heavens-reference.py.
 
@@ -56,7 +56,9 @@ class Coverage:
     """How often each statement of the heavens' Processors runs."""
 
     def __init__(self, m: runs.Machine):
-        self.lines = {s[-1]: 0 for name in PROCESSORS for s in statements(m.prog.routines[name].body)}
+        names = [c for c, (t, _) in m.prog.copies.items() if t in PROCESSORS] + \
+            [n for n in PROCESSORS if n in m.prog.routines]
+        self.lines = {s[-1]: 0 for name in names for s in statements(m.prog.routines[name].body)}
         plain = m.stmt
 
         def counted(s, scope):

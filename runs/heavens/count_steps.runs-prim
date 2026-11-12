@@ -1,0 +1,4 @@
+# isp bkc: one drawing more toward the next step of the window.
+processor count_steps
+  inout steps: word
+  set steps = steps + 1

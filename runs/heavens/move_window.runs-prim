@@ -1,0 +1,9 @@
+# The window moves one step left, round the sky, every 16 drawings.
+processor move_window
+  out steps: word
+  inout right_margin: word
+  set steps = -020
+  let margin = -1 + right_margin
+  if margin < 0:
+    set margin = margin + 020000
+  set right_margin = margin

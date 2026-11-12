@@ -1,0 +1,14 @@
+# The slope of the star's line, from the random number: two of its bits
+# rotated to just below a display coordinate's sign, with the sign.
+processor star_slope
+  in number: word
+  out slope_x: word
+  out slope_y: word
+  let slope = rar(number, 9) & 0400340                      # and (add 340
+  if slope < 0:
+    set slope = slope ^ 0377777                             # a ones' complement negative number
+  set slope_x = slope
+  set slope = ral(number, 4) & 0400340
+  if slope < 0:
+    set slope = slope ^ 0377777
+  set slope_y = slope

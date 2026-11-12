@@ -195,7 +195,7 @@ def main() -> int:
             apart += [f"the game alone differs in {r}" for r in game.prog.records
                       if game.state[r] != m.state[r]]
         simh_records = b.read({p[3]: values[p[3]] for p in places}, RECORDS)
-        star = any(name == "star_slope" for name, _ in m.fired)
+        star = any(m.prog.copies.get(name, (name,))[0] == "star_slope" for name, _ in m.fired)
         shared = []
         if star:                                # bx and by hold what the star wrote last
             for f, g in (("gravity_x", "slope_x"), ("gravity_y", "slope_y")):

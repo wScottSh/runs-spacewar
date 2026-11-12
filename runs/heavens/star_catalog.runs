@@ -1,5 +1,5 @@
 # The star catalog (source lines 1371-1866), the sky of the Expensive
-# Planetarium (heavens.runs). Stars by Peter Samson for Spacewar 2b. It is
+# Planetarium (heavens.runs here). Stars by Peter Samson for Spacewar 2b. It is
 # data on the tape, as the outlines are; conceptually it is an asset (AEMS).
 #
 # Each star is two words, one slot each: its x, then its y. The source

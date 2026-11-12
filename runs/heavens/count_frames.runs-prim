@@ -1,0 +1,4 @@
+# isp bcc: one frame more toward the next drawing.
+processor count_frames
+  inout frames: word
+  set frames = frames + 1

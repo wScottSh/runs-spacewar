@@ -1,0 +1,32 @@
+# The line, 9 to 16 dots long from the center, then the same line mirrored
+# through the center. The original jumps into its run of 16 dots (bds) past
+# as many as the random number says (bjm), and runs the same run again for
+# the mirror. Only AC adds, so a dot exchanges y into AC to step it, and
+# back (swap).
+processor draw_star
+  reads: random, central_star
+  writes: display
+  let skipped = random.number >> 14                         # sar 9s; sar 5s: -7..7
+  if skipped < 0:
+    set skipped = -skipped
+  let half = first                                          # clf 6
+  let x = 0                                                 # cla cli: the center
+  let y = 0
+  emit display: x, y, 0
+  let drawing = going
+  for pass in 1 .. 2:                                       # the line, then its mirror
+    if drawing == going:
+      for dot in skipped .. 017:                            # bds: repeat 20, starp
+        set x = x + central_star.slope_x
+        set (x, y) = rcl(x, y, 18)                          # swap
+        set x = x + central_star.slope_y
+        set (x, y) = rcl(x, y, 18)                          # swap
+        emit display: x, y, 0
+      if half == mirrored:                                  # szf 6
+        set drawing = done
+    if drawing == going:
+      set half = mirrored                                   # stf 6: mirror the end of the line
+      set x = -x                                            #   through the center
+      set (x, y) = rcl(x, y, 18)
+      set x = -x
+      set (x, y) = rcl(x, y, 18)

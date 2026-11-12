@@ -1,0 +1,4 @@
+# law i 2: the planetarium draws every other frame.
+processor skip_a_frame
+  out frames: word
+  set frames = -2
