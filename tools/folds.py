@@ -317,6 +317,18 @@ def guard_of(s):
     return s[1][0][0] if s[0] == "if" and len(s[1]) == 1 and not s[2] else None
 
 
+def fold_test(s):
+    """The test H of a guarded fold, `for _ in 1 .. n:` whose body is guards
+    on H; else None. Its count is a bound: the loop it stands for keeps
+    going where the fold stops with H still true."""
+    if s[0] != "for" or s[2] != ("num", 1) or not s[4]:
+        return None
+    head = guard_of(s[4][0])
+    if head is None or any(guard_of(x) is None or bare(guard_of(x)) != bare(head) for x in s[4]):
+        return None
+    return head
+
+
 def step_of(s, prog: runs.Program):
     """The place s adds 1 to: `set f = f + 1`, or a run of a Processor
     whose body is only that."""

@@ -47,7 +47,9 @@ leaves the same, and it stops some firing (else it is dead). Any other
 silent mutant, and any crash of runsc, fails the gate. A loop's bound is
 RUNS's check that the loop ends, not code, and compiles to nothing: a
 mutant of it is not built, and passes when every firing leaves the same or
-stops the mutant at its bound.
+stops the mutant at its bound. A guarded fold's count is such a bound
+(folds.py): the loop it stands for keeps going where the fold stops, so a
+firing whose fold ends its count with its guard still true ran past it.
 
 Usage: [--sample N] [--only TEXT] [--kinds a,b] (build N mutants drawn by
 a seeded shuffle, not all; only those whose label holds TEXT; only those
@@ -69,6 +71,7 @@ from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
+import folds
 import runs
 import runsc
 from runsc import dotted_of
@@ -331,7 +334,8 @@ def is_bound(prog: runs.Program, m: Mutant) -> bool:
         return False
     node = prog.routines[m.routine].body
     for k in m.path:
-        if isinstance(node, tuple) and (node[:1] == ("loop",) and k == 1 or node[:1] == ("jump",) and k == 2):
+        if isinstance(node, tuple) and (node[:1] == ("loop",) and k == 1 or node[:1] == ("jump",) and k == 2
+                                        or k == 3 and is_statement(node) and folds.fold_test(node) is not None):
             return True
         node = node[k]
     return False
@@ -429,10 +433,29 @@ def copied(state: dict) -> dict:
             for r, d in state.items()}
 
 
+class Bounded(runs.Machine):
+    """The evaluator, stopping a guarded fold that ends its count with its
+    guard still true: it ran past its bound, as `loop at most` does."""
+    tests: dict[int, tuple] = {}            # id of a for -> (the for, its fold's test or None)
+
+    def stmt(self, s, scope):
+        out = super().stmt(s, scope)
+        if s[0] == "for":
+            kept = self.tests.get(id(s))
+            if kept is None or kept[0] is not s:
+                kept = self.tests[id(s)] = (s, folds.fold_test(s))
+            if kept[1] is not None:
+                n = runs.as_count(self.eval(s[3], scope))
+                scope.locals[s[1]] = n + 1          # the next pass, which the loop would run
+                if self.truth(self.eval(kept[1], scope)):
+                    raise runs.RunsError(f"{s[-1]}: fold ran past its bound of {n}")
+        return out
+
+
 def fire(prog: runs.Program, name: str, args: list, state: dict):
     """What one firing leaves: the Records and the routine code jumped to,
     or the error it stopped with; and the routines it ran."""
-    m = runs.Machine(prog)
+    m = Bounded(prog)
     m.state = copied(state)
     try:
         m.run(name, args)
