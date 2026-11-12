@@ -1,0 +1,9 @@
+# The five test word switches above the scores switch give the number of
+# games in the match, counting up to 0; none is no match.
+processor count_games                                       # a6
+  in test_word: word
+  out games_left: word
+  let games = rar(test_word, 6) & 037
+  if games != 0:
+    set games = -games
+  set games_left = games

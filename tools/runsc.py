@@ -5024,7 +5024,12 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
        `count i \\mfu, st2` after the flame's aim, isp and its skip one
        pair);
     7. names, for the ties left, which decide nothing in the image
-       (tools/check_names.py renames them)."""
+       (tools/check_names.py renames them).
+
+    Before all of these, a transition that runs a block (a declared
+    routine that names no convention: a jump, from which nothing returns)
+    goes after every other unit of its level, tests too: nothing on its
+    path can follow it (a6's count of games, then jmp a2)."""
     rank = {decl[k]: n for n, k in enumerate(ARRIVAL) if k in decl}
     reads = {t: {a.place for a in g.arcs if a.transition == t and a.into and a.io} for t in g.transitions}
     writes = {t: {a.place for a in g.arcs if a.transition == t and not a.into} for t in g.transitions}
@@ -5057,15 +5062,19 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
     def key(t):
         return min((rank.get(g.field(p), rank.get(at.get(p), len(ARRIVAL))) for p in reads[t]), default=len(ARRIVAL)), t
 
+    def jumps(t):
+        d = declaration(g.transitions[t])
+        return bool(d) and "convention" not in d
+
     def unit_key(u, ms, before, placed):
         if u in sides:
             rank, name = min(key(t) for t in inside[u])
-            return (True, False, rank, False, False, False, name)
+            return (False, True, False, rank, False, False, False, name)
         takers = [t for t in ms if t not in placed and t != u and t not in sides and t not in moves
                   and reads[t] & writes[u]] + [x for x in ms if x in sides and x not in placed and x in writes[u]]
         waits = bool(takers) and not any(before[t] <= placed | {u} for t in takers)
         tested = any(p in sides and p in ms and p not in placed for p in writes[u])
-        return (False, u in tail, key(u)[0], waits, bool(takers), tested, u)
+        return (jumps(u), False, u in tail, key(u)[0], waits, bool(takers), tested, u)
 
     def ok(prefix):
         return path_hazards(g, prefix, at, word, sigs, io, moves, calls, first, given) is None

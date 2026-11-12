@@ -1,0 +1,16 @@
+# A new match (a6), a bundle: the five test word switches above the scores
+# switch give the number of games in it; then its first game.
+
+network new_match
+  in switches: console
+
+places
+  score.games_left
+
+transitions
+  count: count_games                                        # lat; rar 6s; and (37
+  play: new_game
+
+arcs
+  switches.test_word -> count.test_word
+  count.games_left -> score.games_left

@@ -37,10 +37,6 @@ network show_scores                                         # a4
     run clear_scores
     run new_match
 
-network new_match                                           # a6
-  run count_games
-  run new_game
-
 # A new game (a2): clear the object table (the outlines' words are set here
 # before anything reads them), put the ships in opposite
 # corners with the needle turned around, compile their outlines into the

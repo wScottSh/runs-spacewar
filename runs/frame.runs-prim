@@ -18,16 +18,6 @@ processor clear_scores
   set score.first = 0
   set score.second = 0
 
-# The five test word switches above the scores switch give the number of
-# games in the match.
-processor count_games                                       # a6
-  reads: console
-  writes: score
-  let games = rar(console.test_word, 6) & 037
-  if games != 0:
-    set games = -games
-  set score.games_left = games
-
 processor clear_tables                                      # clear mtb, nnn-1
   writes: objects, ship_flight, ships
   for slot in 0 .. 027:
