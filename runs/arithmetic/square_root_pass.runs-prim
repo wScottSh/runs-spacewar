@@ -1,0 +1,18 @@
+# One pass of BBN integer square root (sq3): two bits of input shifted into
+# the remainder, and one bit of root. Binary point right of bit 17 in the
+# argument, between bits 8 and 9 in the root.
+processor square_root_pass
+  inout root: word
+  inout remainder: word
+  inout input_bits: word
+  set root = root << 1
+  let next = remainder
+  set (next, input_bits) = rcl(next, input_bits, 2)
+  if next != 0:
+    set remainder = next
+    set next = (root << 1) + 1 - remainder
+    if next <= 0:
+      if next < 0:
+        set next = -next
+      set remainder = next
+      set root = root + 1

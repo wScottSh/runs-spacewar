@@ -1,4 +1,9 @@
-# What the integer square root's passes leave, each written once.
+# What the integer square root leaves along the way, each written once.
 game record square_root_work
+  passes_left: word = 0     # sq1: the passes' counter, -023
+  counted: word = 0         # sq1 after its first token is taken
+  cleared_root: word = 0    # sq2: 0 before the first pass
+  cleared: word = 0         # sqt: 0 once the argument is in the input bits
   remainder: word = 0       # what is left of the argument, in its word
-  passes_left: word = 0     # sq1: 0 once every pass ran
+  input_bits: word = 0      # the argument, shifted in two bits a pass
+  bits_left: word = 0       # the input bits after the last pass

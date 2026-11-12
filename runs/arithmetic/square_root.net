@@ -1,18 +1,36 @@
-# BBN integer square root (sqt), a bundle: its passes as one transition.
+# BBN integer square root (sqt), a bundle: its start, the first token taken
+# from the counter, and its passes as one transition.
 
 network square_root
   in entry: word
   out root: word
 
 places
-  square_root_work.remainder
   square_root_work.passes_left
+  square_root_work.counted
+  square_root_work.cleared_root
+  square_root_work.cleared
+  square_root_work.remainder
+  square_root_work.input_bits
+  square_root_work.bits_left
 
 transitions
+  begin: begin_square_root
+  first: count_down                                         # isp sq1, the first time
   passes: square_root_passes
 
 arcs
-  entry -> passes.remainder
-  passes.remainder -> square_root_work.remainder
+  entry -> begin.remainder
+  begin.remainder -> square_root_work.cleared
+  begin.passes_left -> square_root_work.passes_left
+  begin.root -> square_root_work.cleared_root
+  begin.input_bits -> square_root_work.input_bits
+  square_root_work.passes_left -> first.counter
+  first.counter -> square_root_work.counted
+  square_root_work.counted -> passes.passes_left
+  square_root_work.cleared_root -> passes.root
+  square_root_work.cleared -> passes.remainder
+  square_root_work.input_bits -> passes.input_bits
   passes.root -> root
-  passes.passes_left -> square_root_work.passes_left
+  passes.remainder -> square_root_work.remainder
+  passes.input_bits -> square_root_work.bits_left

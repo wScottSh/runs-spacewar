@@ -19,6 +19,27 @@ a bundle with the same transition line as a Processor.
     sign_of_product.result -> multiply_work.signs
     multiply_work.signs -> reload_high when < 0
 
+A loop bundle declares one `counter name: type` line, an input set
+before the loop starts (CONTEXT.md 196-206). Its one cycle runs through
+the counter: a count_down takes it and gives it back one nearer 0, and
+nothing else touches it. Each pass fires every transition once and
+takes one token; the loop ends when the counter reaches 0. The places
+it takes and gives (its inouts) hold one value a pass, and its user sees
+their final values. The counter holds minus the passes left, as every
+counter in Spacewar does (the PDP-1's `isp`).
+
+  network square_root_passes
+    counter passes_left: word
+    inout root: word
+  transitions
+    take: count_down
+    pass: square_root_pass
+  arcs
+    passes_left -> take.counter
+    take.counter -> passes_left
+    root -> pass.root
+    pass.root -> root
+
 Today a `run` passes no values, so the lowering keeps a bundle's inputs and
 outputs in the fields of its call Record, `<bundle>_call`, which a Record
 file declares with exactly the bundle's inputs and outputs. Running a bundle
@@ -58,13 +79,14 @@ class Signature:
     inout: set[str] = field(default_factory=set)
     types: dict[str, str] = field(default_factory=dict)
     bundle: bool = False       # a network file's, which a run of its own Network runs
+    counter: str | None = None  # a loop bundle's counter: an input its passes consume
 
 
 @dataclass
 class Graph:
     name: str
     where: str
-    ports: dict[str, tuple[str, str]]          # name -> (in, out or inout; type)
+    ports: dict[str, tuple[str, str]]          # name -> (in, out, inout or counter; type)
     places: list[str]
     transitions: dict[str, str]                # transition -> Processor or bundle
     arcs: list[Arc]
@@ -76,10 +98,20 @@ class Graph:
     def call(self) -> str:
         return f"{self.name}_call"
 
+    @property
+    def counter(self) -> str | None:
+        """A loop bundle's counter: the input whose tokens its passes consume."""
+        return next((n for n, (d, _) in self.ports.items() if d == "counter"), None)
+
+    def threaded(self, place: str) -> bool:
+        """A place the network takes and gives: an inout, or a loop bundle's
+        counter, which each pass reads and writes."""
+        return bool((n := self.port(place)) and self.ports[n][0] in ("inout", "counter"))
+
     def signature(self) -> Signature:
-        s = Signature([], [], bundle=True)
+        s = Signature([], [], bundle=True, counter=self.counter)
         for n, (d, typ) in self.ports.items():
-            if d in ("in", "inout"):
+            if d in ("in", "inout", "counter"):
                 s.inputs.append(n)
             if d in ("out", "inout"):
                 s.outputs.append(n)
@@ -131,11 +163,13 @@ def parse(path: Path) -> Graph:
         elif section is None and line.strip().startswith("requires:"):
             g.requires = line.strip()
         elif section is None:
-            m = re.fullmatch(r"\s+(in|out|inout) (\w+): (\w+)", line)
+            m = re.fullmatch(r"\s+(in|out|inout|counter) (\w+): (\w+)", line)
             if not m:
                 raise GraphError(f"{where}: a network's input or output is `in name: type`")
             if m[2] in g.ports:
                 raise GraphError(f"{where}: {g.name} names {m[2]} twice")
+            if m[1] == "counter" and g.counter:
+                raise GraphError(f"{where}: a loop bundle has one counter, not {g.counter} and {m[2]}")
             g.ports[m[2]] = (m[1], m[3])
         elif section == "places":
             g.places.append(line.strip())
@@ -282,7 +316,7 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
                     fail(f"{t}.{a.io} is {s.types[a.io]}, wired to {a.place}, {type_of(a.place)}", a.where)
         for n in s.inout:
             ends = {a.place for a in g.arcs if a.transition == t and a.io == n}
-            threaded = len(ends) == 1 and (p := g.port(next(iter(ends)))) and g.ports[p][0] == "inout"
+            threaded = len(ends) == 1 and g.threaded(next(iter(ends)))
             if len(ends) != 2 and not threaded:   # a network inout's in value is read, its out value given
                 fail(f"{t}.{n} is inout: it takes one place and gives a fresh one, not {sorted(ends)}")
     chain = chains(g)
@@ -294,11 +328,13 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
         writers = [a.transition for a in g.arcs if a.place == place and not a.into]
         if g.port(place) and g.ports[g.port(place)][0] == "in" and writers:
             fail(f"{place} is an input of {g.name}; {writers[0]} writes it")
+
         if any(not apart(a, b) for i, a in enumerate(writers) for b in writers[i + 1:]):
             fail(f"{place} is written by {sorted(writers)}: a place is written once on each path")
     for n, (d, _) in g.ports.items():
-        if d != "in" and not any(g.port(a.place) == n and not a.into for a in g.arcs):
+        if d not in ("in", "counter") and not any(g.port(a.place) == n and not a.into for a in g.arcs):
             fail(f"nothing gives its output {n}")
+    loop_bundle(g, sigs, fail)
     tests: dict[str, set[str]] = {}
     for a in g.arcs:
         if a.guard:
@@ -306,6 +342,35 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
     for place, gs in tests.items():
         if "else" not in gs or len(gs) != 2:
             fail(f"the guards on {place}, {sorted(gs)}, are not one test and its else")
+
+
+COUNT_DOWN = "count_down"    # one token taken: the counter one nearer 0 (`count i`, `isp`)
+
+
+def taker(g: Graph) -> str | None:
+    """The transition of a loop bundle that takes a pass's token."""
+    return next((a.transition for a in g.arcs if g.counter and a.place == g.counter and not a.into), None)
+
+
+def loop_bundle(g: Graph, sigs: dict[str, Signature], fail) -> None:
+    """A loop bundle's one cycle runs through its counter: a count_down
+    takes the counter and gives it back one nearer 0, and nothing else
+    reads or writes it. Every other place it takes and gives (an inout)
+    holds one value a pass. A place a parent wires to a counter is
+    consumed: the loop bundle is its one reader."""
+    for t, p in g.transitions.items():
+        if (n := sigs[p].counter) is None:
+            continue
+        fed = next(a.place for a in g.arcs if a.transition == t and a.io == n)
+        if others := sorted({a.transition for a in g.arcs if a.place == fed and a.into} - {t}):
+            fail(f"{fed} is {t}'s counter, which its passes consume; {others[0]} reads it too")
+    if g.counter is None:
+        return
+    touch = {(a.transition, a.into) for a in g.arcs if a.place == g.counter}
+    t = taker(g)
+    if t is None or touch != {(t, True), (t, False)} or g.transitions[t] != COUNT_DOWN:
+        fail(f"the counter {g.counter} runs through one {COUNT_DOWN}, which takes it and gives it back, "
+             f"and nothing else")
 
 
 def depends(g: Graph) -> dict[str, set[str]]:
@@ -319,7 +384,7 @@ def depends(g: Graph) -> dict[str, set[str]]:
             writers.setdefault(a.place, set()).add(a.transition)
     out: dict[str, set[str]] = {t: set() for t in g.transitions}
     for a in g.arcs:
-        if a.into and not (g.port(a.place) and g.ports[g.port(a.place)][0] == "inout"):
+        if a.into and not g.threaded(a.place):
             out[a.transition] |= writers.get(a.place, set())
         elif a.into:
             for w in writers.get(a.place, set()) - {a.transition}:
@@ -385,6 +450,8 @@ class Lowering:
     copier: dict[str, str]                     # type -> the Processor that copies it
     owns: list[str] = field(default_factory=list)   # the Network's own scratch (register values on the PDP-1)
     before_test: set[str] = field(default_factory=set)  # fields an else may set before its test instead
+    inline: set[str] = field(default_factory=set)   # bundles whose run wires each input and output to its word
+    wired: bool = False        # this Network's inputs and outputs are wired by the run that runs it
 
 
 def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering) -> list:
@@ -403,6 +470,10 @@ def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
                 wire.setdefault(a.io, {})["in" if a.into else "out"] = low.at[a.place]
         written = {wire[o]["out"] for o in s.outputs}
         lines: list[str] = []
+        if s.bundle and proc in low.inline:
+            args = [f"  {n}: {wire[n].get('out', wire[n].get('in'))}" for n in dict.fromkeys(s.inputs + s.outputs)]
+            out.append((guard[t], [f"run {proc}"] + args, written))
+            continue
         if s.bundle:
             for n in s.inputs:
                 if wire[n]["in"] != (w := low.word[proc, n]):
@@ -428,7 +499,8 @@ def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
 def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering) -> str:
     """The graph as one Network of today's RUNS: each transition a wired
     run, each side of a test under its `if` or `else`."""
-    body = steps(g, sigs, order, low)
+    take = taker(g)
+    body = steps(g, sigs, [t for t in order if t != take] + ([take] if take else []), low)
     for place in sorted({gd[0][0] for gd, _, _ in body if len(gd) == 1}):
         then = [i for i, (gd, _, _) in enumerate(body) if gd and gd[-1][0] == place and gd[-1][1] != "else"]
         other = [i for i, (gd, _, _) in enumerate(body) if gd and gd[-1][0] == place and gd[-1][1] == "else"]
@@ -440,6 +512,8 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
             body[then[0]:then[0]] = moved
     head = f"network {g.name}({', '.join(g.params)})" if g.params else f"network {g.name}"
     out = [head] + ([f"  {g.requires}"] if g.requires else []) + [f"  owns {n}: word" for n in low.owns]
+    if low.wired:
+        out += [f"  {'out' if d == 'out' else 'inout'} {n}: {typ}" for n, (d, typ) in g.ports.items()]
     opened: tuple = ()
     for gd, lines, _ in body:
         k = 0
@@ -450,9 +524,17 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
             out.append("  " * (depth + 1) + ("else:" if test[1] == "else" else f"if {low.at[test[0]]} {test[1]}:"))
         opened = gd
         out += ["  " * (len(gd) + 1) + line for line in lines]
-    if len(out) == 1 + bool(g.requires) + len(low.owns):
+    head = 1 + bool(g.requires) + len(low.owns) + (len(g.ports) if low.wired else 0)
+    if len(out) == head:
         raise GraphError(f"{g.where}: {g.name} lowers to no statement")
+    if take:
+        c = low.at[g.counter]
+        out[head:] = [f"  if {c} < 0:", f"    loop at most {LOOP_BOUND:#o}:".replace("0o", "0"),
+                      *("    " + x for x in out[head:]), f"      if {c} >= 0:", "        break"]
     return "\n".join(out) + "\n"
+
+
+LOOP_BOUND = 0o400001     # more passes than an 18-bit counter below 0 holds tokens
 
 
 def written_once(g: Graph, sigs: dict[str, Signature], copier: dict[str, str]) -> str:

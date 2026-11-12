@@ -1,0 +1,22 @@
+# BBN integer square root's passes (sq3), a loop bundle: each pass takes a
+# token of passes_left, until it reaches 0.
+
+network square_root_passes
+  counter passes_left: word
+  inout root: word
+  inout remainder: word
+  inout input_bits: word
+
+transitions
+  take: count_down                                          # isp sq1
+  pass: square_root_pass
+
+arcs
+  passes_left -> take.counter
+  take.counter -> passes_left
+  root -> pass.root
+  pass.root -> root
+  remainder -> pass.remainder
+  pass.remainder -> remainder
+  input_bits -> pass.input_bits
+  pass.input_bits -> input_bits

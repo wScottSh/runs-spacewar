@@ -1,0 +1,11 @@
+# BBN integer square root's start (sqt): the passes' counter, a root of 0,
+# and the argument moved out of its word into the input bits.
+processor begin_square_root
+  inout remainder: word
+  out passes_left: word
+  out root: word
+  out input_bits: word
+  set passes_left = -023
+  set root = 0
+  set input_bits = remainder
+  set remainder = 0

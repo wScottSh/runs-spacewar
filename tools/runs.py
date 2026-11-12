@@ -803,6 +803,23 @@ def written_once(prog: Program, g: "graph.Graph", sigs: dict, copier: dict[str, 
     return graph.written_once(g, sigs, copier)
 
 
+def users_first(graphs: dict[str, "graph.Graph"]) -> list["graph.Graph"]:
+    """The network files, each before the bundles it runs: a back end may
+    keep a bundle's inputs and outputs where its user's places are."""
+    out: list = []
+
+    def visit(g, seen=()):
+        if g in out or g.name in seen:
+            return
+        for u in graphs.values():
+            if g.name in u.transitions.values():
+                visit(u, (*seen, g.name))
+        out.append(g)
+    for g in graphs.values():
+        visit(g)
+    return out
+
+
 def lower_graphs(prog: Program, lower) -> None:
     """Each network file checked and lowered to a Network (graph.py). A
     bundle's call Record holds exactly its inputs and outputs."""
@@ -818,7 +835,7 @@ def lower_graphs(prog: Program, lower) -> None:
             if fields.get(g.call) != want:
                 raise RunsError(f"{g.where}: the Record {g.call} must hold {g.name}'s inputs and outputs, "
                                 f"{want}, and nothing else")
-    for g in prog.graphs.values():
+    for g in users_first(prog.graphs):
         try:
             text = lower(prog, g, sigs, copier)
         except graph.GraphError as e:

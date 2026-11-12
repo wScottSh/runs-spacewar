@@ -1794,7 +1794,7 @@ class Unit:
                     out.append((*s[:-2], rebuild(s[-2]), s[-1]))
                 else:
                     out.append(s)
-            return out
+            return folds.rotated(out)       # a loop of a Network laid out inline, rotated where it lands
         return rebuild(stmts)
 
     def flat_body(self, items: list, r: runs.Routine, in_slots: bool = False, tail: bool = False) -> list:
@@ -4666,9 +4666,15 @@ class Storage:
         decl = declaration(g.name)
         self.parent = {p: p for p in g.places}
 
+        given = getattr(prog, "inlined_words", {})
+
         def word(p):
-            """A table entry is its own word; any other place, the one the declarations give."""
+            """A table entry is its own word; an input or output of a bundle
+            laid out inline, its user's word; any other place, the one the
+            declarations give."""
             f = g.field(p)
+            if g.port(p) and (g.name, g.port(p)) in given and g.port(p) == p:
+                return given[g.name, p]
             return f if g.port(p) in g.records or re.sub(r"\[\w+\]", "", f) in declared else None
 
         memory: set[str] = set()
@@ -4707,7 +4713,7 @@ class Storage:
                 writers[a.place] = writers.get(a.place, 0) + 1
         bundle_word: dict[str, str] = {}
         for t, proc in sorted(g.transitions.items()):
-            if sigs[proc].bundle:
+            if sigs[proc].bundle and declaration(proc):
                 for n, ps in ends[t].items():
                     for p in ps:
                         bundle_word.setdefault(p, f"{proc}_call.{n}")
@@ -4949,19 +4955,35 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
     st = Storage(g, sigs, copier, prog)
     bundles = {p for p in g.transitions.values() if sigs[p].bundle}
     word = {(b, n): f"{b}_call.{n}" for b in bundles for n in sigs[b].inputs + sigs[b].outputs}
-    io = set(decl.get("io", []))
-    io |= {decl["io_param"]} if "io_param" in decl else set()
-    io |= {f for d in (declaration(b) for b in bundles) for f in d.get("io", []) + [d.get("io_param", "")] if f}
+    io: set[str] = set()
+    for d in [decl] + [declaration(b) for b in bundles] + \
+            ([declaration(u.name) for u in prog.graphs.values() if g.name in u.transitions.values()] if not decl else []):
+        io |= {f for f in d.get("io", []) + [d.get("io_param", "")] if f}   # an inline bundle's, its user's
+    inlined = {b for b in bundles if not declaration(b)}
     tried = []
     for at in st.choices():
+        for t, b in g.transitions.items():
+            if b in inlined:
+                for a in g.arcs:
+                    if a.transition == t and a.io:
+                        word[b, a.io] = at[a.place]
         try:
             order = network_order(g, sigs, at, word, decl, io, copier, prog)
         except BindError as e:
             tried.append(str(e))
             continue
-        owns = sorted({w for w in at.values() if "." not in w})
+        given = prog.__dict__.setdefault("inlined_words", {})
+        for b in inlined:
+            for n in sigs[b].inputs + sigs[b].outputs:
+                if given.setdefault((b, n), word[b, n]) != word[b, n]:
+                    raise BindError(f"{g.where}: {b} is laid out inline, its {n} in one word, "
+                                    f"but {g.name} runs it with {n} in {word[b, n]}")
+        wired = any(b == g.name for b, _ in given)
+        if wired:                            # laid out inline: its run wires each input and output
+            at = {p: (p if g.port(p) == p else w) for p, w in at.items()}
+        owns = sorted({w for p, w in at.items() if "." not in w and not (wired and g.port(p) == p)})
         skip = {decl["skips"][0]} if "skips" in decl else set()
-        return graph.lower(g, sigs, order, graph.Lowering(at, word, copier, owns, skip))
+        return graph.lower(g, sigs, order, graph.Lowering(at, word, copier, owns, skip, inlined, wired))
     raise BindError(tried[0] if tried else f"{g.where}: {g.name}: no word for a value")
 
 

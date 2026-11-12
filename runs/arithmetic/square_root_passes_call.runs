@@ -1,0 +1,6 @@
+# The square root's passes: the counter they consume, and the values each pass takes and gives.
+game record square_root_passes_call
+  passes_left: word = 0
+  root: word = 0
+  remainder: word = 0
+  input_bits: word = 0
