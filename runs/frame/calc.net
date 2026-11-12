@@ -1,0 +1,55 @@
+# The calc routine the object's routine word names (mq4: lac i ml1;
+# dap . 1; jsp .), a bundle: an n-way test on the routine word, which jumps
+# through it. A free slot runs no calc routine. The spaceships and the
+# explosion still name the Records they touch; each reads and gives the
+# table, the generator and the ships.
+
+network calc(slot)
+  assumes: table[slot].routine != none
+  inout table: objects
+  inout seed: random
+  inout fleet: ships
+
+transitions
+  first: first_spaceship(slot)                              # ss1
+  second: second_spaceship(slot)                            # ss2
+  flying: torpedo(slot)                                     # tcr
+  exploding: explosion(slot)                                # mex
+  away: in_hyperspace(slot)                                 # hp1
+  back: breakout(slot)                                      # hp3
+
+arcs
+  table[slot].routine -> first when == first_spaceship
+  table -> first
+  first -> table
+  seed -> first
+  first -> seed
+  fleet -> first
+  first -> fleet
+  table[slot].routine -> second when == second_spaceship
+  table -> second
+  second -> table
+  seed -> second
+  second -> seed
+  fleet -> second
+  second -> fleet
+  table[slot].routine -> flying when == torpedo
+  table -> flying.table
+  flying.table -> table
+  table[slot].routine -> exploding when == explosion
+  table -> exploding
+  exploding -> table
+  seed -> exploding
+  exploding -> seed
+  table[slot].routine -> away when == in_hyperspace
+  table -> away.table
+  away.table -> table
+  seed -> away.seed
+  away.seed -> seed
+  table[slot].routine -> back when == breakout
+  table -> back.table
+  back.table -> table
+  fleet -> back.fleet
+  back.fleet -> fleet
+  seed -> back.seed
+  back.seed -> seed

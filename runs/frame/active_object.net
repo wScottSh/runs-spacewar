@@ -1,0 +1,49 @@
+# An object in use (ml1 .. mq1), a bundle: it is counted, and tested
+# against every later object when it can collide (an explosion and a ship
+# in hyperspace cannot: spi on the routine word). Then its calc routine
+# runs on the table the collisions left, and its time is charged to the
+# frame.
+
+network active_object(slot)
+  inout table: objects
+  inout clock: frame
+  inout time: pacing
+  inout seed: random
+  inout fleet: ships
+
+places
+  collided: objects
+  calculated: objects
+
+transitions
+  count: count_object                                       # idx \moc
+  pairs: collide_pairs(slot)                                # ml2 .. mq2
+  exploding: copy
+  away: copy
+  calc: calc(slot)                                          # mq4
+  charge: charge_time                                       # mb1
+  give: copy
+
+arcs
+  clock.objects_seen -> count.seen
+  count.seen -> clock.objects_seen
+  table[slot].routine -> pairs when else                    # spi
+  table -> pairs.table
+  pairs.table -> collided
+  table[slot].routine -> exploding when == explosion
+  table -> exploding.source
+  exploding.target -> collided
+  table[slot].routine -> away when == in_hyperspace
+  table -> away.source
+  away.target -> collided
+  collided -> calc.table
+  calc.table -> calculated
+  seed -> calc.seed
+  calc.seed -> seed
+  fleet -> calc.fleet
+  calc.fleet -> fleet
+  calculated[slot].cycles -> charge.cycles
+  time.spare_time -> charge.spare
+  charge.spare -> time.spare_time
+  calculated -> give.source
+  give.target -> table

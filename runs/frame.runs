@@ -68,48 +68,6 @@ network object_loop                                         # ml1
   run central_star
   run spare_time
 
-# The object walk, a fold over the table: each slot's step takes the table
-# and gives the next.
-# Generated from docs/prototypes/graph-format/object-walk/*.net by its load.py.
-network object_walk
-  for slot in 0 .. 026:
-    if objects.routine[slot] != none:
-      run count_object
-        seen: frame.objects_seen
-      if objects.routine[slot] != explosion and objects.routine[slot] != in_hyperspace:
-        for later in slot + 1 .. 027:
-          if objects.routine[later] != none and objects.routine[later] != explosion and objects.routine[later] != in_hyperspace:
-            run collision
-              x_a: objects.x[slot]
-              x_b: objects.x[later]
-              y_a: objects.y[slot]
-              y_b: objects.y[later]
-              cycles_a: objects.cycles[slot]
-              cycles_b: objects.cycles[later]
-              radius: tunables.collision_radius
-              radius_half: tunables.collision_radius_half
-              routine_a: objects.routine[slot]
-              routine_b: objects.routine[later]
-              counter_a: objects.counter[slot]
-              counter_b: objects.counter[later]
-      run calc(slot)                                        # mq4
-      run charge_time(slot)
-  if objects.routine[027] != none:
-    run calc(027)
-    run charge_time(027)
-
-# The calc routine the object's routine word names.
-# Generated from docs/prototypes/graph-format/object-walk/*.net by its load.py.
-network calc(slot)
-  match objects.routine[slot]:
-    none: unreachable
-    first_spaceship: run first_spaceship(slot)
-    second_spaceship: run second_spaceship(slot)
-    torpedo: run torpedo(slot)
-    explosion: run explosion(slot)
-    in_hyperspace: run in_hyperspace(slot)
-    breakout: run breakout(slot)
-
 # After a game (a). In a match the game count steps on, and a tie at the end
 # adds a game. The machine halts to show the scores after every game with
 # test word switch 040 on, and at the end of a match.

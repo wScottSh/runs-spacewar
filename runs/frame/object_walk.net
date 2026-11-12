@@ -1,0 +1,65 @@
+# The object walk (ml1 .. mq3), a bundle: the slots before the last, then
+# the last slot. The last object has no later one to test, and it is not
+# counted: when it is in use, its calc routine runs and its time is
+# charged.
+
+network object_walk
+  inout table: objects
+  inout clock: frame
+  inout time: pacing
+  inout seed: random
+  inout fleet: ships
+
+places
+  walked: objects
+  charged: pacing
+  stepped: random
+  moved: ships
+  calculated: objects
+
+transitions
+  slots: object_slots                                       # ml1 .. mq1
+  last: calc(027)                                           # lac i ml1; sza i; jmp mq3
+  charge: charge_time
+  give: copy
+  idle: copy
+  idle_time: copy
+  idle_seed: copy
+  idle_fleet: copy
+
+arcs
+  table -> slots.table
+  slots.table -> walked
+  clock -> slots.clock
+  slots.clock -> clock
+  time -> slots.time
+  slots.time -> charged
+  seed -> slots.seed
+  slots.seed -> stepped
+  fleet -> slots.fleet
+  slots.fleet -> moved
+  walked[027].routine -> last when != none
+  walked -> last.table
+  last.table -> calculated
+  stepped -> last.seed
+  last.seed -> seed
+  moved -> last.fleet
+  last.fleet -> fleet
+  walked[027].routine -> charge when != none
+  calculated[027].cycles -> charge.cycles
+  charged.spare_time -> charge.spare
+  charge.spare -> time.spare_time
+  calculated -> give.source
+  give.target -> table
+  walked[027].routine -> idle when else
+  walked -> idle.source
+  idle.target -> table
+  walked[027].routine -> idle_time when else
+  charged -> idle_time.source
+  idle_time.target -> time
+  walked[027].routine -> idle_seed when else
+  stepped -> idle_seed.source
+  idle_seed.target -> seed
+  walked[027].routine -> idle_fleet when else
+  moved -> idle_fleet.source
+  idle_fleet.target -> fleet

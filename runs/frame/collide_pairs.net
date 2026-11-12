@@ -1,0 +1,50 @@
+# The collisions of one object (ml2 .. mq2), a loop bundle over every later
+# slot: the object is tested against each later one that can collide. Both
+# explode when they come within an octagon around each other. A free slot,
+# an explosion and a ship in hyperspace cannot collide (spq: core keeps
+# that in the routine word's sign bit).
+
+network collide_pairs(slot)
+  counter later: slot + 1 .. 027
+  inout table: objects
+
+places
+  tunables.collision_radius
+  tunables.collision_radius_half
+
+transitions
+  take: count_down                                          # index ml2, (lac mtb nob, ml2
+  test: collision                                           # mx1 .. ma2
+  free: copy_calc_routine
+  exploding: copy_calc_routine
+  away: copy_calc_routine
+
+arcs
+  later -> take.counter
+  take.counter -> later
+  table[later].routine -> test when else                    # ml2: spq
+  table[slot].x -> test.x_a
+  table[later].x -> test.x_b
+  table[slot].y -> test.y_a
+  table[later].y -> test.y_b
+  table[slot].cycles -> test.cycles_a
+  table[later].cycles -> test.cycles_b
+  tunables.collision_radius -> test.radius
+  tunables.collision_radius_half -> test.radius_half
+  table[slot].routine -> test.routine_a
+  table[later].routine -> test.routine_b
+  table[slot].counter -> test.counter_a
+  table[later].counter -> test.counter_b
+  test.routine_a -> table[slot].routine
+  test.routine_b -> table[later].routine
+  test.counter_a -> table[slot].counter
+  test.counter_b -> table[later].counter
+  table[later].routine -> free when == none
+  table[later].routine -> free.source
+  free.target -> table[later].routine
+  table[later].routine -> exploding when == explosion
+  table[later].routine -> exploding.source
+  exploding.target -> table[later].routine
+  table[later].routine -> away when == in_hyperspace
+  table[later].routine -> away.source
+  away.target -> table[later].routine

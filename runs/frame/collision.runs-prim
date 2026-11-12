@@ -1,0 +1,33 @@
+# Both objects explode when they come within an octagon around each other:
+# |dx| and |dy| below the collision radius, and |dx| + |dy| below one and a
+# half of it. The explosion lasts longer the more time the two calc
+# routines take.
+processor collision
+  in x_a: word
+  in x_b: word
+  in y_a: word
+  in y_b: word
+  in cycles_a: word
+  in cycles_b: word
+  in radius: word
+  in radius_half: word
+  inout routine_a: calc_routine
+  inout routine_b: calc_routine
+  inout counter_a: word
+  inout counter_b: word
+  let dx = x_a - x_b
+  if dx < 0:
+    set dx = -dx
+  if dx - radius < 0:
+    let dy = y_a - y_b
+    if dy < 0:
+      set dy = -dy
+    set dy = dy - radius
+    if dy < 0:
+      if dy + dx - radius_half < 0:
+        set routine_a = explosion
+        set routine_b = explosion
+        let frames = cycles_a + cycles_b
+        set frames = (-frames >> 8) + 1
+        set counter_a = frames
+        set counter_b = frames

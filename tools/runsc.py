@@ -950,6 +950,10 @@ class Bindings:
             for n in every_node(self.prog.routines[name].body):
                 if n[0] == "index" and n[2] == ("name", var):
                     indexed[walk][dotted_of(n[1])] = None
+                elif walk == "outer" and n[0] == "for" and n[2][0] == "bin" and n[2][1] == "+" \
+                        and n[2][2] == ("name", var):   # the walk from the slot after, in a routine it runs
+                    todo.append((name, n[1], "other"))
+                    walks["other"] = n[1]
                 elif n[0] == "run" and n[1] in self.prog.routines:
                     params = self.prog.routines[n[1]].params
                     todo += [(n[1], params[k], walk) for k, a in enumerate(n[2]) if a == ("name", var)]
@@ -1092,7 +1096,8 @@ class Bindings:
             if "set_after" in walk:
                 routine(walk["set_after"], "walk.set_after")
             for proc in walk.get("home_in", {}).values():
-                routine(proc, "walk.home_in")
+                if proc not in self.prog.templates:     # one with inputs and outputs: each copy of it
+                    routine(proc, "walk.home_in")
             for f in walk.get("homes", []) + list(walk.get("home_in", {})):
                 if f not in self.cursors:
                     raise BindError(f"{path.name}: [walk] homes {f}, which no walk's slot indexes: it has no cursor")
@@ -1906,7 +1911,8 @@ class Unit:
                 if inner.kind == "processor" and has_return(inner.body) and (in_slots or n < len(items) - 1):
                     end = self.label("done")
                     body = returns_to(body, end) + [("label", end, s[-1])]
-                homes = {f for f, proc in self.walk.get("home_in", {}).items() if proc == name}
+                homes = {f for f, proc in self.walk.get("home_in", {}).items()
+                         if proc in (name, self.prog.copies.get(name, (None,))[0])}
                 if inner.kind == "network" and n == len(items) - 1:
                     key = self.shared_keys.setdefault((name, repr(args)), name if not args else
                                                       f"{name}_{len(self.shared_keys)}")
@@ -4893,6 +4899,8 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
                 return f"{t} reads {place} in AC, but AC holds {ac}"
             return None
         for t in order:
+            if g.over and t == graph.taker(g):
+                continue                      # a walk over slots steps its slot itself: no code
             if not taken.issuperset(chain[t]):
                 continue
             for gd in chain[t]:
@@ -5066,8 +5074,8 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
         for t, b in g.transitions.items():
             if b in inlined:
                 for a in g.arcs:
-                    if a.transition == t and a.io:
-                        word[b, a.io] = at[a.place]
+                    if a.transition == t and a.io and sigs[b].types[a.io] not in g.wholes:
+                        word[b, a.io] = at[a.place]     # a whole Record stays in its own words
         try:
             order = network_order(g, sigs, at, word, decl, io, copier, prog,
                                   {p: at[p] for p in g.ports if (g.name, p) in prog.__dict__.get("inlined_words", {})})
@@ -5076,7 +5084,7 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
             continue
         given = prog.__dict__.setdefault("inlined_words", {})
         for b in inlined:
-            for n in sigs[b].inputs + sigs[b].outputs:
+            for n in [n for n in sigs[b].inputs + sigs[b].outputs if sigs[b].types[n] not in g.wholes]:
                 if given.setdefault((b, n), word[b, n]) != word[b, n]:
                     raise BindError(f"{g.where}: {b} is laid out inline, its {n} in one word, "
                                     f"but {g.name} runs it with {n} in {word[b, n]}")

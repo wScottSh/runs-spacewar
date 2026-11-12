@@ -48,6 +48,13 @@ user sets. A guard on its take stops the loop before the count runs out
 fold `for left in 1 .. 0140: if left == 1 or <the take's guard>:`, whose
 count the PDP-1 back end compiles to nothing (pdp1/README.md).
 
+A loop bundle over slots, a dispatch over a collection (CONTEXT.md 340-348),
+states its slots in place of the counter's type: `counter later: slot + 1
+.. 027`. The counter is the pass's slot, which its transitions pass on
+(`collision(later)`), and the take steps it to the next slot; the loop ends
+past the last. Its count is fixed by the slots it states, so no user sets
+it. Lowered, it is `for later in slot + 1 .. 027`.
+
 A place may hold a whole Record, a whole field of a collection, or a
 stream, and an arc end may name one entry of it. An input or output whose
 kind is a Record or a stream is that Record whole (`inout table: objects`,
@@ -68,7 +75,10 @@ rules out (`assumes: routine != none`, lowered to `requires:`). Any other
 value needs its else. A transition may run on every side of a dispatch
 but one, `when != m` where a side is `when == m`: the same partition, not
 a second test (an outline's codes: each but the end takes a token). It
-lowers after the dispatch's chain, under its own `if`.
+lowers after the dispatch's chain, under its own `if`. A test whose sides
+name every member lowers to a `match` (a `!= m` side after it, under its
+own `if`); a test whose only side with work is its else, to the test that
+holds where the others fail (`if r != none and r != explosion`).
 
   network calc(slot)
     assumes: table[slot].routine != none
@@ -81,6 +91,11 @@ outputs in the fields of its call Record, `<bundle>_call`, which a Record
 file declares with exactly the bundle's inputs and outputs. Running a bundle
 copies each input into that Record before `run` and each output out of it
 after.
+
+A copy takes a value of any kind: its two ends may hold one Record whole
+(`calculated -> give.source`, `give.target -> table`). A place that holds
+a Record whole and its entries are one value: a read of an entry sees the
+writer of the whole, and a read of the whole the writers of its entries.
 
 `lower` writes one Network for a graph, in an order and with each place at
 a word that the caller chooses. runs.load lowers every graph with
@@ -134,6 +149,7 @@ class Graph:
     locals: dict[str, str] = field(default_factory=dict)  # a place the network holds itself -> its Record or stream
     wholes: set[str] = field(default_factory=set)         # the Records and streams a place may hold whole
     streams: set[str] = field(default_factory=set)        # of those, the streams
+    over: tuple[str, str, str] | None = None              # a loop bundle over slots: (its counter, first, last)
 
     @property
     def call(self) -> str:
@@ -149,11 +165,16 @@ class Graph:
         counter, which each pass reads and writes."""
         return bool((n := self.port(place)) and self.ports[n][0] in ("inout", "counter"))
 
+    @property
+    def stated(self) -> str | None:
+        """A loop bundle's counter no user sets: its slots or its count are stated."""
+        return self.over[0] if self.over else self.counter if self.bound else None
+
     def signature(self) -> Signature:
-        s = Signature([], [], bundle=True, counter=None if self.bound else self.counter)
+        s = Signature([], [], bundle=True, counter=None if self.stated else self.counter)
         for n, (d, typ) in self.ports.items():
-            if d == "counter" and self.bound:
-                continue                      # its own: it starts at the stated count, no user sets it
+            if n == self.stated:
+                continue                                  # its slots or its count are stated: no user sets it
             if d in ("in", "inout", "counter"):
                 s.inputs.append(n)
             if d in ("out", "inout"):
@@ -224,6 +245,11 @@ def parse(path: Path) -> Graph:
             if not m:
                 raise GraphError(f"{where}: a precondition is `assumes: place != member`")
             g.assumes.append((m[1], m[2]))
+        elif section is None and (m := re.fullmatch(r"\s+counter (\w+): (.+) \.\. (.+)", line)):
+            if g.counter:
+                raise GraphError(f"{where}: a loop bundle has one counter, not {g.counter} and {m[1]}")
+            g.ports[m[1]] = ("counter", "word")
+            g.over = (m[1], m[2].strip(), m[3].strip())
         elif section is None:
             m = re.fullmatch(r"\s+(in|out|inout|counter) (\w+): (\w+)(?: = (-?0?\w+))?", line)
             if not m or m[4] and m[1] != "counter":
@@ -274,19 +300,44 @@ def parse(path: Path) -> Graph:
     return g
 
 
+def written_by(g: Graph) -> dict[str, set[str]]:
+    """place -> the transitions that write it."""
+    writers: dict[str, set[str]] = {}
+    for a in g.arcs:
+        if not a.into:
+            writers.setdefault(a.place, set()).add(a.transition)
+    return writers
+
+
+def sources(g: Graph, place: str, writers: dict[str, set[str]]) -> set[str]:
+    """The transitions whose value a read of place sees: its writers, and,
+    for a place the network holds whole (`calculated: objects`), the
+    writers of the whole when it reads an entry, and of its entries when it
+    reads the whole."""
+    root = re.match(r"\w+", place)[0]
+    out = set(writers.get(place, set()))
+    if root in g.locals:
+        for p, ws in writers.items():
+            if p != place and re.match(r"\w+", p)[0] == root and root in (p, place):
+                out |= ws
+    return out
+
+
 def guards(g: Graph) -> dict[str, tuple[str, str] | None]:
     """A transition's guard: on its own guard arc, else the guard of the one
-    branch that writes its inputs (a token is there only on that branch)."""
+    branch that writes its inputs (a token is there only on that branch).
+    An inout of the network read is its in value, which no branch writes."""
     own = {a.transition: (a.place, a.guard) for a in g.arcs if a.guard}
     out: dict[str, tuple[str, str] | None] = {}
+    writers = written_by(g)
 
     def of(t: str):
         if t not in out:
             out[t] = own.get(t)
             if out[t] is None:
                 for a in g.arcs:
-                    if a.transition == t and a.into and a.io is not None:
-                        ws = {of(w.transition) for w in g.arcs if w.place == a.place and not w.into}
+                    if a.transition == t and a.into and a.io is not None and not g.threaded(a.place):
+                        ws = {of(w) for w in sources(g, a.place, writers)}
                         if len(ws) == 1 and (w := ws.pop()):
                             out[t] = w
         return out[t]
@@ -321,12 +372,19 @@ def chains(g: Graph) -> dict[str, tuple[tuple[str, str], ...]]:
     return out
 
 
-def exclusive(x: tuple[str, str], y: tuple[str, str]) -> bool:
+def complement(g: Graph, place: str, side: str) -> bool:
+    """A side `!= m` of an n-way dispatch with a side `== m`: every side but
+    that one. A `!= m` with no `== m` beside it is a test of its own, with
+    its else."""
+    return side.startswith("!= ") and any(a.place == place and a.guard == f"== {side[3:]}" for a in g.arcs)
+
+
+def exclusive(g: Graph, x: tuple[str, str], y: tuple[str, str]) -> bool:
     """Two sides that never both hold: two sides of one test. A side
     `!= m` of an n-way dispatch is every side but `== m`."""
     if x[0] != y[0] or x[1] == y[1]:
         return False
-    if x[1].startswith("!= ") or y[1].startswith("!= "):
+    if complement(g, *x) or complement(g, *y):
         return {x[1][3:], y[1][3:]} == {x[1][3:]} and {x[1][:2], y[1][:2]} == {"==", "!="}
     return True
 
@@ -343,7 +401,7 @@ def levels(g: Graph):
             tests.setdefault(a.place, [])
             if a.guard not in tests[a.place]:
                 tests[a.place].append(a.guard)
-    sides = {p: sorted(gs, key=lambda k: (k.startswith("!= "), k == "else")) for p, gs in tests.items()}
+    sides = {p: sorted(gs, key=lambda k: (complement(g, p, k), k == "else")) for p, gs in tests.items()}
 
     def members(within):
         return [t for t in g.transitions if guard[t] == within] + [p for p in tests if encl[p] == within]
@@ -400,7 +458,7 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
             if names != sorted(want):
                 fail(f"{t}: {'inputs' if into else 'outputs'} wired {names}, {p} has {sorted(want)}")
             for a in got:
-                if type_of(a.place) != s.types[a.io]:
+                if type_of(a.place) != s.types[a.io] and not whole_copy(g, t, p, type_of):
                     fail(f"{t}.{a.io} is {s.types[a.io]}, wired to {a.place}, {type_of(a.place)}", a.where)
         for n in s.inout:
             ends = {a.place for a in g.arcs if a.transition == t and a.io == n}
@@ -411,7 +469,7 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
 
     def apart(a, b):
         """Two transitions that never both run: on two sides of one test."""
-        return any(exclusive(x, y) for x, y in zip(chain[a], chain[b]))
+        return any(exclusive(g, x, y) for x, y in zip(chain[a], chain[b]))
     for place in g.places:
         writers = [a.transition for a in g.arcs if a.place == place and not a.into]
         if g.port(place) and g.ports[g.port(place)][0] == "in" and writers:
@@ -435,17 +493,24 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
     streams(g, fail)
 
 
+COPY = "copy"
+
+
+def whole_copy(g: Graph, t: str, proc: str, type_of) -> bool:
+    """A copy of a whole Record: a copy takes a value of any kind and gives
+    it unchanged, so its two ends may hold one Record whole. A whole Record
+    lives in its own words, so the copy is no code."""
+    ends = {type_of(a.place) for a in g.arcs if a.transition == t and a.io}
+    return proc == COPY and len(ends) == 1 and ends <= g.wholes
+
+
 def partition(g: Graph, place: str, gs: set[str], typ: str | None, enums: dict[str, list[str]], fail) -> None:
     """The guards on one place: exactly one true, always (CONTEXT.md
     351-358). One test and its else; or an n-way dispatch, `== m` for
     distinct members or numbers and else last. On an enum the else may go
     when the `==` sides name every member the network does not assume
     away (`assumes: place != member`)."""
-    but = {x for x in gs if x.startswith("!= ")}
-    if stray := sorted(x for x in but if f"== {x[3:]}" not in gs):
-        fail(f"the guard {stray[0]} on {place} names no side `== {stray[0][3:]}`: `!= m` is every side of an "
-             f"n-way dispatch but `== m`")
-    gs = gs - but
+    gs = {x for x in gs if not complement(g, place, x)}       # a `!= m` beside `== m`: no side of its own
     if len(gs) == 2 and "else" in gs:
         return
     eq = sorted(x[3:] for x in gs if x.startswith("== "))
@@ -475,7 +540,7 @@ def streams(g: Graph, fail) -> None:
         takers = [a.transition for a in g.arcs if a.place == p and a.into and a.io]
         for i, a in enumerate(takers):
             for b in takers[i + 1:]:
-                if not any(exclusive(x, y) for x, y in zip(chain[a], chain[b])):
+                if not any(exclusive(g, x, y) for x, y in zip(chain[a], chain[b])):
                     fail(f"the stream value {p} is taken by {a} and {b}: a stream runs in one chain")
 
 
@@ -513,16 +578,13 @@ def depends(g: Graph) -> dict[str, set[str]]:
     An inout of the network is read as its in value and written as its out
     value: its writers come after its readers."""
     guard = guards(g)
-    writers: dict[str, set[str]] = {}
-    for a in g.arcs:
-        if not a.into:
-            writers.setdefault(a.place, set()).add(a.transition)
+    writers = written_by(g)
     out: dict[str, set[str]] = {t: set() for t in g.transitions}
     for a in g.arcs:
         if a.into and not g.threaded(a.place) and a.place in g.locals:   # a whole place: the writes of its entries
             out[a.transition] |= {w for p, ws in writers.items() if p.startswith(a.place + ".") for w in ws}
         if a.into and not g.threaded(a.place):
-            out[a.transition] |= writers.get(a.place, set())
+            out[a.transition] |= sources(g, a.place, writers) - {a.transition}
         elif a.into:
             for w in writers.get(a.place, set()) - {a.transition}:
                 out[w].add(a.transition)
@@ -558,18 +620,21 @@ def shared_words(g: Graph, out: dict[str, set[str]], writers: dict[str, set[str]
                 seen.add(d)
                 todo.append(d)
         return seen
-    readers = {p: {a.transition for a in g.arcs if a.place == p and a.into} for p in held}
+    readers = {p: {a.transition for a in g.arcs if a.place == p and a.into and not a.guard} for p in held}
+    tested = {p: {a.transition for a in g.arcs if a.place == p and a.guard} for p in held}
     for p, (kind, fld, index) in held.items():
         for q, (k2, f2, i2) in held.items():
             if p == q or kind != k2 or fld and f2 and (fld, index) != (f2, i2):
                 continue
             if (root := re.match(r"\w+", p)[0]) in g.locals and re.match(r"\w+", q)[0] == root:
                 continue                                  # a place of its own and its entries: one value
-            made = {w for x, ws in writers.items() if x == p or x.startswith(p + ".") for w in ws}  # a whole place, its entries'
+            made = sources(g, p, writers) | \
+                {w for x, ws in writers.items() if x.startswith(p + ".") for w in ws}   # a whole place, its entries'
             before_p = set().union(*(earlier(w) | {w} for w in made))
             for u in writers.get(q, set()) - before_p:
-                for r in readers[p] - {u}:
-                    if not any(exclusive(x, y) for x, y in zip(chain[r], chain[u])):
+                inside = any(gd[0] == p for gd in chain[u])   # p's test is read before u's side runs
+                for r in (readers[p] | (set() if inside else tested[p])) - {u}:
+                    if not any(exclusive(g, x, y) for x, y in zip(chain[r], chain[u])):
                         out[u].add(r)
     return out
 
@@ -649,10 +714,10 @@ def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
                 wire.setdefault(a.io, {})["in" if a.into else "out"] = low.at[a.place]
         written = {wire[o]["out"] for o in s.outputs}
         lines: list[str] = []
-        if s.bundle and proc in low.inline:
+        if s.bundle and proc in low.inline:          # a whole Record is in its own words: no wire
             args = [f"  {n}: {wire[n].get('out', wire[n].get('in'))}" for n in dict.fromkeys(s.inputs + s.outputs)
-                    if s.types[n] not in g.wholes]       # a whole Record lives in its own words
-            out.append((guard[t], [f"run {proc}"] + args, written))
+                    if s.types[n] not in g.wholes]
+            out.append((guard[t], [f"run {proc}{g.args.get(t, '')}"] + args, written))
             continue
         if s.bundle:
             for n, ends in wire.items():
@@ -688,7 +753,7 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
     if take and g.bound:
         fold, take = fold_guard(g, take, low), None
         order = [t for t in order if t != taker(g)]
-    body = steps(g, sigs, [t for t in order if t != take] + ([take] if take else []), low)
+    body = steps(g, sigs, [t for t in order if t != take] + ([take] if take and not g.over else []), low)
     for place in sorted({gd[0][0] for gd, _, _ in body if len(gd) == 1}):
         then = [i for i, (gd, _, _) in enumerate(body) if gd and gd[-1][0] == place and gd[-1][1] != "else"]
         other = [i for i, (gd, _, _) in enumerate(body) if gd and gd[-1][0] == place and gd[-1][1] == "else"]
@@ -698,14 +763,20 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
             for i in reversed(other):
                 del body[i]
             body[then[0]:then[0]] = moved
-    if take and body[-1][0]:
+    if take and not g.over and body[-1][0]:
         body = stop_side_first(g, body)
     head = f"network {g.name}({', '.join(g.params)})" if g.params else f"network {g.name}"
     requires = ([g.requires] if g.requires else []) + [f"requires: {low.at[p]} != {m}" for p, m in g.assumes]
-    out = [head] + [f"  {r}" for r in requires] + [f"  owns {n}: word" for n in low.owns]
-    wired = [(n, d, typ) for n, (d, typ) in g.ports.items() if typ not in g.wholes and not (d == "counter" and g.bound)]
+    owns = [n for n in low.owns if n != g.stated]
+    out = [head] + [f"  {r}" for r in requires] + [f"  owns {n}: word" for n in owns]
+    ports = {n: (d, typ) for n, (d, typ) in g.ports.items() if typ not in g.wholes and n != g.stated}
     if low.wired:
-        out += [f"  {'out' if d == 'out' else 'inout'} {n}: {typ}" for n, d, typ in wired]
+        out += [f"  {'out' if d == 'out' else 'inout'} {n}: {typ}" for n, (d, typ) in ports.items()]
+    matches = dispatches(g)
+
+    def pad(gd, depth):
+        return "  " * (depth + 1 + sum(1 for t in gd[:depth] if t[0] in matches and not complement(g, *t)))
+
     opened: tuple = ()
     for gd, lines, _ in body:
         k = 0
@@ -714,23 +785,53 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
         for depth in range(k, len(gd)):
             test = gd[depth]
             side = depth == k and depth < len(opened) and opened[depth][0] == test[0] \
-                and not test[1].startswith("!= ")                  # the next side of one test
-            out.append("  " * (depth + 1) + ("else:" if test[1] == "else" else
-                                             f"{'elif' if side else 'if'} {low.at[test[0]]} {test[1]}:"))
+                and not complement(g, *test)                       # the next side of one test
+            if test[0] in matches and not complement(g, *test):
+                if not side:
+                    out.append(pad(gd, depth) + f"match {low.at[test[0]]}:")
+                    out += [pad(gd, depth) + f"  {m}: unreachable" for m in matches[test[0]]]
+                out.append(pad(gd, depth) + f"  {test[1][3:]}:")
+                continue
+            if test[1] == "else" and not side:          # the test's only side with work is its else
+                out.append(pad(gd, depth) + f"if {negation(g, test[0], low.at[test[0]])}:")
+                continue
+            out.append(pad(gd, depth) + ("else:" if test[1] == "else" else
+                                         f"{'elif' if side else 'if'} {low.at[test[0]]} {test[1]}:"))
         opened = gd
-        out += ["  " * (len(gd) + 1) + line for line in lines]
-    head = 1 + len(requires) + len(low.owns) + (len(wired) if low.wired else 0)
+        out += [pad(gd, len(gd)) + line for line in lines]
+    head = 1 + len(requires) + len(owns) + (len(ports) if low.wired else 0)
     if len(out) == head:
         raise GraphError(f"{g.where}: {g.name} lowers to no statement")
     if fold:
         c = g.counter
         out[head:] = [f"  for {c} in 1 .. {g.bound.lstrip('-')}:", f"    if {c} == 1 or {fold}:",
                       *("    " + x for x in out[head:])]
-    if take:
+    if g.over:                          # the take steps the slot: the walk's own step
+        out[head:] = [f"  for {g.over[0]} in {g.over[1]} .. {g.over[2]}:", *("  " + x for x in out[head:])]
+    elif take:
         c = low.at[g.counter]
         out[head:] = [f"  if {c} < 0:", f"    loop at most {LOOP_BOUND:#o}:".replace("0o", "0"),
                       *("    " + x for x in out[head:]), f"      if {c} >= 0:", "        break"]
     return "\n".join(out) + "\n"
+
+
+def dispatches(g: Graph) -> dict[str, list[str]]:
+    """The n-way tests that name every member of an enum and have no else
+    (graph.partition) -> the members they assume away. Each lowers to a
+    match, an assumed member's arm unreachable."""
+    sides: dict[str, set[str]] = {}
+    for a in g.arcs:
+        if a.guard and not complement(g, a.place, a.guard):   # a `!= m` side lowers under its own `if`
+            sides.setdefault(a.place, set()).add(a.guard)
+    return {p: [m for q, m in g.assumes if q == p] for p, gs in sides.items()
+            if "else" not in gs and len(gs) > 1 and all(x.startswith("== ") for x in gs)}
+
+
+def negation(g: Graph, place: str, at: str) -> str:
+    """The test that holds where every other side of place's test fails."""
+    tests = dict.fromkeys(a.guard for a in g.arcs if a.place == place and a.guard and a.guard != "else"
+                          and not complement(g, place, a.guard))
+    return " and ".join(f"{at} {NEGATED[t.split(' ', 1)[0]]} {t.split(' ', 1)[1]}" for t in tests)
 
 
 LOOP_BOUND = 0o400001     # more passes than an 18-bit counter below 0 holds tokens

@@ -1,0 +1,6 @@
+# An object's calc routine's time, charged to the frame's budget (mb1:
+# lac i mb1; add \mtc; dac \mtc).
+processor charge_time
+  in cycles: word
+  inout spare: word
+  set spare = cycles + spare

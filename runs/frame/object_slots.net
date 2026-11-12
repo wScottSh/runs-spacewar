@@ -1,0 +1,35 @@
+# The object walk's slots before the last (ml1 .. mq1), a loop bundle over
+# the object table: each pass takes the table and gives the next, so slot
+# k's collisions and calc routine come after slot k - 1's. A free slot
+# gives the table on as it is.
+
+network object_slots
+  counter slot: 0 .. 026
+  inout table: objects
+  inout clock: frame
+  inout time: pacing
+  inout seed: random
+  inout fleet: ships
+
+transitions
+  take: count_down                                          # index ml1, (lac mtb nob-1, ml1
+  active: active_object(slot)
+  idle: copy
+
+arcs
+  slot -> take.counter
+  take.counter -> slot
+  table[slot].routine -> active when != none                # ml1: sza i
+  table -> active.table
+  active.table -> table
+  clock -> active.clock
+  active.clock -> clock
+  time -> active.time
+  active.time -> time
+  seed -> active.seed
+  active.seed -> seed
+  fleet -> active.fleet
+  active.fleet -> fleet
+  table[slot].routine -> idle when else
+  table -> idle.source
+  idle.target -> table

@@ -1,0 +1,5 @@
+# Each object in use is counted, once a frame (idx \moc). Nothing reads
+# the count.
+processor count_object
+  inout seen: word
+  set seen = seen + 1
