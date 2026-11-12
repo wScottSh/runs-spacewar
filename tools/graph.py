@@ -29,6 +29,29 @@ it takes and gives (its inouts) hold one value a pass, and its user sees
 their final values. The counter holds minus the passes left, as every
 counter in Spacewar does (the PDP-1's `isp`).
 
+A counter may count up to an end instead of to 0 (`counter slot: word
+to 030`): a slot of a collection of 030 entries, its tokens the slots
+from it to the last. The passes may read it, to look at their slot, and
+the user sees where it stopped: the bundle gives it back, the slot a
+guard stopped it at, or the end when no guard did. A guard on the take
+alone stops the loop: its other side is the loop's end, where the user
+takes over.
+
+  network free_slot
+    counter slot: word to 030
+  arcs
+    objects.routine -> look.routines
+    slot -> look.at
+    look.routine -> free_slot_work.routine
+    free_slot_work.routine -> take when != none
+    slot -> take.counter
+    take.counter -> slot
+
+A transition may be `stop` in place of a Processor: the machine halts,
+and halts again each time it is continued. It takes and gives nothing,
+and runs only on the side of a test its guard arc names (the original's
+`hlt; jmp .-1`).
+
   network square_root_passes
     counter passes_left: word
     inout root: word
@@ -160,6 +183,7 @@ class Graph:
     wholes: set[str] = field(default_factory=set)         # the Records and streams a place may hold whole
     streams: set[str] = field(default_factory=set)        # of those, the streams
     over: tuple[str, str, str] | None = None              # a loop bundle over slots: (its counter, first, last)
+    ends: dict[str, str] = field(default_factory=dict)    # a counter -> the end it counts up to, `to 030`
 
     @property
     def call(self) -> str:
@@ -169,6 +193,11 @@ class Graph:
     def counter(self) -> str | None:
         """A loop bundle's counter: the input whose tokens its passes consume."""
         return next((n for n, (d, _) in self.ports.items() if d == "counter"), None)
+
+    @property
+    def end(self) -> str | None:
+        """The end a loop bundle's counter counts up to, when not 0."""
+        return self.ends.get(self.counter) if self.counter else None
 
     def threaded(self, place: str) -> bool:
         """A place the network takes and gives: an inout, or a loop bundle's
@@ -187,9 +216,9 @@ class Graph:
                 continue                                  # its slots or its count are stated: no user sets it
             if d in ("in", "inout", "counter"):
                 s.inputs.append(n)
-            if d in ("out", "inout"):
+            if d in ("out", "inout") or n in self.ends:     # a counter with an end is given back
                 s.outputs.append(n)
-            if d == "inout":
+            if d == "inout" or n in self.ends:
                 s.inout.add(n)
             s.types[n] = typ
         return s
@@ -263,12 +292,14 @@ def parse(path: Path) -> Graph:
             g.ports[m[1]] = ("counter", "word")
             g.over = (m[1], m[2].strip(), m[3].strip())
         elif section is None:
-            m = re.fullmatch(r"\s+(in|out|inout|counter) (\w+): (\w+)(?: = (-?0?\w+))?", line)
-            if not m or m[4] and m[1] != "counter":
-                raise GraphError(f"{where}: a network's input or output is `in name: type`, "
-                                 f"a loop bundle's counter `counter name: type` or `counter name: type = -count`")
+            m = re.fullmatch(r"\s+(in|out|inout|counter) (\w+): (\w+)(?: = (-?0?\w+)| to (\w+))?", line)
+            if not m or (m[4] or m[5]) and m[1] != "counter":
+                raise GraphError(f"{where}: a network's input or output is `in name: type`, a loop bundle's "
+                                 f"counter `counter name: type`, `counter name: type = -count` or `counter name: type to end`")
             if m[4]:
                 g.bound = m[4]
+            if m[5]:
+                g.ends[m[2]] = m[5]
             if m[2] in g.ports:
                 raise GraphError(f"{where}: {g.name} names {m[2]} twice")
             if m[1] == "counter" and g.counter:
@@ -338,12 +369,14 @@ def sources(g: Graph, place: str, writers: dict[str, set[str]]) -> set[str]:
     """The transitions whose value a read of place sees: its writers, and,
     for a place the network holds whole (`calculated: objects`), the
     writers of the whole when it reads an entry, and of its entries when it
-    reads the whole."""
+    reads the whole. A Record held whole (`placed: objects`, not a stream)
+    is one value: a read of any part sees the writers of every part."""
     root = re.match(r"\w+", place)[0]
     out = set(writers.get(place, set()))
     if root in g.locals:
+        one = g.locals[root] not in g.streams
         for p, ws in writers.items():
-            if p != place and re.match(r"\w+", p)[0] == root and root in (p, place):
+            if p != place and re.match(r"\w+", p)[0] == root and (one or root in (p, place)):
                 out |= ws
     return out
 
@@ -351,7 +384,8 @@ def sources(g: Graph, place: str, writers: dict[str, set[str]]) -> set[str]:
 def guards(g: Graph) -> dict[str, tuple[str, str] | None]:
     """A transition's guard: on its own guard arc, else the guard of the one
     branch that writes its inputs (a token is there only on that branch).
-    An inout of the network read is its in value, which no branch writes."""
+    An inout's in value, or a counter's, comes from the network's user: no
+    branch writes it."""
     own = {a.transition: (a.place, a.guard) for a in g.arcs if a.guard}
     out: dict[str, tuple[str, str] | None] = {}
     writers = written_by(g)
@@ -406,7 +440,8 @@ def complement(g: Graph, place: str, side: str) -> bool:
 
 def exclusive(g: Graph, x: tuple[str, str], y: tuple[str, str]) -> bool:
     """Two sides that never both hold: two sides of one test. A side
-    `!= m` of an n-way dispatch is every side but `== m`."""
+    `!= m` of an n-way dispatch is every side but `== m`; on a place with
+    no `== m` side it is one side of a two-sided test, its else the other."""
     if x[0] != y[0] or x[1] == y[1]:
         return False
     if complement(g, *x) or complement(g, *y):
@@ -477,6 +512,10 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
     for t, p in g.transitions.items():
         if p not in sigs:
             fail(f"{t}: no Processor or bundle {p}")
+        if p == STOP:
+            if [a.guard is not None for a in g.arcs if a.transition == t] != [True]:
+                fail(f"{t}: a stop takes and gives nothing; one guard arc names the side it halts on")
+            continue
         s = sigs[p]
         for into, want in ((True, s.inputs), (False, s.outputs)):
             got = [a for a in g.arcs if a.transition == t and a.into == into and a.io]
@@ -512,6 +551,9 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
         if a.guard:
             tests.setdefault(a.place, set()).add(a.guard)
     for place, gs in tests.items():
+        guarded = {a.transition for a in g.arcs if a.place == place and a.guard}
+        if guarded == {taker(g)} and len(gs) == 1 and "else" not in gs:
+            continue                        # the take's guard stops the loop: its other side is the loop's end
         partition(g, place, gs, type_of(place), enums, fail)
         for x in gs:
             if (other := operand(g, x)) is not None:
@@ -577,6 +619,7 @@ def streams(g: Graph, fail) -> None:
 
 
 COUNT_DOWN = "count_down"    # one token taken: the counter one nearer 0 (`count i`, `isp`)
+STOP = "stop"                # the machine halts: a transition in place of a Processor
 
 
 def taker(g: Graph) -> str | None:
@@ -586,29 +629,37 @@ def taker(g: Graph) -> str | None:
 
 def loop_bundle(g: Graph, sigs: dict[str, Signature], fail) -> None:
     """A loop bundle's one cycle runs through its counter: a count_down
-    takes the counter and gives it back one nearer 0, and nothing else
-    reads or writes it. Every other place it takes and gives (an inout)
-    holds one value a pass. A place a parent wires to a counter is
-    consumed: the loop bundle is its one reader."""
+    takes the counter and gives it back one nearer its end, and nothing
+    else writes it; nothing else reads it either, unless it counts up to
+    an end (a slot, which the passes look at). Every other place it takes
+    and gives (an inout) holds one value a pass. A place a parent wires to
+    a counter is consumed: the loop bundle is its one reader."""
     for t, p in g.transitions.items():
         if (n := sigs[p].counter) is None:
             continue
-        fed = next(a.place for a in g.arcs if a.transition == t and a.io == n)
+        fed = next(a.place for a in g.arcs if a.transition == t and a.io == n and a.into)
         if others := sorted({a.transition for a in g.arcs if a.place == fed and a.into} - {t}):
             fail(f"{fed} is {t}'s counter, which its passes consume; {others[0]} reads it too")
     if g.counter is None:
         return
     touch = {(a.transition, a.into) for a in g.arcs if a.place == g.counter}
     t = taker(g)
+    if g.end:
+        touch -= {(a.transition, True) for a in g.arcs if a.place == g.counter and a.into and a.io
+                  and a.transition != t}
     if t is None or touch != {(t, True), (t, False)} or g.transitions[t] != COUNT_DOWN:
         fail(f"the counter {g.counter} runs through one {COUNT_DOWN}, which takes it and gives it back, "
-             f"and nothing else")
+             f"and nothing else" + (" writes it" if g.end else ""))
+    if g.end and any(a.into and a.place == g.counter and not a.io for a in g.arcs):
+        fail(f"the counter {g.counter} is no guard's: the take alone steps it, and the loop ends at {g.end}")
 
 
 def depends(g: Graph) -> dict[str, set[str]]:
     """t -> the transitions that write a place t reads or its guard reads.
     An inout of the network is read as its in value and written as its out
-    value: its writers come after its readers."""
+    value: its writers come after its readers. A Record the network holds
+    whole (`placed: objects`) is one value: a transition that reads any of
+    it comes after every transition that writes any of it."""
     guard = guards(g)
     writers = written_by(g)
     out: dict[str, set[str]] = {t: set() for t in g.transitions}
@@ -624,7 +675,7 @@ def depends(g: Graph) -> dict[str, set[str]]:
         if guard[t]:
             for place in [guard[t][0]] + [p for test in chains(g)[t] if (p := operand(g, test[1]))]:
                 if not g.threaded(place):         # a test of an inout reads its in value
-                    out[t] |= writers.get(place, set())
+                    out[t] |= sources(g, place, writers)
     return shared_words(g, out, writers)
 
 
@@ -731,6 +782,7 @@ class Lowering:
     inline: set[str] = field(default_factory=set)   # bundles whose run wires each input and output to its word
     wired: bool = False        # this Network's inputs and outputs are wired by the run that runs it
     resumes: dict[str, list[str]] = field(default_factory=dict)   # transition -> the statements laid in its stead
+    kinds: dict[str, str] = field(default_factory=dict)   # scratch of a type other than word -> that type
 
 
 def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering) -> list:
@@ -747,6 +799,9 @@ def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
                 out.append((guard[t], low.resumes[t], set()))
             continue
         proc, s = g.transitions[t], sigs[g.transitions[t]]
+        if proc == STOP:
+            out.append((guard[t], ["stop"], set()))
+            continue
         wire: dict[str, dict[str, str]] = {}
         for a in g.arcs:
             if a.transition == t and a.io:
@@ -812,7 +867,7 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
     requires = ([g.requires] if g.requires else []) + [f"requires: {low.at[p]} != {m}" for p, m in g.assumes]
     owns = [n for n in low.owns if n != g.stated and n not in {low.at[p] for p in facts}]
     contract = [f"  {'reads' if k == 'requires' else 'writes'}: {', '.join(rs)}" for k, rs in g.boundary.items()]
-    out = [head] + contract + [f"  {r}" for r in requires] + [f"  owns {n}: word" for n in owns]
+    out = [head] + contract + [f"  {r}" for r in requires] + [f"  owns {n}: {low.kinds.get(n, 'word')}" for n in owns]
     ports = {n: (d, typ) for n, (d, typ) in g.ports.items() if typ not in g.wholes and n != g.stated}
     if low.wired:
         out += [f"  {'out' if d == 'out' else 'inout'} {n}: {typ}" for n, (d, typ) in ports.items()]
@@ -857,8 +912,9 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
         out[head:] = [f"  for {g.over[0]} in {g.over[1]} .. {g.over[2]}:", *("  " + x for x in out[head:])]
     elif take:
         c = low.at[g.counter]
-        out[head:] = [f"  if {c} < 0:", f"    loop at most {LOOP_BOUND:#o}:".replace("0o", "0"),
-                      *("    " + x for x in out[head:]), f"      if {c} >= 0:", "        break"]
+        more, done = (f"!= {g.end}", f"== {g.end}") if g.end else ("< 0", ">= 0")
+        out[head:] = [f"  if {c} {more}:", f"    loop at most {LOOP_BOUND:#o}:".replace("0o", "0"),
+                      *("    " + x for x in out[head:]), f"      if {c} {done}:", "        break"]
     return "\n".join(out) + "\n"
 
 

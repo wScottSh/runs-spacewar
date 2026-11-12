@@ -1,0 +1,7 @@
+# A ship in hyperspace waits out its time; in_hyperspace takes 3.
+processor time_hyperspace                                   # dac i ma1; law 3; dac i mb1
+  in time: word
+  out counter: word
+  out cycles: word
+  set counter = time
+  set cycles = 3

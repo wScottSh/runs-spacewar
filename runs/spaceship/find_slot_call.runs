@@ -1,0 +1,3 @@
+# The search for a free slot: the slot it starts at, and gives back.
+game record find_slot_call
+  slot: word = 0

@@ -1,0 +1,148 @@
+# After the outline (sq6), a bundle: the exhaust flame, the torpedo tube
+# and the hyperfield generators.
+#
+# The flame: a random number of dots, drawn while the rocket fires.
+#
+# The tube: its counter is the reload time, counting up. Once it has
+# cooled, the fire button launches while held; with sense switch 3 on,
+# only when newly pressed. Each launch takes a torpedo, counting up, and
+# when none is left the ship fires no more.
+#
+# The generators recharge, counting up. Recharged, with jumps left, both
+# rotate buttons newly pressed send the ship into hyperspace: its calc
+# routine is kept while in_hyperspace runs instead, for a while. The
+# object's counter is the tube's reload time, then the time in hyperspace.
+
+network after_outline(slot)
+  inout seed: random
+  inout table: objects
+  inout fleet: ship_flight
+  inout crew: ships
+  in switches: console
+
+places
+  spaceship.controls
+  spaceship.flame
+  after_outline_work.drawn
+  after_outline_work.rocket
+  after_outline_work.counted
+  after_outline_work.button
+  after_outline_work.tube
+  after_outline_work.recharge
+  after_outline_work.jumps
+  after_outline_work.pressed
+  after_outline_work.time
+  burned: ship_flight
+  spent: ship_flight
+  ready: objects
+  launched: objects
+
+transitions
+  draw: random_step                                         # ranct
+  give_seed: copy
+  light: light_flame                                        # sar 9s, sar 4s, \src; lio \scw; ril 2s
+  burn: flame(slot)                                         # sq7
+  keep_fuel: copy
+  count: count_down                                         # count i ma1, sr5: the tube cools
+  clear_counter: clear                                      # dzm i ma1: prevent count around
+  trigger: trigger                                          # mco: lac .; cma; szs i 30; clc; and \scw; ral 3s
+  count_torpedo: count_down                                 # count i \mtr, st1
+  out_of_torpedoes: clear                                   # dzm i \mtr: prevent count around
+  launch: launch_torpedo(slot)                              # st1
+  take_tube: copy
+  keep_counter: copy
+  give_cleared: copy
+  give_spent: copy
+  count_recharge: count_down                                # count i \mh3, st3
+  recharged: clear                                          # dzm i \mh3
+  keep_recharge: copy
+  look_jumps: copy                                          # lac i \mh2
+  buttons: hyperspace_buttons                               # lac \scw; cma; ior i mco; and (600000
+  save: copy_calc_routine                                   # lac i ml1; dac i \mh1
+  enter: enter_hyperspace                                   # lac (hp1 400000; dac i ml1
+  hold: time_before_breakout                                # xct hd1
+  time: time_hyperspace                                     # dac i ma1; law 3; dac i mb1
+  give_tube: copy
+  keep_tube: copy
+  pass_tube: copy
+
+arcs
+  seed.number -> draw.number
+  draw.number -> after_outline_work.drawn
+  after_outline_work.drawn -> give_seed.source
+  give_seed.target -> seed.number
+  after_outline_work.drawn -> light.number
+  spaceship.controls -> light.buttons
+  light.flame -> spaceship.flame
+  light.rocket -> after_outline_work.rocket
+  after_outline_work.rocket -> burn when < 0                # spi i: blasting
+  spaceship.flame -> burn
+  fleet -> burn.fleet
+  burn.fleet -> burned
+  after_outline_work.rocket -> keep_fuel when else
+  fleet[slot].fuel -> keep_fuel.source
+  keep_fuel.target -> burned[slot].fuel
+
+  table[slot].counter -> count.counter
+  count.counter -> after_outline_work.counted
+  after_outline_work.counted -> clear_counter when >= 0
+  clear_counter.value -> ready[slot].counter
+  after_outline_work.counted -> trigger when >= 0
+  crew[slot].previous_control -> trigger.previous
+  switches.single_shot -> trigger.single_shot
+  spaceship.controls -> trigger.buttons
+  trigger.button -> after_outline_work.button
+  after_outline_work.counted -> keep_counter when else
+  after_outline_work.counted -> keep_counter.source
+  keep_counter.target -> after_outline_work.tube
+  after_outline_work.button -> count_torpedo when < 0       # sma; jmp sr5: no launch
+  burned[slot].torpedoes -> count_torpedo.counter
+  count_torpedo.counter -> spent[slot].torpedoes
+  after_outline_work.button -> give_cleared when else
+  ready[slot].counter -> give_cleared.source
+  give_cleared.target -> after_outline_work.tube
+  spent[slot].torpedoes -> out_of_torpedoes when >= 0
+  out_of_torpedoes.value -> fleet[slot].torpedoes
+  spent[slot].torpedoes -> give_spent when >= 0
+  ready[slot].counter -> give_spent.source
+  give_spent.target -> after_outline_work.tube
+  spent[slot].torpedoes -> launch when else
+  ready -> launch.table
+  launch.table -> launched
+  spent[slot].torpedoes -> take_tube when else
+  launched[slot].counter -> take_tube.source
+  take_tube.target -> after_outline_work.tube
+
+  crew[slot].recharge -> count_recharge.counter
+  count_recharge.counter -> after_outline_work.recharge
+  after_outline_work.recharge -> recharged when >= 0
+  recharged.value -> crew[slot].recharge
+  after_outline_work.recharge -> keep_recharge when else
+  after_outline_work.recharge -> keep_recharge.source
+  keep_recharge.target -> crew[slot].recharge
+  after_outline_work.recharge -> look_jumps when >= 0
+  crew[slot].jumps_left -> look_jumps.source
+  look_jumps.target -> after_outline_work.jumps
+  after_outline_work.recharge -> keep_tube when else
+  after_outline_work.tube -> keep_tube.source
+  keep_tube.target -> table[slot].counter
+  after_outline_work.jumps -> buttons when != 0             # sza i; jmp st3: no jumps left
+  spaceship.controls -> buttons.buttons
+  crew[slot].previous_control -> buttons.previous
+  buttons.pressed -> after_outline_work.pressed
+  after_outline_work.jumps -> pass_tube when else
+  after_outline_work.tube -> pass_tube.source
+  pass_tube.target -> table[slot].counter
+  after_outline_work.pressed -> save when == 0              # sza; jmp st3
+  launched[slot].routine -> save.source
+  save.target -> crew[slot].saved_routine
+  after_outline_work.pressed -> enter when == 0
+  enter.routine -> table[slot].routine
+  after_outline_work.pressed -> hold when == 0
+  hold.time -> after_outline_work.time
+  after_outline_work.time -> time.time
+  time.counter -> table[slot].counter
+  time.cycles -> table[slot].cycles
+  after_outline_work.pressed -> give_tube when else
+  after_outline_work.tube -> give_tube.source
+  give_tube.target -> table[slot].counter

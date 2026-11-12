@@ -1,0 +1,6 @@
+# The tube cools: its counter, the reload time, takes the place of the one
+# it had.
+processor cool_tube                                         # dac i ma1
+  in time: word
+  inout counter: word
+  set counter = time

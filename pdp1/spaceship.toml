@@ -45,7 +45,7 @@ io_reads = ["ship_flight.fuel"]
 # The block the compiled outline jumps back to.
 [[place]]
 routine = "after_outline"
-io = ["exhaust_work.rocket"]
+io = ["after_outline_work.rocket"]
 
 [[place]]
 exit = "spaceship_done"

@@ -1,0 +1,92 @@
+# A new torpedo (st1), a bundle: it takes the first free slot of the object
+# table and starts ahead of the ship's tip, with the ship's velocity plus
+# its own along the heading; then the ship's tube cools, and the torpedo's
+# life starts. When no slot is free, the machine halts, and halts again
+# each time it is continued. The table goes through the launch as one
+# chain of values: placed, crossed, climbed, cooled.
+
+network launch_torpedo(slot)
+  inout table: objects
+
+places
+  launch_work.first
+  launch.slot
+  launch_work.direction_x
+  launch_work.direction_y
+  launch_work.velocity_x
+  launch_work.velocity_y
+  launch_work.reload
+  handoff.torpedo_life
+  spaceship.torpedo_x
+  spaceship.torpedo_y
+  heading.sine
+  heading.cosine
+  placed: objects
+  crossed: objects
+  climbed: objects
+  cooled: objects
+
+transitions
+  first: clear                                              # init sr1, mtb
+  find: find_slot                                           # sr1
+  full: stop                                                # hlt; jmp .-1
+  place: place_torpedo                                      # sr2
+  look_x: copy                                              # lac \sn
+  aim_x: torpedo_velocity                                   # xct tvl
+  give_dx: take_torpedo_dx                                  # cma; add i \mdx; dac
+  look_y: copy                                              # lac \cs
+  aim_y: torpedo_velocity                                   # xct tvl
+  give_dy: take_torpedo_dy                                  # add i \mdy; dac
+  reload: torpedo_reload_time                               # xct rlt
+  cool: cool_tube                                           # dac i ma1
+  life: torpedo_life                                        # trf: xct tlf
+  arm: arm_torpedo
+
+arcs
+  first.value -> launch_work.first
+  launch_work.first -> find.slot
+  find.slot -> launch.slot
+  launch.slot -> full when == 030                           # no slot is free
+  launch.slot -> place when else
+  launch.slot -> place.at
+  spaceship.torpedo_x -> place.x
+  spaceship.torpedo_y -> place.y
+  table.routine -> place.routines
+  place.routines -> placed.routine
+  table.x -> place.xs
+  place.xs -> placed.x
+  table.y -> place.ys
+  place.ys -> placed.y
+  launch.slot -> look_x when else
+  heading.sine -> look_x.source
+  look_x.target -> launch_work.direction_x
+  launch_work.direction_x -> aim_x.direction
+  aim_x.velocity -> launch_work.velocity_x
+  launch_work.velocity_x -> give_dx.velocity
+  placed[slot].dx -> give_dx.dx
+  launch.slot -> give_dx.at
+  placed.dx -> give_dx.dxs
+  give_dx.dxs -> crossed.dx
+  launch.slot -> look_y when else
+  heading.cosine -> look_y.source
+  look_y.target -> launch_work.direction_y
+  launch_work.direction_y -> aim_y.direction
+  aim_y.velocity -> launch_work.velocity_y
+  launch_work.velocity_y -> give_dy.velocity
+  crossed[slot].dy -> give_dy.dy
+  launch.slot -> give_dy.at
+  crossed.dy -> give_dy.dys
+  give_dy.dys -> climbed.dy
+  launch.slot -> reload when else
+  reload.time -> launch_work.reload
+  launch_work.reload -> cool.time
+  climbed[slot].counter -> cool.counter
+  cool.counter -> cooled[slot].counter
+  launch.slot -> life when else
+  life -> handoff.torpedo_life
+  handoff.torpedo_life -> arm.life
+  launch.slot -> arm.at
+  cooled.counter -> arm.counters
+  arm.counters -> table.counter
+  cooled.cycles -> arm.cycles
+  arm.cycles -> table.cycles

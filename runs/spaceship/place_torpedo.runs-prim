@@ -1,0 +1,12 @@
+# A torpedo takes the free slot: its calc routine, and where it starts,
+# ahead of the ship's tip.
+processor place_torpedo                                     # sr2
+  in at: word
+  in x: word
+  in y: word
+  inout routines: calc_routine[030]
+  inout xs: word[030]
+  inout ys: word[030]
+  set routines[at] = torpedo
+  set xs[at] = x
+  set ys[at] = y

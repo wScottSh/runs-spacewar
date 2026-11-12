@@ -1,0 +1,6 @@
+# The calc routine at one slot of the object table (sr1: lac .).
+processor routine_at
+  in routines: calc_routine[030]
+  in at: word
+  out routine: calc_routine
+  set routine = routines[at]

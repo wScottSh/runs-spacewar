@@ -1,0 +1,3 @@
+# What a pass of the search for a free slot leaves along the way.
+game record find_slot_work
+  routine: calc_routine = none  # the calc routine at the slot the pass looks at

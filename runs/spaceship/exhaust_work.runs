@@ -1,3 +1,0 @@
-# What the exhaust leaves along the way, each written once.
-game record exhaust_work
-  rocket: word = 0      # the control word turned, the rocket button in the sign bit

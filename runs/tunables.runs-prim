@@ -8,12 +8,13 @@ processor torpedo_supply                                    # tno: number of tor
   set handoff.torpedo_supply = -041
 
 processor torpedo_velocity                                  # tvl
-  writes: handoff
-  set handoff.torpedo_velocity = handoff.torpedo_direction >> 4
+  in direction: word
+  out velocity: word
+  set velocity = direction >> 4
 
 processor torpedo_reload_time                               # rlt
-  writes: handoff
-  set handoff.reload_time = -020
+  out time: word
+  set time = -020
 
 processor torpedo_life                                      # tlf
   writes: handoff
@@ -33,8 +34,8 @@ processor hyperspace_shots                                  # mhs: number of hyp
   set handoff.hyperspace_shots = -010
 
 processor time_before_breakout                              # hd1: time in hyperspace before breakout
-  writes: handoff
-  set handoff.hyperspace_time = -040
+  out time: word
+  set time = -040
 
 processor breakout_time                                     # hd2: time in hyperspace breakout
   out time: word

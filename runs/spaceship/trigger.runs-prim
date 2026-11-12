@@ -1,0 +1,13 @@
+# The fire button, in the sign bit: pressed now, and with sense switch 3
+# on, not pressed last frame. The previous control word is never stored,
+# so it is always newly pressed.
+processor trigger                                           # mco: lac .; cma; szs i 30; clc; and \scw; ral 3s
+  in previous: word
+  in single_shot: switch
+  in buttons: word
+  out button: word
+  let fire = -previous
+  if single_shot == off:
+    set fire = -0                                           # clc
+  set fire = fire & buttons
+  set button = ral(fire, 3)                                 # the torpedo bit to the sign

@@ -804,6 +804,7 @@ def signatures(prog: Program) -> dict[str, "graph.Signature"]:
         if g.name in sigs:
             raise RunsError(f"{g.where}: {g.name} is a Processor and a network file")
         sigs[g.name] = g.signature()
+    sigs[graph.STOP] = graph.Signature([], [])      # `stop`: the machine halts, no Processor
     return sigs
 
 

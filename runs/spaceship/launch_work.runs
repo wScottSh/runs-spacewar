@@ -1,0 +1,8 @@
+# What a launch leaves along the way, each written once.
+game record launch_work
+  first: word = 0           # the slot the search starts at
+  direction_x: word = 0     # the heading's sine, into the torpedo velocity
+  direction_y: word = 0     # and its cosine
+  velocity_x: word = 0      # the torpedo's own velocity, along the heading's sine
+  velocity_y: word = 0      # and its cosine
+  reload: word = 0          # the tube's reload time

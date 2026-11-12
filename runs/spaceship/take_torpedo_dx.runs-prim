@@ -1,0 +1,8 @@
+# A torpedo's velocity across: the ship's, less the torpedo's own along
+# the heading's sine.
+processor take_torpedo_dx                                   # cma; add i \mdx; dac
+  in velocity: word
+  in dx: word
+  in at: word
+  inout dxs: word[030]
+  set dxs[at] = -velocity + dx

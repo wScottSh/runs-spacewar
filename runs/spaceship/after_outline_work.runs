@@ -1,0 +1,11 @@
+# What a ship leaves along the way after its outline, each written once.
+game record after_outline_work
+  drawn: word = 0           # the random number, a step on
+  rocket: word = 0          # the control word turned, the rocket button in the sign bit
+  counted: word = 0         # the tube's counter, a frame cooler
+  button: word = 0          # the fire button, if it counts as pressed, in the sign bit
+  tube: word = 0            # the tube's counter after the tube's turn
+  recharge: word = 0        # the generators' recharge, a frame on
+  jumps: word = 0           # the hyperspace jumps left
+  pressed: word = 0         # the rotate buttons not newly pressed; 0 when both are
+  time: word = 0            # the time in hyperspace before breakout

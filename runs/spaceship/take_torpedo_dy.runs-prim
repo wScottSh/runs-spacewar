@@ -1,0 +1,8 @@
+# A torpedo's velocity up: the ship's, plus the torpedo's own along the
+# heading's cosine.
+processor take_torpedo_dy                                   # add i \mdy; dac
+  in velocity: word
+  in dy: word
+  in at: word
+  inout dys: word[030]
+  set dys[at] = velocity + dy

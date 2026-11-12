@@ -1,0 +1,9 @@
+# A torpedo's life, and the torpedo calc's length in the address part of
+# its time word (law 20; dap); the rest of the word stays.
+processor arm_torpedo                                       # trf
+  in life: word
+  in at: word
+  inout counters: word[030]
+  inout cycles: word[030]
+  set counters[at] = life
+  set cycles[at] = cycles[at] & 0770000 | 020

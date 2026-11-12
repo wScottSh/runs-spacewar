@@ -1875,7 +1875,7 @@ class Unit:
                     out.append((*s[:-2], rebuild(s[-2]), s[-1]))
                 else:
                     out.append(s)
-            return folds.rotated(folds.settled(out, self.prog))   # a loop of a Network laid out inline
+            return folds.rotated(folds.decided_at_exits(folds.settled(out, self.prog), self.prog))   # a loop of a Network laid out inline
         return rebuild(stmts)
 
     def flat_body(self, items: list, r: runs.Routine, in_slots: bool = False, tail: bool = False) -> list:
@@ -3427,10 +3427,10 @@ class Function:
         self.loops.pop()
         c = cursors[first]
         kind = self.unit.home_kind.get(c)
-        if kind not in ("LAC",):
+        if kind not in ("LAC", "laid out"):
             raise BindError(f"{s[-1]}: the search's cursor {c} has no home in a guard of its loop")
         past = self.binds.table_offset(first) + end
-        self.emit(depth, f"if (I_{kind}(++{c}) != I_{kind}({self.binds.table['at']} + {octal(past)}))")
+        self.emit(depth, f"if (I_LAC(++{c}) != I_LAC({self.binds.table['at']} + {octal(past)}))")
         self.emit(depth + 1, f"goto {top};")
         self.block(body[-1][1][0][1], depth)
         self.emit(depth, f"{after}:")
@@ -4789,20 +4789,25 @@ class Storage:
 
         given = getattr(prog, "inlined_words", {})
 
+        slots = {a.place for a in g.arcs if a.io and not a.into and sigs[g.transitions[a.transition]].bundle   # a search's slot
+                 and a.io in prog.graphs[g.transitions[a.transition]].ends}
         named = {a.place for a in g.arcs if not a.io and not a.guard
                  and (r := prog.routines.get(g.transitions[a.transition])) and a.place.split(".")[0] in r.reads | r.writes}
 
         def word(p):
             """A table entry is its own word; an input or output of a bundle
             laid out inline, its user's word; a field of a Record that a
-            routine naming its Records reads or writes, that field; any
-            other place, the one the declarations give. Two places of this
-            network that a [share] declares one word are named by the one a
-            transition writes (outline.net: ship_nose.x in, pen.x out, one
-            word, sx1)."""
+            routine naming its Records reads or writes, that field; the slot a
+            search gives back, its own field, whose cursors the instructions
+            that index by it hold; any other place, the one the declarations
+            give. Two places of this network that a [share] declares one word
+            are named by the one a transition writes (outline.net: ship_nose.x
+            in, pen.x out, one word, sx1)."""
             f = g.field(p)
             if g.port(p) and (g.name, g.port(p)) in given and g.port(p) == p:
                 return given[g.name, p]
+            if p in slots | named and "." in p and not g.port(p):
+                return f
             pair = ({f, shared[f]} if f in shared else {f}) | {a for a, b in shared.items() if b == f}
             if len(pair & fields) == 2:
                 return min(pair & fields, key=lambda x: (x not in written, x))
@@ -4821,6 +4826,8 @@ class Storage:
             if sigs[proc].bundle:
                 byname = declaration(proc).get("byname")
                 memory |= {p for n, ps in ends[t].items() if f"{proc}_call.{n}" == byname for p in ps}
+                continue
+            if proc == graph.STOP:
                 continue
             mem, ac, io = operands(prog.routines[proc].body)
             for names, into in ((mem, memory), (ac, in_ac), (io, in_io)):
@@ -4945,7 +4952,9 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
             if holds.get(w, place) not in (place, f"{root}.*"):
                 return f"{t} reads {place}, but {w} holds {holds[w]}"
             for k, held in holds.items() if w in g.wholes else ():
-                if k.startswith(w + ".") and re.match(r"\w+", str(held))[0] != root:
+                # an earlier value of the same Record in its chain (placed, then crossed) is part of this one
+                if k.startswith(w + ".") and re.match(r"\w+", str(held))[0] != root \
+                        and g.whole(str(held)) != w and (given or {}).get(held) != k:
                     return f"{t} reads {place}, all of {w}, but {k} holds {held}"
             if in_ac(w) and ac != place:
                 return f"{t} reads {place} in AC, but AC holds {ac}"
@@ -5058,8 +5067,8 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
     members, sides, holder = graph.levels(g)
     chain = graph.chains(g)
     inside = {p: [t for t in g.transitions if any(gd[0] == p for gd in chain[t])] for p in sides}
-    wired = {t: (g.transitions[t], g.args.get(t), tuple(sorted((a.io, a.place) for a in g.arcs
-                                                              if a.transition == t and a.into and a.io)))
+    wired = {t: (g.transitions[t], g.args.get(t), tuple(sorted((a.io, a.place, a.into) for a in g.arcs
+                                                              if a.transition == t and a.io)))
              for t in g.transitions}
     tail = {t for t in g.transitions if any(u != t and wired[u] == wired[t] and chain[u] != chain[t]
                                             for u in g.transitions)}
@@ -5091,6 +5100,15 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
         tested = any(p in sides and p in ms and p not in placed for p in writes[u])
         return (jumps(u), False, u in tail, key(u)[0], waits, bool(takers), tested, u)
 
+    def reached(before, v):
+        """The units v comes after, directly or not."""
+        seen, todo = set(), [v]
+        while todo:
+            for d in before[todo.pop()] - seen:
+                seen.add(d)
+                todo.append(d)
+        return seen
+
     def ok(prefix):
         return path_hazards(g, prefix, at, word, sigs, io, moves, calls, first, given) is None
 
@@ -5098,6 +5116,12 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
         """Each order of the units of a level, after prefix."""
         ms = members(within)
         before = graph.before_in(g, within, ms, holder)
+        for t in ms:
+            # the step a skip tests goes when the skip can: one instruction (isp), or a value made just before it
+            makers = [u for u in ms if u not in sides and t in writes[u]]
+            if t in sides and len(makers) == 1:
+                u = makers[0]
+                before[u] |= {v for v in before[t] - {u} if u not in reached(before, v)}
 
         def go(placed, prefix):
             if len(placed) == len(ms):
@@ -5240,8 +5264,13 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
             at = {p: named.get(w, w) for p, w in at.items()}
         owns = sorted({w for w in at.values() if "." not in w and w not in prog.records and not (wired and w in g.ports)})
         skip = {decl["skips"][0]} if "skips" in decl else set()
+        kinds = {}
+        for pl, w in at.items():
+            rec, _, fld = re.sub(r"\[\w+\]", "", whole.field(pl)).partition(".")
+            if w in owns and rec in prog.records and fld in prog.records[rec].fields:
+                kinds[w] = prog.records[rec].fields[fld][0]
         return graph.lower(whole, sigs, order + goes_on, graph.Lowering(at, word, copier, owns, skip, inlined, wired,
-                                                                        resumes))
+                                                                        resumes, {w: k for w, k in kinds.items() if k != "word"}))
     raise BindError(tried[0] if tried else f"{g.where}: {g.name}: no word for a value")
 
 

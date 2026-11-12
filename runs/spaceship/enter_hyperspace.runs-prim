@@ -1,0 +1,4 @@
+# A ship enters hyperspace: in_hyperspace is its calc routine.
+processor enter_hyperspace                                  # lac (hp1 400000; dac i ml1
+  out routine: calc_routine
+  set routine = in_hyperspace

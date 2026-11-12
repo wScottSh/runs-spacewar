@@ -1,0 +1,7 @@
+# The rotate buttons not newly pressed: 0 when both are pressed now and
+# neither was last frame.
+processor hyperspace_buttons                                # lac \scw; cma; ior i mco; and (600000
+  in buttons: word
+  in previous: word
+  out pressed: word
+  set pressed = (-buttons | previous) & 0600000
