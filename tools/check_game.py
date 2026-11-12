@@ -92,11 +92,13 @@ def house_rules(prog: runs.Program, deposits) -> runs.Program:
         if value & 0o770000 not in (LAW, LAW_I):
             raise ValueError(f"{name}: {value:06o} is not law n or law i n")
         n = ("num", value & 0o7777)
-        r = routines[TUNABLE_PROCESSORS[name]]
-        (op, target, _, where), = r.body
-        new = ("neg", n) if value & 0o770000 == LAW_I else n
-        routines[r.name] = runs.Routine(r.kind, r.name, r.params, [(op, target, new, where)],
-                                        r.reads, r.writes, r.requires)
+        tunable = TUNABLE_PROCESSORS[name]
+        # a Processor with inputs and outputs runs as its copies, one a wiring
+        for r in [r for k, r in routines.items() if k == tunable or prog.copies.get(k, ("",))[0] == tunable]:
+            (op, target, _, where), = r.body
+            new = ("neg", n) if value & 0o770000 == LAW_I else n
+            routines[r.name] = runs.Routine(r.kind, r.name, r.params, [(op, target, new, where)],
+                                            r.reads, r.writes, r.requires)
     return dataclasses.replace(prog, routines=routines)
 
 
