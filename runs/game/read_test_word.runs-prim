@@ -1,0 +1,6 @@
+# The control word from the test word switches (mg2): lat; swap leaves it
+# in IO.
+processor read_test_word                                    # mg2
+  in switches: word
+  out control_word: word
+  set control_word = switches

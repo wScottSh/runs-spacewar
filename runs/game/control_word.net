@@ -1,0 +1,21 @@
+# The control word (jsp i \cwg), a bundle: from the device the start
+# picked. Each spaceship reads it, once a frame.
+
+network control_word
+  in switches: console
+
+places
+  controls.source
+  handoff.control_word
+
+transitions
+  from_test_word: read_test_word                            # mg2
+  from_boxes: read_control_boxes                            # mg1
+
+arcs
+  controls.source -> from_test_word when == test_word
+  switches.test_word -> from_test_word.switches
+  from_test_word.control_word -> handoff.control_word
+  controls.source -> from_boxes when == control_boxes
+  switches.control_boxes -> from_boxes.boxes
+  from_boxes.control_word -> handoff.control_word

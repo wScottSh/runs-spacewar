@@ -1,0 +1,6 @@
+# The control word from the control boxes (mg1): cli; iot 11 leaves it in
+# IO.
+processor read_control_boxes                                # mg1
+  in boxes: word
+  out control_word: word
+  set control_word = boxes

@@ -81,12 +81,3 @@ network new_game                                            # a2
   run arm_ships
   run hyperspace_shots                                      # xct mhs
   run give_jumps
-
-# The control word, from the device the start picked (jsp i \cwg). Each
-# spaceship reads it, once a frame.
-network control_word
-  reads: controls, console
-  writes: handoff
-  match controls.source:
-    test_word: run read_test_word
-    control_boxes: run read_control_boxes

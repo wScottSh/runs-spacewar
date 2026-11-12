@@ -742,6 +742,9 @@ class Bindings:
             for section in ("place", "inline", "code"):
                 if section in spec:
                     spec[section] = [q for p in spec[section] for q in self.copies_of(path, section, p)]
+            for p in spec.get("place", []):
+                if "jump" in p:
+                    p["jump"] = self.one_copy(path, "jump", p["jump"])
             if carry := spec.get("walk", {}).get("carry"):
                 spec["walk"]["carry"] = [self.one_copy(path, "carry", c) for c in carry]
             if after := spec.get("walk", {}).get("set_after"):

@@ -110,14 +110,3 @@ processor give_jumps
   let jumps = handoff.hyperspace_shots
   set ships.jumps_left[0] = jumps
   set ships.jumps_left[1] = jumps
-
-# The control word getters (mg1, mg2): each leaves the control word in IO.
-processor read_control_boxes                                # mg1
-  reads: console
-  writes: handoff
-  set handoff.control_word = console.control_boxes
-
-processor read_test_word                                    # mg2
-  reads: console
-  writes: handoff
-  set handoff.control_word = console.test_word
