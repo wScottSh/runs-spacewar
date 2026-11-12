@@ -1,0 +1,112 @@
+# An outline's codes (och), a loop bundle: each pass takes the next
+# direction code from the left of the outline word and compiles its
+# stroke. Once a word's six codes are read, the pass takes the next word.
+# The 7 code ends the outline: its pass takes no token, and the loop ends.
+# An outline holds at most 0140 codes.
+#   0, 1 down   2 out   3 out and down   4 in   5 in and down
+#   6 store the pen's position, and at the next 6 restore it
+#   7 the end: draw the other side, then go back to the spaceship
+
+network outline_codes
+  counter left: word = -0140
+  inout call: outline_call
+  inout strokes: outline_code
+  inout compiler: outline_compiler
+  inout reading: outline_reading
+
+places
+  outlines.codes
+  outline_reading.direction
+  outline_compiler.codes_rest
+  outline_codes_work.rotated
+  outline_codes_work.restored
+  outline_codes_work.counted
+  outline_codes_work.next_table
+
+transitions
+  take: count_down
+  read: take_code                                           # och: cla, rcl 3s, dio \oci
+  end: end_outline                                          # the 7 code
+  down: step_down                                           # oc1
+  out: step_out                                             # oc2
+  out_down: step_out_down                                   # oc3
+  in: step_in                                               # oc4
+  in_down: step_in_down                                     # oc5
+  pair: pair_position                                       # oc6
+  restore: copy                                             # lio \oci
+  count: count_down                                         # count \occ, och
+  next: next_word                                           # idx ocg
+  give_table: copy
+  word: take_word                                           # jmp ocj
+  keep_left: copy
+  keep_codes: copy
+
+arcs
+  left -> take.counter
+  take.counter -> left
+  outline_reading.direction -> take when != 7
+  reading.codes -> read.codes
+  read.codes -> outline_codes_work.rotated
+  read.rest -> outline_compiler.codes_rest
+  read.direction -> outline_reading.direction
+  outline_reading.direction -> end when == 7
+  outline_reading.direction -> out when == 2
+  outline_reading.direction -> out_down when == 3
+  outline_reading.direction -> in when == 4
+  outline_reading.direction -> in_down when == 5
+  outline_reading.direction -> pair when == 6
+  outline_reading.direction -> down when else                       # 0 and 1
+  strokes.stroke -> end.strokes
+  end.strokes -> strokes.stroke
+  strokes.back -> end.backs
+  end.backs -> strokes.back
+  call.code -> end.code
+  end.code -> call.code
+  compiler.start_over -> end.start_over
+  strokes.stroke -> down.strokes
+  down.strokes -> strokes.stroke
+  call.code -> down.code
+  down.code -> call.code
+  strokes.stroke -> out.strokes
+  out.strokes -> strokes.stroke
+  call.code -> out.code
+  out.code -> call.code
+  strokes.stroke -> out_down.strokes
+  out_down.strokes -> strokes.stroke
+  call.code -> out_down.code
+  out_down.code -> call.code
+  strokes.stroke -> in.strokes
+  in.strokes -> strokes.stroke
+  call.code -> in.code
+  in.code -> call.code
+  strokes.stroke -> in_down.strokes
+  in_down.strokes -> strokes.stroke
+  call.code -> in_down.code
+  in_down.code -> call.code
+  strokes.stroke -> pair.strokes
+  pair.strokes -> strokes.stroke
+  call.code -> pair.code
+  pair.code -> call.code
+  compiler.six -> pair.six
+  pair.six -> compiler.six
+  outline_reading.direction -> restore when != 7
+  outline_compiler.codes_rest -> restore.source
+  restore.target -> outline_codes_work.restored
+  outline_reading.direction -> count when != 7
+  compiler.codes_left -> count.counter
+  count.counter -> outline_codes_work.counted
+  outline_codes_work.counted -> next when >= 0
+  compiler.table -> next.table
+  next.table -> outline_codes_work.next_table
+  outline_codes_work.next_table -> give_table.source
+  give_table.target -> compiler.table
+  outlines.codes -> word.words
+  outline_codes_work.next_table -> word.table
+  word.codes_left -> compiler.codes_left
+  word.codes -> reading.codes
+  outline_codes_work.counted -> keep_left when else
+  outline_codes_work.counted -> keep_left.source
+  keep_left.target -> compiler.codes_left
+  outline_codes_work.counted -> keep_codes when else
+  outline_codes_work.restored -> keep_codes.source
+  keep_codes.target -> reading.codes

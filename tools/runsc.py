@@ -343,10 +343,14 @@ def typed(prog: runs.Program, tree, local_names: set[str], where: str = ""):
 
 
 def table_cases(s):
-    """An if-chain with no else whose every guard tests one value for
-    `== n`, or an `or` of such tests, the numbers 0 to some n, each once:
-    (the value, [(the arm's numbers, the arm's body)]), else None."""
-    if s[0] != "if" or s[2] or len(s[1]) < 3:
+    """An if-chain whose every guard tests one value for `== n`, or an `or`
+    of such tests, the numbers 0 to some n, each once: (the value, [(the
+    arm's numbers, the arm's body)], by their numbers), else None.
+    An else takes the numbers below n that no guard names (a dispatch on an
+    open-typed value, whose else is explicit): a jump table is defined only
+    on 0 .. n (pdp1cc's switch has no default), as the chain without the
+    else was."""
+    if s[0] != "if" or len(s[1]) < 3:
         return None
     value, arms = None, []
     for c, body in s[1]:
@@ -361,9 +365,14 @@ def table_cases(s):
             value = t[2]
             numbers.append(t[3][1])
         arms.append((numbers, body))
+    if s[2]:
+        named = {n for numbers, _ in arms for n in numbers}
+        if not (rest := sorted(set(range(max(named))) - named)):
+            return None
+        arms.append((rest, s[2]))
     if sorted(n for numbers, _ in arms for n in numbers) != list(range(sum(len(ns) for ns, _ in arms))):
         return None
-    return value, arms
+    return value, sorted(arms, key=lambda a: min(a[0]))
 
 
 # The names C and the dialect's header (pdp1.h) already give meaning to.
@@ -4603,7 +4612,8 @@ class Occupancy:
 # PDP-1 back end lowers it with the words the original keeps its values in,
 # and in the original's order among the transitions the wiring leaves free.
 
-ARRIVAL = ("entry", "io_param", "byname")     # the jda call form: AC into the entry word, then IO, then by name
+ARRIVAL = ("inline", "entry", "io_param", "byname")   # the word after a jda, which AC's return address reaches first (lac i ocx);
+#   then AC into the entry word, then IO, then by name
 CALLED = "a call"                               # what an IO word holds, for all a hazard knows, after a call
 
 
@@ -4628,7 +4638,9 @@ def declared_fields() -> set[str]:
             for x in v.values():
                 walk(x)
     for f in sorted(BINDINGS.glob("*.toml")):
-        walk(tomllib.loads(f.read_text()))
+        d = tomllib.loads(f.read_text())
+        walk(d)
+        out |= set(d.get("flags", {})) | set(d.get("homes", {}))   # a flag, or a home in an instruction
     return out
 
 
@@ -4833,6 +4845,8 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
         opened: tuple = ()
 
         def read(t, place):
+            if g.bound and place == g.counter:
+                return None                     # a stated count: the bound the loop keeps, in no word
             w = at[place]
             if g.port(place) and w not in holds and g.field(place) == w:
                 return None
@@ -4930,6 +4944,8 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
     rank = {decl[k]: n for n, k in enumerate(ARRIVAL) if k in decl}
     reads = {t: {a.place for a in g.arcs if a.transition == t and a.into and a.io} for t in g.transitions}
     writes = {t: {a.place for a in g.arcs if a.transition == t and not a.into} for t in g.transitions}
+    for t, ps in reads.items():                # a whole place a network holds: its entries, as written
+        ps |= {q for w in writes.values() for q in w for p in list(ps) if p in g.locals and q.startswith(p + ".")}
     moves = moves_off_ac(g, sigs, at, io, copier)
     calls = frozenset(t for t, proc in g.transitions.items() if sigs[proc].bundle or declaration(proc))
     first = {t: {a.place for a in g.arcs if a.transition == t and not a.into
@@ -4943,9 +4959,19 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
              for t in g.transitions}
     tail = {t for t in g.transitions if any(u != t and wired[u] == wired[t] and chain[u] != chain[t]
                                             for u in g.transitions)}
+    # A transition that a loop bundle it hands values to also runs, giving
+    # the same fields: it is the loop's own step, taken once before the
+    # loop, laid out just before it and joined to it (ocj: the first outline
+    # word's take, which the loop jumps back to). A copy is no such step.
+    def gives(graph_, t):
+        return sorted((a.io, graph_.field(a.place)) for a in graph_.arcs if a.transition == t and not a.into)
+    tail |= {t for t, proc in g.transitions.items() if proc not in copier.values()
+             and any((b := prog.graphs.get(g.transitions[u])) and b.counter and reads[u] & writes[t]
+                     and any(p == proc and gives(b, v) == gives(g, t) for v, p in b.transitions.items())
+                     for u in g.transitions)}
 
     def key(t):
-        return min((rank.get(g.field(p), len(ARRIVAL)) for p in reads[t]), default=len(ARRIVAL)), t
+        return min((rank.get(g.field(p), rank.get(at.get(p), len(ARRIVAL))) for p in reads[t]), default=len(ARRIVAL)), t
 
     def unit_key(u, ms, before, placed):
         if u in sides:

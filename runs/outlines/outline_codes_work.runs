@@ -1,0 +1,6 @@
+# What a pass over an outline's codes leaves along the way, each written once.
+presentation record outline_codes_work
+  rotated: word = 0         # the outline word with the code rotated out
+  restored: word = 0        # the codes not yet read, back from oci
+  counted: word = 0         # the codes left in the word, after this one
+  next_table: word = 0      # the next outline word, once this one is read

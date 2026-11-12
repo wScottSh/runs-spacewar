@@ -41,6 +41,13 @@ counter in Spacewar does (the PDP-1's `isp`).
     root -> pass.root
     pass.root -> root
 
+A counter may start at a count the bundle states, `counter left: word =
+-0140`: the most passes the loop makes, set before it starts, which no
+user sets. A guard on its take stops the loop before the count runs out
+(an outline's codes end at its 7 code), and the lowering is the guarded
+fold `for left in 1 .. 0140: if left == 1 or <the take's guard>:`, whose
+count the PDP-1 back end compiles to nothing (pdp1/README.md).
+
 A place may hold a whole Record, a whole field of a collection, or a
 stream, and an arc end may name one entry of it. An input or output whose
 kind is a Record or a stream is that Record whole (`inout table: objects`,
@@ -58,7 +65,10 @@ dispatch: `when == m` for distinct members or numbers, then `when else`.
 Exactly one side is true (CONTEXT.md 351-358). On an enum the sides may
 name every member in place of the else, less the members a precondition
 rules out (`assumes: routine != none`, lowered to `requires:`). Any other
-value needs its else.
+value needs its else. A transition may run on every side of a dispatch
+but one, `when != m` where a side is `when == m`: the same partition, not
+a second test (an outline's codes: each but the end takes a token). It
+lowers after the dispatch's chain, under its own `if`.
 
   network calc(slot)
     assumes: table[slot].routine != none
@@ -120,6 +130,7 @@ class Graph:
     args: dict[str, str] = field(default_factory=dict)    # transition -> the slot it passes, "(slot)"
     requires: str = ""                                    # `requires: slot < 2`, on the lowered Network
     assumes: list[tuple[str, str]] = field(default_factory=list)   # `assumes: place != member`: a precondition
+    bound: str | None = None                              # a loop bundle's counter that starts at a stated count
     locals: dict[str, str] = field(default_factory=dict)  # a place the network holds itself -> its Record or stream
     wholes: set[str] = field(default_factory=set)         # the Records and streams a place may hold whole
     streams: set[str] = field(default_factory=set)        # of those, the streams
@@ -139,8 +150,10 @@ class Graph:
         return bool((n := self.port(place)) and self.ports[n][0] in ("inout", "counter"))
 
     def signature(self) -> Signature:
-        s = Signature([], [], bundle=True, counter=self.counter)
+        s = Signature([], [], bundle=True, counter=None if self.bound else self.counter)
         for n, (d, typ) in self.ports.items():
+            if d == "counter" and self.bound:
+                continue                      # its own: it starts at the stated count, no user sets it
             if d in ("in", "inout", "counter"):
                 s.inputs.append(n)
             if d in ("out", "inout"):
@@ -212,9 +225,12 @@ def parse(path: Path) -> Graph:
                 raise GraphError(f"{where}: a precondition is `assumes: place != member`")
             g.assumes.append((m[1], m[2]))
         elif section is None:
-            m = re.fullmatch(r"\s+(in|out|inout|counter) (\w+): (\w+)", line)
-            if not m:
-                raise GraphError(f"{where}: a network's input or output is `in name: type`")
+            m = re.fullmatch(r"\s+(in|out|inout|counter) (\w+): (\w+)(?: = (-?0?\w+))?", line)
+            if not m or m[4] and m[1] != "counter":
+                raise GraphError(f"{where}: a network's input or output is `in name: type`, "
+                                 f"a loop bundle's counter `counter name: type` or `counter name: type = -count`")
+            if m[4]:
+                g.bound = m[4]
             if m[2] in g.ports:
                 raise GraphError(f"{where}: {g.name} names {m[2]} twice")
             if m[1] == "counter" and g.counter:
@@ -305,6 +321,16 @@ def chains(g: Graph) -> dict[str, tuple[tuple[str, str], ...]]:
     return out
 
 
+def exclusive(x: tuple[str, str], y: tuple[str, str]) -> bool:
+    """Two sides that never both hold: two sides of one test. A side
+    `!= m` of an n-way dispatch is every side but `== m`."""
+    if x[0] != y[0] or x[1] == y[1]:
+        return False
+    if x[1].startswith("!= ") or y[1].startswith("!= "):
+        return {x[1][3:], y[1][3:]} == {x[1][3:]} and {x[1][:2], y[1][:2]} == {"==", "!="}
+    return True
+
+
 def levels(g: Graph):
     """The units of each level: within a side (or None, the top) -> the
     transitions under exactly that side and the tests that lie in it; each
@@ -317,7 +343,7 @@ def levels(g: Graph):
             tests.setdefault(a.place, [])
             if a.guard not in tests[a.place]:
                 tests[a.place].append(a.guard)
-    sides = {p: sorted(gs, key=lambda k: k == "else") for p, gs in tests.items()}
+    sides = {p: sorted(gs, key=lambda k: (k.startswith("!= "), k == "else")) for p, gs in tests.items()}
 
     def members(within):
         return [t for t in g.transitions if guard[t] == within] + [p for p in tests if encl[p] == within]
@@ -356,7 +382,8 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
     for p in g.places:
         if type_of(p) is None:
             fail(f"{p} is neither a Record field nor an input or output of {g.name}")
-    if stated := sorted(set(g.places) - {a.place for a in g.arcs} - set(g.ports)):
+    wired = {a.place for a in g.arcs} | {re.match(r"\w+", a.place)[0] for a in g.arcs}   # a whole place, or an entry
+    if stated := sorted(set(g.places) - wired - set(g.ports)):
         fail(f"the place {stated[0]} is wired to nothing")
     for a in g.arcs:
         if a.place not in g.places:
@@ -384,7 +411,7 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
 
     def apart(a, b):
         """Two transitions that never both run: on two sides of one test."""
-        return any(x[0] == y[0] and x[1] != y[1] for x, y in zip(chain[a], chain[b]))
+        return any(exclusive(x, y) for x, y in zip(chain[a], chain[b]))
     for place in g.places:
         writers = [a.transition for a in g.arcs if a.place == place and not a.into]
         if g.port(place) and g.ports[g.port(place)][0] == "in" and writers:
@@ -414,6 +441,11 @@ def partition(g: Graph, place: str, gs: set[str], typ: str | None, enums: dict[s
     distinct members or numbers and else last. On an enum the else may go
     when the `==` sides name every member the network does not assume
     away (`assumes: place != member`)."""
+    but = {x for x in gs if x.startswith("!= ")}
+    if stray := sorted(x for x in but if f"== {x[3:]}" not in gs):
+        fail(f"the guard {stray[0]} on {place} names no side `== {stray[0][3:]}`: `!= m` is every side of an "
+             f"n-way dispatch but `== m`")
+    gs = gs - but
     if len(gs) == 2 and "else" in gs:
         return
     eq = sorted(x[3:] for x in gs if x.startswith("== "))
@@ -443,7 +475,7 @@ def streams(g: Graph, fail) -> None:
         takers = [a.transition for a in g.arcs if a.place == p and a.into and a.io]
         for i, a in enumerate(takers):
             for b in takers[i + 1:]:
-                if not any(x[0] == y[0] and x[1] != y[1] for x, y in zip(chain[a], chain[b])):
+                if not any(exclusive(x, y) for x, y in zip(chain[a], chain[b])):
                     fail(f"the stream value {p} is taken by {a} and {b}: a stream runs in one chain")
 
 
@@ -487,6 +519,8 @@ def depends(g: Graph) -> dict[str, set[str]]:
             writers.setdefault(a.place, set()).add(a.transition)
     out: dict[str, set[str]] = {t: set() for t in g.transitions}
     for a in g.arcs:
+        if a.into and not g.threaded(a.place) and a.place in g.locals:   # a whole place: the writes of its entries
+            out[a.transition] |= {w for p, ws in writers.items() if p.startswith(a.place + ".") for w in ws}
         if a.into and not g.threaded(a.place):
             out[a.transition] |= writers.get(a.place, set())
         elif a.into:
@@ -531,10 +565,11 @@ def shared_words(g: Graph, out: dict[str, set[str]], writers: dict[str, set[str]
                 continue
             if (root := re.match(r"\w+", p)[0]) in g.locals and re.match(r"\w+", q)[0] == root:
                 continue                                  # a place of its own and its entries: one value
-            before_p = set().union(*(earlier(w) | {w} for w in writers.get(p, set())))
+            made = {w for x, ws in writers.items() if x == p or x.startswith(p + ".") for w in ws}  # a whole place, its entries'
+            before_p = set().union(*(earlier(w) | {w} for w in made))
             for u in writers.get(q, set()) - before_p:
                 for r in readers[p] - {u}:
-                    if not any(x[0] == y[0] and x[1] != y[1] for x, y in zip(chain[r], chain[u])):
+                    if not any(exclusive(x, y) for x, y in zip(chain[r], chain[u])):
                         out[u].add(r)
     return out
 
@@ -615,7 +650,8 @@ def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
         written = {wire[o]["out"] for o in s.outputs}
         lines: list[str] = []
         if s.bundle and proc in low.inline:
-            args = [f"  {n}: {wire[n].get('out', wire[n].get('in'))}" for n in dict.fromkeys(s.inputs + s.outputs)]
+            args = [f"  {n}: {wire[n].get('out', wire[n].get('in'))}" for n in dict.fromkeys(s.inputs + s.outputs)
+                    if s.types[n] not in g.wholes]       # a whole Record lives in its own words
             out.append((guard[t], [f"run {proc}"] + args, written))
             continue
         if s.bundle:
@@ -648,6 +684,10 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
     """The graph as one Network of today's RUNS: each transition a wired
     run, each side of a test under its `if` or `else`."""
     take = taker(g)
+    fold = None
+    if take and g.bound:
+        fold, take = fold_guard(g, take, low), None
+        order = [t for t in order if t != taker(g)]
     body = steps(g, sigs, [t for t in order if t != take] + ([take] if take else []), low)
     for place in sorted({gd[0][0] for gd, _, _ in body if len(gd) == 1}):
         then = [i for i, (gd, _, _) in enumerate(body) if gd and gd[-1][0] == place and gd[-1][1] != "else"]
@@ -663,8 +703,9 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
     head = f"network {g.name}({', '.join(g.params)})" if g.params else f"network {g.name}"
     requires = ([g.requires] if g.requires else []) + [f"requires: {low.at[p]} != {m}" for p, m in g.assumes]
     out = [head] + [f"  {r}" for r in requires] + [f"  owns {n}: word" for n in low.owns]
+    wired = [(n, d, typ) for n, (d, typ) in g.ports.items() if typ not in g.wholes and not (d == "counter" and g.bound)]
     if low.wired:
-        out += [f"  {'out' if d == 'out' else 'inout'} {n}: {typ}" for n, (d, typ) in g.ports.items()]
+        out += [f"  {'out' if d == 'out' else 'inout'} {n}: {typ}" for n, d, typ in wired]
     opened: tuple = ()
     for gd, lines, _ in body:
         k = 0
@@ -672,14 +713,19 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
             k += 1
         for depth in range(k, len(gd)):
             test = gd[depth]
-            side = depth == k and depth < len(opened) and opened[depth][0] == test[0]   # the next side of one test
+            side = depth == k and depth < len(opened) and opened[depth][0] == test[0] \
+                and not test[1].startswith("!= ")                  # the next side of one test
             out.append("  " * (depth + 1) + ("else:" if test[1] == "else" else
                                              f"{'elif' if side else 'if'} {low.at[test[0]]} {test[1]}:"))
         opened = gd
         out += ["  " * (len(gd) + 1) + line for line in lines]
-    head = 1 + len(requires) + len(low.owns) + (len(g.ports) if low.wired else 0)
+    head = 1 + len(requires) + len(low.owns) + (len(wired) if low.wired else 0)
     if len(out) == head:
         raise GraphError(f"{g.where}: {g.name} lowers to no statement")
+    if fold:
+        c = g.counter
+        out[head:] = [f"  for {c} in 1 .. {g.bound.lstrip('-')}:", f"    if {c} == 1 or {fold}:",
+                      *("    " + x for x in out[head:])]
     if take:
         c = low.at[g.counter]
         out[head:] = [f"  if {c} < 0:", f"    loop at most {LOOP_BOUND:#o}:".replace("0o", "0"),
@@ -689,6 +735,24 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
 
 LOOP_BOUND = 0o400001     # more passes than an 18-bit counter below 0 holds tokens
 NEGATED = {"<": ">=", ">=": "<", ">": "<=", "<=": ">", "==": "!=", "!=": "=="}
+
+
+def fold_guard(g: Graph, take: str, low: Lowering) -> str:
+    """A loop bundle whose counter starts at a stated count is the guarded
+    fold `for c in 1 .. count: if c == 1 or <test>:`, where the test is the
+    take's guard: the pass that ends the loop takes no token, and the
+    passes after it do nothing. The count is the bound the loop keeps
+    (pdp1/README.md, a guarded fold)."""
+    chain = chains(g)[take]
+    if len(chain) != 1:
+        raise GraphError(f"{g.where}: {g.name}: a counter that starts at a stated count needs a guard on its "
+                         f"take, which stops the loop")
+    place, side = chain[0]
+    if side == "else":
+        test = next(a.guard for a in g.arcs if a.place == place and a.guard and a.guard != "else")
+        op, _, rest = test.partition(" ")
+        side = f"{NEGATED[op]} {rest}"
+    return f"{low.at[place]} {side}"
 
 
 def stop_side_first(g: Graph, body: list) -> list:

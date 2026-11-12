@@ -1,0 +1,3 @@
+# What the outline compiler leaves along the way, each written once.
+presentation record compile_outline_work
+  begun: word = 0           # where the next stroke goes, after the begin

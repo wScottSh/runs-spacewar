@@ -1,0 +1,14 @@
+# oc6, the 6 code: the first of a pair stores the pen's position, the
+# second restores it. Program flag 6 says which comes next (szf 6).
+processor pair_position
+  inout six: six_code
+  inout strokes: stroke[0304]
+  inout code: word
+  if six == store:
+    set six = restore                                       # stf 6
+    set strokes[code] = store
+    set code = code + 1
+  else:
+    set six = store                                         # oc9, clf 6
+    set strokes[code] = restore
+    set code = code + 1

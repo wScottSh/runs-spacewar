@@ -1,0 +1,62 @@
+# The outline compiler (oc, source lines 398-507), Dan Edwards' fiddle to
+# speed up the spaceship display, a bundle. Instead of reading a ship's
+# outline every frame, the game decodes it once each new game into
+# strokes (outline_code), and each frame the spaceship walks them
+# (draw_outline). It is presentation.
+#
+# The caller hands it where the strokes go (call.code, oc's entry word)
+# and where the outline starts (call.table, the word after the call). A
+# begin and a nose come first; then the outline's codes, each a stroke
+# (outline_codes). The first side's end sends the walk back to the nose
+# for the other side, which starts where mark_start noted.
+
+network compile_outline
+  inout call: outline_call
+  inout strokes: outline_code
+
+places
+  begun: outline_code
+  nosed: outline_code
+  opened: outline_call
+  prepared: outline_compiler
+  compiled: outline_compiler
+  first_word: outline_reading
+  last_word: outline_reading
+  outlines.codes
+  compile_outline_work.begun
+
+transitions
+  find: copy                                                # dap ocg
+  begin: begin_outline                                      # plinst (stf 5: the first side begins
+  mark: mark_start                                          # dap ocm: the other side starts here
+  nose: start_at_nose                                       # ock: the pen starts at the nose
+  first_six: store_first                                    # clf 6: the first 6 code stores
+  word: take_word                                           # ocj
+  codes: outline_codes                                      # och
+
+arcs
+  call.table -> find.source
+  find.target -> prepared.table
+  strokes.stroke -> begin.strokes
+  begin.strokes -> begun.stroke
+  call.code -> begin.code
+  begin.code -> compile_outline_work.begun
+  compile_outline_work.begun -> mark.code
+  mark.start_over -> prepared.start_over
+  begun.stroke -> nose.strokes
+  nose.strokes -> nosed.stroke
+  compile_outline_work.begun -> nose.code
+  nose.code -> opened.code
+  first_six.six -> prepared.six
+  outlines.codes -> word.words
+  prepared.table -> word.table
+  word.codes_left -> prepared.codes_left
+  word.codes -> first_word.codes
+  nosed -> codes.strokes
+  codes.strokes -> strokes
+  opened -> codes.call
+  codes.call -> call
+  prepared -> codes.compiler
+  codes.compiler -> compiled
+  first_word -> codes.reading
+  codes.reading -> last_word

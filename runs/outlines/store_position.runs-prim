@@ -1,6 +1,0 @@
-# the first 6 code: store the pen's position.
-processor store_position
-  inout strokes: stroke[0304]
-  inout code: word
-  set strokes[code] = store
-  set code = code + 1
