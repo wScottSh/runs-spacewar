@@ -1,0 +1,45 @@
+# The explosion's dots (mz1 .. count \mxc, mz1), a bundle: the first dot,
+# then one more a token of the count the first leaves.
+
+network particle_burst
+  in particles: word
+  inout seed: random
+  in cloud: explosion_cloud
+  in x: word
+  in y: word
+  inout dot: explosion_dot
+  inout points: display
+
+places
+  explosion_count.counted
+  drawn: random
+  first_dot: explosion_dot
+  shown: display
+
+transitions
+  first: particle
+  count: count_down                                         # count \mxc, mz1
+  more: particle_dots
+
+arcs
+  seed -> first.seed
+  first.seed -> drawn
+  cloud -> first.cloud
+  x -> first.x
+  y -> first.y
+  dot -> first.dot
+  first.dot -> first_dot
+  points -> first.points
+  first.points -> shown
+  particles -> count.counter
+  count.counter -> explosion_count.counted
+  explosion_count.counted -> more.particles
+  drawn -> more.seed
+  more.seed -> seed
+  cloud -> more.cloud
+  x -> more.x
+  y -> more.y
+  first_dot -> more.dot
+  more.dot -> dot
+  shown -> more.points
+  more.points -> points

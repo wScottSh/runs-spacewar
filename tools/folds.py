@@ -14,13 +14,9 @@ did, and the checks against the original test it.
 
 The rules, each named in pdp1/README.md:
 
-- A fold counted by a counter: `for _ in 1 .. -f:` whose body ends in
-  `set f = f + 1` and sets f nowhere else, where f is below 0 and not -0
-  when the fold starts. It is the index-and-skip loop on f: the body, then
-  the step, left when f reaches 0.
-- A loop rotated: the statements X just before `if f < 0:` around such a
-  loop, whose body ends in X and the exit test, are the loop's first pass.
-  The loop starts with X.
+- A loop rotated: the statements X just before `if f < 0:` around a loop
+  whose body ends in X and the exit test, are the loop's first pass. The
+  loop starts with X.
 - A guarded fold: `for _ in 1 .. n:` whose body is guards on one test H. The passes
   after H fails do nothing, so H is tested only where it can change: each
   path through the body that ends with H known false ends in a break, one
@@ -333,20 +329,6 @@ def fold_test(s):
     return head
 
 
-def step_of(s, prog: runs.Program):
-    """The place s adds 1 to: `set f = f + 1`, or a run of a Processor
-    whose body is only that."""
-    if s[0] == "set" and s[2][0] == "bin" and s[2][1] == "+" and bare(s[2][2]) == bare(s[1]) \
-            and s[2][3] == ("num", 1):
-        return s[1]
-    if s[0] == "run" and s[1] in prog.routines:
-        r = prog.routines[s[1]]
-        if r.kind == "processor" and len(r.body) == 1 and len(s[2]) == len(r.params):
-            from runsc import substitute
-            return step_of(substitute(r.body[0], dict(zip(r.params, s[2]))), prog)
-    return None
-
-
 # ---- the rules
 
 class Lowering:
@@ -378,30 +360,13 @@ class Lowering:
             elif op == "for":
                 inside = facts.kill(writes(s[4], self.prog))
                 s = (*s[:4], self.block(s[4], inside)[0], s[5])
-                loop = self.counted(s, facts) or self.guarded(s, facts)
+                loop = self.guarded(s, facts)
                 out.extend(loop or [s])
                 facts = facts.after(s)
             else:
                 out.append(s)
                 facts = facts.after(s)
         return rotated(out), facts
-
-    def counted(self, s, facts: Facts) -> list | None:
-        """A fold counted by a counter: the index-and-skip loop on it."""
-        _, var, lo, hi, body, where = s
-        if lo != ("num", 1) or hi[0] != "neg" or not body or runs.mentions(body, {var}):
-            return None
-        f = hi[1]
-        if step_of(body[-1], self.prog) is None or bare(step_of(body[-1], self.prog)) != bare(f):
-            return None
-        if names_in(f) & writes(body[:-1], self.prog):
-            raise FoldError(f"{where}: a fold counted by {f!r} sets it only in its last statement")
-        kn = facts.get(f)
-        if facts.negative(f) is not True or not (kn and kn.whole):
-            raise FoldError(f"{where}: a fold counted by {f!r} starts where it is below 0 and not -0: "
-                            f"inside `if f < 0:`, after a step of f or a set of f to a constant")
-        leave = ("if", [(("bin", ">=", f, ("num", 0)), [("break", where)])], [], where)
-        return [("loop", ("num", 0o400001), [*body, leave], where)]
 
     def guarded(self, s, facts: Facts) -> list | None:
         """A guarded fold: the loop whose exits are where its guard fails."""

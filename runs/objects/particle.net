@@ -1,0 +1,42 @@
+# One dot of an explosion (mz1), a bundle: two draws from the generator,
+# the first scattering the dot, the second placing it about the center.
+# The dot's shifts push the last dot's low half out of IO and leave its own.
+
+network particle
+  inout seed: random
+  in cloud: explosion_cloud
+  in x: word
+  in y: word
+  inout dot: explosion_dot
+  inout points: display
+
+places
+  particle_work.first_draw
+  particle_cloud.scatter
+  particle_work.second_draw
+
+transitions
+  draw_scatter: random_step                                 # mz1: random
+  scatter: scatter_particle                                 # and (777; ior (scl; dac mi1
+  draw_place: random_step                                   # random
+  plot: plot_particle                                       # scr 9s .. dpy-i 300
+  give_seed: copy
+
+arcs
+  seed.number -> draw_scatter.number
+  draw_scatter.number -> particle_work.first_draw
+  particle_work.first_draw -> scatter.number
+  scatter.scatter -> particle_cloud.scatter
+  particle_work.first_draw -> draw_place.number
+  draw_place.number -> particle_work.second_draw
+  particle_work.second_draw -> plot.number
+  cloud.spread -> plot.spread
+  particle_cloud.scatter -> plot.scatter
+  x -> plot.x
+  y -> plot.y
+  dot.low -> plot.low
+  plot.low -> dot.low
+  points -> plot.points
+  plot.points -> points
+  particle_work.second_draw -> give_seed.source
+  give_seed.target -> seed.number

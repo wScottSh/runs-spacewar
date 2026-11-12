@@ -1,0 +1,28 @@
+# The explosion's dots after the first (count \mxc, mz1), a loop bundle:
+# a dot a pass, each taking a token of the count.
+
+network particle_dots
+  counter particles: word
+  inout seed: random
+  in cloud: explosion_cloud
+  in x: word
+  in y: word
+  inout dot: explosion_dot
+  inout points: display
+
+transitions
+  more: particle
+  take: count_down                                          # count \mxc, mz1
+
+arcs
+  seed -> more.seed
+  more.seed -> seed
+  cloud -> more.cloud
+  x -> more.x
+  y -> more.y
+  dot -> more.dot
+  more.dot -> dot
+  points -> more.points
+  more.points -> points
+  particles -> take.counter
+  take.counter -> particles

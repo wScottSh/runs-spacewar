@@ -1,8 +1,10 @@
 # The count is the game's: one dot per 8 instructions of the object's size.
-processor size_explosion(slot)
-  reads: objects
-  writes: explosion_count, handoff
-  let size = objects.cycles[slot]                           # lac i mb1
+# The cma clears IO as it goes (cli): the first dot's shifts push that out.
+processor size_explosion
+  in cycles: word
+  out particles: word
+  out low: word
+  let size = cycles                                         # lac i mb1
   set size = -size                                          # cma cli: one instruction
-  set handoff.explosion_low = 0
-  set explosion_count.particles = size >> 3
+  set low = 0
+  set particles = size >> 3

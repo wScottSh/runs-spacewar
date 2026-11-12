@@ -1,14 +1,20 @@
 # The dot is presentation, placed by the random number the game drew.
-processor plot_particle(slot)
-  reads: random, objects, explosion_cloud
-  writes: display, explosion_dot
-  let high = random.number
-  # scr 9s; sir 9s pushes all of IO's old value, the last dot's y, out.
-  set (high, explosion_dot.low) = scr(high, explosion_dot.low, 9)
-  set explosion_dot.low = explosion_dot.low >> 9
-  set (high, explosion_dot.low) = scr(high, explosion_dot.low, explosion_cloud.spread)
-  set (high, explosion_dot.low) = scl(high, explosion_dot.low, explosion_cloud.scatter)
-  set high = high + objects.y[slot]
-  set (high, explosion_dot.low) = rcl(high, explosion_dot.low, 18)   # swap
-  set high = high + objects.x[slot]
-  emit display: high, explosion_dot.low, 3
+# low is IO: scr 9s; sir 9s pushes all of its old value, the last dot's y,
+# out, and the dot leaves its own y there.
+processor plot_particle
+  in number: word
+  in spread: word
+  in scatter: word
+  in x: word
+  in y: word
+  inout low: word
+  inout points: display
+  let high = number
+  set (high, low) = scr(high, low, 9)
+  set low = low >> 9
+  set (high, low) = scr(high, low, spread)
+  set (high, low) = scl(high, low, scatter)
+  set high = high + y
+  set (high, low) = rcl(high, low, 18)                      # swap
+  set high = high + x
+  emit points: high, low, 3

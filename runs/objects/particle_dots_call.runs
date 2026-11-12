@@ -1,0 +1,6 @@
+# The explosion's dots after the first: the count they consume, and where
+# their cloud is.
+interface record particle_dots_call
+  particles: word = 0
+  x: word = 0
+  y: word = 0

@@ -1,0 +1,5 @@
+# The explosion's dots: the count they start from, and where their cloud is.
+interface record particle_burst_call
+  particles: word = 0
+  x: word = 0
+  y: word = 0

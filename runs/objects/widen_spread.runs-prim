@@ -1,7 +1,7 @@
 # Meant to give a big explosion the wider spread, but particles is
 # negative here for any real size, so the test never passes.
 processor widen_spread
-  reads: explosion_count
-  writes: explosion_cloud
-  if explosion_count.particles - 0140 >= 0:
-    set explosion_cloud.spread = 3                          # idx msh: scr 3s
+  in particles: word
+  inout spread: word
+  if particles - 0140 >= 0:
+    set spread = 3                                          # idx msh: scr 3s

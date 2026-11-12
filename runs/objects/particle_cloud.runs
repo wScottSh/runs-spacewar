@@ -1,0 +1,3 @@
+# A dot's scatter: the places the scl built from its first draw shifts it.
+presentation record particle_cloud
+  scatter: word = 0         # mi1

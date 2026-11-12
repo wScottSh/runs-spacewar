@@ -1,0 +1,4 @@
+# A dot of the explosion: where its cloud is.
+interface record particle_call
+  x: word = 0
+  y: word = 0

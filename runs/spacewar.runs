@@ -153,18 +153,6 @@ presentation stream display
   y: word
   intensity: int
 
-# How many dots the explosion has left this frame. The game counts them:
-# each dot draws two random numbers from the generator hyperspace also
-# draws from, so the count decides what hyperspace later draws. The
-# presentation reads it to choose the cloud's spread.
-interface record explosion_count
-  particles: word = 0       # mxc: dots left to plot, counting up
-
-# The explosion's cloud, carried from one dot to the next.
-presentation record explosion_cloud
-  spread: word = 0          # msh: which of mst's shifts spreads the dots, scr 1s or scr 3s
-  scatter: word = 0         # mi1: places the scl built from a random number shifts this dot
-
 # The spaceship calc routine's own words, handed from one of its rules to the
 # next within one ship's turn.
 enum rocket
@@ -246,11 +234,6 @@ game record handoff
   torpedo_supply: word = 0  # AC out of tno
   hyperspace_shots: word = 0    # AC out of mhs
   control_word: word = 0    # IO out of the control word routine (jsp i \cwg)
-
-# The explosion's dot in AC and IO: IO carries the low half from one dot's
-# shifts to the next; the high half is the dot's own local.
-presentation record explosion_dot
-  low: word = 0             # IO: each dot's y
 
 # The point the outline's walk is at, carried in AC and IO.
 presentation record outline_point

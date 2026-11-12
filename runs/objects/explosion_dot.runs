@@ -1,0 +1,5 @@
+# The low half of an explosion's dot, in IO: each dot's shifts push the
+# last one's out, and leave the dot's y there. The count's cma clears it
+# first (cli).
+presentation record explosion_dot
+  low: word = 0

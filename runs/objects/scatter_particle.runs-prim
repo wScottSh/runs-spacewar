@@ -1,6 +1,6 @@
 # The original builds an scl from the random number's low 9 bits; it
 # shifts one place per bit set.
 processor scatter_particle
-  reads: random
-  writes: explosion_cloud
-  set explosion_cloud.scatter = popcount(random.number & 0777)
+  in number: word
+  out scatter: word
+  set scatter = popcount(number & 0777)

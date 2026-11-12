@@ -1,0 +1,7 @@
+# How many dots the explosion has left this frame. The game counts them:
+# each dot draws two random numbers from the generator hyperspace also
+# draws from, so the count decides what hyperspace later draws. The
+# presentation reads it to choose the cloud's spread.
+interface record explosion_count
+  particles: word = 0       # mxc: dots left to plot, counting up
+  counted: word = 0         # the same after the first dot

@@ -1,4 +1,0 @@
-# No force: an exploding object drifts.
-processor coast                                             # cla
-  out acceleration: word
-  set acceleration = 0

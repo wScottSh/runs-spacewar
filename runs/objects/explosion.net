@@ -1,0 +1,88 @@
+# The explosion's calc routine (mex), a bundle. An exploding object keeps
+# drifting and is drawn as a cloud of dots, one per 8 instructions of its
+# size, for as many frames as its counter has left; then its slot is
+# freed. The dots start from a fresh explosion_dot, its value the
+# Record's own (the count's cma clears IO, cli); what the last dot leaves
+# there nothing reads.
+
+network explosion(slot)
+  inout table: objects
+  inout seed: random
+  inout points: display
+
+places
+  explosion_work.still_x
+  explosion_work.moved_x
+  explosion_work.position_x
+  explosion_work.still_y
+  explosion_work.moved_y
+  explosion_work.position_y
+  cloud: explosion_cloud
+  widened: explosion_cloud
+  explosion_count.particles
+  left: handoff
+  dot: explosion_dot
+  drawn: explosion_dot
+  explosion_work.counted
+
+transitions
+  still_x: clear                                            # cla
+  move_x: inertia                                           # diff \mdx, mx1, (sar 3s
+  give_x: copy
+  still_y: clear                                            # cla
+  move_y: inertia                                           # diff \mdy, my1, (sar 3s
+  give_y: copy
+  spread: spread_particles                                  # law mst; dap msh
+  size: size_explosion                                      # lac i mb1; cma cli-opr; sar 3s; dac \mxc
+  widen: widen_spread                                       # ms1
+  dots: particle_burst                                      # mz1
+  count_frame: count_down                                   # count i ma1, mxr
+  give_counter: copy
+  free: free_slot                                           # dzm i ml1
+  keep: copy_calc_routine
+
+arcs
+  still_x.value -> explosion_work.still_x
+  explosion_work.still_x -> move_x.acceleration
+  table[slot].dx -> move_x.velocity
+  table[slot].x -> move_x.place
+  move_x.velocity -> table[slot].dx
+  move_x.place -> explosion_work.moved_x
+  move_x.position -> explosion_work.position_x
+  explosion_work.moved_x -> give_x.source
+  give_x.target -> table[slot].x
+  still_y.value -> explosion_work.still_y
+  explosion_work.still_y -> move_y.acceleration
+  table[slot].dy -> move_y.velocity
+  table[slot].y -> move_y.place
+  move_y.velocity -> table[slot].dy
+  move_y.place -> explosion_work.moved_y
+  move_y.position -> explosion_work.position_y
+  explosion_work.moved_y -> give_y.source
+  give_y.target -> table[slot].y
+  spread.spread -> cloud.spread
+  table[slot].cycles -> size.cycles
+  size.particles -> explosion_count.particles
+  size.low -> left.explosion_low
+  explosion_count.particles -> widen.particles
+  cloud.spread -> widen.spread
+  widen.spread -> widened.spread
+  explosion_count.particles -> dots.particles
+  seed -> dots.seed
+  dots.seed -> seed
+  widened -> dots.cloud
+  explosion_work.moved_x -> dots.x
+  explosion_work.moved_y -> dots.y
+  dot -> dots.dot
+  dots.dot -> drawn
+  points -> dots.points
+  dots.points -> points
+  table[slot].counter -> count_frame.counter
+  count_frame.counter -> explosion_work.counted
+  explosion_work.counted -> give_counter.source
+  give_counter.target -> table[slot].counter
+  explosion_work.counted -> free when >= 0
+  free.routine -> table[slot].routine
+  explosion_work.counted -> keep when else
+  table[slot].routine -> keep.source
+  keep.target -> table[slot].routine

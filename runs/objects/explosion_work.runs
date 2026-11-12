@@ -1,0 +1,9 @@
+# Every value an explosion's frame computes on the way, each written once.
+game record explosion_work
+  still_x: word = 0         # cla: no force on dx
+  moved_x: word = 0         # x, drifted
+  position_x: word = 0      # what diff leaves in AC; nothing reads it
+  still_y: word = 0         # cla: no force on dy
+  moved_y: word = 0
+  position_y: word = 0
+  counted: word = 0         # its time, one frame on; at 0 its slot is freed

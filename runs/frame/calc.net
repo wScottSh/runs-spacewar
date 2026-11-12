@@ -1,7 +1,6 @@
 # The calc routine the object's routine word names (mq4: lac i ml1;
 # dap . 1; jsp .), a bundle: an n-way test on the routine word, which jumps
-# through it. A free slot runs no calc routine. The spaceships and the
-# explosion still name the Records they touch; each reads and gives the
+# through it. A free slot runs no calc routine. Each reads and gives the
 # table, the generator and the ships.
 
 network calc(slot)
@@ -57,12 +56,12 @@ arcs
   points -> flying
   flying -> points
   table[slot].routine -> exploding when == explosion
-  table -> exploding
-  exploding -> table
-  points -> exploding
-  exploding -> points
-  seed -> exploding
-  exploding -> seed
+  table -> exploding.table
+  exploding.table -> table
+  points -> exploding.points
+  exploding.points -> points
+  seed -> exploding.seed
+  exploding.seed -> seed
   table[slot].routine -> away when == in_hyperspace
   table -> away.table
   away.table -> table

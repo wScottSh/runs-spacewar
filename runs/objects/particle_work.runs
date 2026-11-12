@@ -1,0 +1,5 @@
+# A dot's two draws from the generator, each written once. The game
+# draws them; the presentation scatters and places the dot by them.
+interface record particle_work
+  first_draw: word = 0      # mz1: the number that scatters the dot
+  second_draw: word = 0     # the number that places it

@@ -7,7 +7,7 @@ pool = ["explosion_count.particles", "head_out_work.steps"]
 # spread as the address field of the xct that runs one of a table of its
 # shifts (msh, xct .), scatter as its shift itself, built at run time where
 # it runs (mi1).
-held_as_code = ["explosion_cloud.scatter"]
+held_as_code = ["particle_cloud.scatter"]
 
 [homes]
 "explosion_cloud.spread" = "table"

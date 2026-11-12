@@ -1,0 +1,3 @@
+# The explosion's cloud: how far its dots spread.
+presentation record explosion_cloud
+  spread: word = 0          # msh: which of mst's shifts spreads the dots, scr 1s or scr 3s

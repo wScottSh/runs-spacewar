@@ -5037,11 +5037,19 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
     sides = {p: sorted({gd for t in order for gd in chain[t] if gd[0] == p}) for p in tests}
     results = ac_results()
     in_ac = lambda w: "." not in w and w not in io and w not in g.wholes or w in results  # noqa: E731
+
+    def waiting(place, done, taken):
+        """A transition yet to run on this path that reads place: the order
+        so far already loses the value it needs."""
+        return next((a.transition for a in g.arcs if a.place == place and a.into and a.io and a.transition not in done
+                     and all(gd[0] in sides and gd in taken for gd in chain[a.transition])), None)
     for path in itertools.product(*sides.values()):
         taken = set(path)
         holds = {w: p for p, w in (given or {}).items()}   # an inline bundle's: what its user left there
+        also: dict[str, set] = {}                          # a word's value under another place's name too
         ac = next((p for p, w in (given or {}).items() if in_ac(w)), None)
         opened: tuple = ()
+        done: set[str] = set()
 
         def read(t, place):
             if g.bound and place == g.counter:
@@ -5050,7 +5058,7 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
             if g.port(place) and w not in holds and g.field(place) == w:
                 return None
             root = re.match(r"\w+", place)[0]
-            if holds.get(w, place) not in (place, f"{root}.*"):
+            if holds.get(w, place) not in (place, f"{root}.*") and place not in also.get(w, ()):
                 return f"{t} reads {place}, but {w} holds {holds[w]}"
             for k, held in holds.items() if w in g.wholes else ():
                 # an earlier value of the same Record in its chain (placed, then crossed) is part of this one
@@ -5084,8 +5092,12 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
             if sigs[proc].bundle:
                 for a in ins + [o for o in outs if o.io]:
                     holds[word[proc, a.io]] = a.place
+                    also.pop(word[proc, a.io], None)
                 ac = None
+            same = t in moves and [a.io for a in ins + outs] == ["source", "target"] \
+                and at[ins[0].place] == at[outs[0].place]       # no code: the word holds both
             for a in outs:
+                also[at[a.place]] = {holds.get(at[a.place])} if same else set()
                 holds[at[a.place]] = a.place
                 whole = at[a.place].split(".")[0]
                 if at[a.place] in g.wholes:      # a whole value: each word of its Record holds its entry
@@ -5093,10 +5105,14 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
                 elif whole in g.wholes and whole in holds:   # an entry: the whole is that place's, entry by entry
                     holds[whole] = f"{re.match(r'\w+', a.place)[0]}.*"
             written_ac = [a.place for a in outs if in_ac(at[a.place])]
+            before = ac
             if written_ac:
                 ac = written_ac[0]
             elif t not in moves:
                 ac = None
+            done.add(t)
+            if before is not None and ac != before and (u := waiting(before, done, taken)):
+                return f"{u} reads {before} in AC, but {t} takes AC first"
     return None
 
 
@@ -5140,6 +5156,14 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
        `random; scr 9s`), or is stepped just before the skip that tests it
        (the planetarium's `isp bkc` after its drawing, before the window
        moves; a count and its test, `count i ma1`);
+       A test can follow only once the unguarded work is done (1), so a
+       count waits for its test until then (the explosion's frame count,
+       after its dots). Of the units that wait, one whose value its taker
+       reads, where the taker also updates as an inout the value of another
+       unit yet to go, goes after that unit: the value read is made last,
+       still in AC (the explosion's `law mst; dap msh` before
+       `lac i mb1 .. dac \\mxc; sub (140`; its first dot before the
+       count the dots' loop tests, `count \\mxc, mz1`);
     5. one that hands nothing on to a transition of this level: work no
        other uses goes first, the made-and-used pairs after it (breakout's
        end before the recharge time; in_hyperspace's begin before the
@@ -5155,7 +5179,12 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
        thrust on y before the thrust on x, and the outline's aim before
        the dot at the center, which the walk takes next; st1: the slot's
        search and the placing before the velocity's look along x);
-    8. names, for the ties left, which decide nothing in the image
+    8. the one whose work, or the work it hands its value to, touches the
+       earlier field of a Record the network takes whole, in the Record's
+       declared order: the original works through a table entry in its
+       layout (the explosion's drift, x before y, which the wiring leaves
+       symmetric);
+    9. names, for the ties left, which decide nothing in the image
        (tools/check_names.py renames them).
 
     Before all of these, a transition that runs a block (a declared
@@ -5188,16 +5217,51 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
              for t in g.transitions}
     tail = {t for t in g.transitions if any(u != t and wired[u] == wired[t] and chain[u] != chain[t]
                                             for u in g.transitions)}
-    # A transition that a loop bundle it hands values to also runs, giving
-    # the same fields: it is the loop's own step, taken once before the
-    # loop, laid out just before it and joined to it (ocj: the first outline
-    # word's take, which the loop jumps back to). A copy is no such step.
-    def gives(graph_, t):
-        return sorted((a.io, graph_.field(a.place)) for a in graph_.arcs if a.transition == t and not a.into)
+    # A transition that a loop bundle it hands values to also runs, its
+    # outputs going to the inputs the loop's own run gives back to: it is
+    # the loop's first pass, taken once before the loop, laid out just
+    # before it and joined to it (ocj: the first outline word's take, which
+    # the loop jumps back to; the explosion's first dot and its count,
+    # `count \mxc, mz1`). A copy is no such step.
+    def into(t, u):
+        """Each output of t, and the input of u, or its entry, that takes it."""
+        return sorted((a.io, c.io + a.place[len(c.place):]) for a in g.arcs if a.transition == t and not a.into
+                      for c in g.arcs if c.transition == u and c.into and c.io
+                      and (a.place == c.place or a.place.startswith(c.place + ".")))
+
+    def back(b, v):
+        """Each output of v that the loop bundle b gives back to an input."""
+        return sorted((a.io, a.place) for a in b.arcs if a.transition == v and not a.into
+                      and re.match(r"\w+", a.place)[0] in b.ports)
     tail |= {t for t, proc in g.transitions.items() if proc not in copier.values()
-             and any((b := prog.graphs.get(g.transitions[u])) and b.counter and reads[u] & writes[t]
-                     and any(p == proc and gives(b, v) == gives(g, t) for v, p in b.transitions.items())
+             and any((b := prog.graphs.get(g.transitions[u])) and b.counter and (fed := into(t, u))
+                     and any(p == proc and back(b, v) == fed for v, p in b.transitions.items())
                      for u in g.transitions)}
+
+    def taken_by(u):
+        """The arcs that take what u makes."""
+        return [a for a in g.arcs if a.into and a.io and a.place in writes.get(u, ()) and a.transition != u]
+
+    def read_last(u, ms, placed):
+        """u's value is read by a taker that also updates, as an inout, the
+        value of another unit yet to go: the value it only updates is made
+        first, the one it reads just before it (the explosion's spread,
+        `law mst; dap msh`, before its size, `lac i mb1 .. dac \\mxc`, which
+        widen_spread reads, `sub (140`)."""
+        return any(a.io not in sigs[g.transitions[a.transition]].inout
+                   and any(c.transition == a.transition and c.io in sigs[g.transitions[c.transition]].inout
+                           and any(c.place in writes[v] for v in ms if v not in placed and v != u)
+                           for c in g.arcs if c.into and c.io)
+                   for a in taken_by(u))
+
+    def table_order(u):
+        """The first field, in its Record's order, of a whole Record input or
+        output that u or what takes its value touches."""
+        near = {u} | {a.transition for a in taken_by(u)}
+        found = [list(prog.records[kind].fields).index(fld) for a in g.arcs
+                 if a.transition in near and a.io and g.port(a.place) and (kind := g.whole(a.place)) in prog.records
+                 and (fld := re.fullmatch(r"\w+(?:\[\w+\])?(?:\.(\w+))?", a.place)[1]) in prog.records[kind].fields]
+        return not found, min(found, default=0)
 
     def key(t):
         return min((rank.get(g.field(p), rank.get(at.get(p), len(ARRIVAL))) for p in reads[t]), default=len(ARRIVAL)), t
@@ -5209,12 +5273,13 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
     def unit_key(u, ms, before, placed, lengths):
         if u in sides:
             rank, name = min(key(t) for t in inside[u])
-            return (False, True, False, rank, False, False, False, lengths[u], name)
+            return (False, True, False, rank, False, False, False, False, lengths[u], (True, 0), name)
         takers = [t for t in ms if t not in placed and t != u and t not in sides and t not in moves
                   and reads[t] & writes[u]] + [x for x in ms if x in sides and x not in placed and x in writes[u]]
-        waits = bool(takers) and not any(before[t] <= placed | {u} for t in takers)
+        last = all(m in placed or m == u or m in sides for m in ms)     # a test follows the unguarded work
+        waits = bool(takers) and not any(before[t] <= placed | {u} and (t not in sides or last) for t in takers)
         tested = any(p in sides and p in ms and p not in placed for p in writes[u])
-        return (jumps(u), False, u in tail, key(u)[0], waits, bool(takers), tested, lengths[u], u)
+        return (jumps(u), False, u in tail, key(u)[0], waits, waits and read_last(u, ms, placed), bool(takers), tested, lengths[u], table_order(u), u)
 
     def reached(before, v):
         """The units v comes after, directly or not."""
