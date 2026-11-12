@@ -1,0 +1,26 @@
+# The outline's pen: at the nose, with its steps from the heading.
+processor aim_outline                                       # .. sp5
+  in nose_x: word
+  in nose_y: word
+  in sine: word
+  in cosine: word
+  out x: word
+  out y: word
+  out down_x: word
+  out down_y: word
+  out out_x: word
+  out out_y: word
+  out out_down_x: word
+  out out_down_y: word
+  out in_down_x: word
+  out in_down_y: word
+  set x = nose_x
+  set y = nose_y
+  set down_x = sine >> 9
+  set down_y = cosine >> 9
+  set out_y = down_x
+  set out_down_x = out_y + down_y
+  set in_down_y = out_down_x
+  set in_down_x = down_x - down_y
+  set out_down_y = -in_down_x
+  set out_x = down_y

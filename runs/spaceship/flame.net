@@ -3,6 +3,8 @@
 
 network flame(slot)
   inout fleet: ship_flight
+  inout brush: pen
+  inout points: display
 
 places
   spaceship.flame
@@ -14,3 +16,7 @@ arcs
   spaceship.flame -> dots.flame
   fleet[slot].fuel -> dots.fuel
   dots.fuel -> fleet[slot].fuel
+  brush -> dots.brush
+  dots.brush -> brush
+  points -> dots.points
+  dots.points -> points

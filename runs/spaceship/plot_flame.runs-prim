@@ -1,0 +1,10 @@
+# A dot of the flame, one step back from the last.
+processor plot_flame                                        # st2: yincr \sx1, \sy1, sub; dispt i, \sy1
+  in down_x: word
+  in down_y: word
+  inout x: word
+  inout y: word
+  inout points: display
+  set y = y - down_y
+  set x = x + down_x
+  emit points: x, y, 0

@@ -19,6 +19,8 @@ network after_outline(slot)
   inout fleet: ship_flight
   inout crew: ships
   in switches: console
+  inout brush: pen
+  inout points: display
 
 places
   spaceship.controls
@@ -79,6 +81,10 @@ arcs
   spaceship.flame -> burn
   fleet -> burn.fleet
   burn.fleet -> burned
+  brush -> burn.brush
+  burn.brush -> brush
+  points -> burn.points
+  burn.points -> points
   after_outline_work.rocket -> keep_fuel when else
   fleet[slot].fuel -> keep_fuel.source
   keep_fuel.target -> burned[slot].fuel

@@ -1,0 +1,5 @@
+# A dot at the center, before the outline: on the PDP-1 it asks the display
+# for the completion pulse that the outline's first dot waits for.
+processor mark_center                                       # cla cli; dpy-4000
+  inout points: display
+  emit points: 0, 0, 0

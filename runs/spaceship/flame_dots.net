@@ -5,6 +5,8 @@
 network flame_dots
   counter flame: word
   inout fuel: word
+  inout brush: pen
+  inout points: display
 
 places
   heading.sine
@@ -34,8 +36,14 @@ arcs
   flame_work.burned -> give.source
   give.target -> fuel
   flame_work.burned -> plot when < 0
-  pen.down_x -> plot
-  pen.down_y -> plot
+  pen.down_x -> plot.down_x
+  pen.down_y -> plot.down_y
+  brush.x -> plot.x
+  plot.x -> brush.x
+  brush.y -> plot.y
+  plot.y -> brush.y
+  points -> plot.points
+  plot.points -> points
   flame_work.burned -> take when < 0
   flame -> take.counter
   take.counter -> flame

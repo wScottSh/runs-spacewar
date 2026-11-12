@@ -1,0 +1,19 @@
+# The outline starts at the tip, a 32nd of the heading ahead, and a torpedo
+# starts as far again.
+processor aim_nose                                          # sp1, sp2
+  in x: word
+  in y: word
+  in sine: word
+  in cosine: word
+  out step_x: word
+  out step_y: word
+  out nose_x: word
+  out nose_y: word
+  out torpedo_x: word
+  out torpedo_y: word
+  set step_x = sine >> 5
+  set step_y = cosine >> 5
+  set nose_x = x - step_x
+  set torpedo_x = nose_x - step_x
+  set nose_y = y + step_y
+  set torpedo_y = nose_y + step_y

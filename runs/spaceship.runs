@@ -74,8 +74,33 @@ network accelerate(slot)                                    # bsg
     velocity: objects.dx[slot]
     place: objects.x[slot]
     position: handoff.position
-  run aim_nose(slot)                                        # sp1
+  run aim_nose                                              # sp1
+    x: objects.x[slot]
+    y: objects.y[slot]
+    sine: heading.sine
+    cosine: heading.cosine
+    step_x: spaceship.nose_step_x
+    step_y: spaceship.nose_step_y
+    nose_x: ship_nose.x
+    nose_y: ship_nose.y
+    torpedo_x: spaceship.torpedo_x
+    torpedo_y: spaceship.torpedo_y
   run aim_outline
+    nose_x: ship_nose.x
+    nose_y: ship_nose.y
+    sine: heading.sine
+    cosine: heading.cosine
+    x: pen.x
+    y: pen.y
+    down_x: pen.down_x
+    down_y: pen.down_y
+    out_x: pen.out_x
+    out_y: pen.out_y
+    out_down_x: pen.out_down_x
+    out_down_y: pen.out_down_y
+    in_down_x: pen.in_down_x
+    in_down_y: pen.in_down_y
   run mark_center
+    points: display
   run outline(slot)                                         # sp5, jmp .
   run after_outline(slot)                                   # the outline jumps back to sq6

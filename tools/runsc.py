@@ -5260,7 +5260,7 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
                                     f"but {g.name} runs it with {n} in {word[b, n]}")
         wired = any(b == g.name for b, _ in given)
         if wired:                            # laid out inline: its run wires each input and output
-            named = {at[p]: p for p in g.ports if g.ports[p][1] not in g.wholes}   # a whole Record is its own words
+            named = {at[p]: p for p in g.ports if p not in g.records}   # a whole Record keeps its own name
             at = {p: named.get(w, w) for p, w in at.items()}
         owns = sorted({w for w in at.values() if "." not in w and w not in prog.records and not (wired and w in g.ports)})
         skip = {decl["skips"][0]} if "skips" in decl else set()
