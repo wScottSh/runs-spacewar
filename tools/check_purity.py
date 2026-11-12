@@ -27,7 +27,8 @@ def report(root: Path) -> tuple[runs.Program, list[str]]:
 
 def at(ref: str, root: Path, out: Path) -> Path:
     rel = root.resolve().relative_to(Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()))
-    for name in subprocess.check_output(["git", "ls-tree", "--name-only", f"{ref}:{rel}"], text=True).split():
+    for name in subprocess.check_output(["git", "ls-tree", "-r", "--name-only", f"{ref}:{rel}"], text=True).split():
+        (out / name).parent.mkdir(parents=True, exist_ok=True)
         (out / name).write_text(subprocess.check_output(["git", "show", f"{ref}:{rel}/{name}"], text=True))
     return out
 

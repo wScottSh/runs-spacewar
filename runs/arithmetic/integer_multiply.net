@@ -1,0 +1,24 @@
+# integer multiply (imp), a bundle: multiply with the factors swapped,
+# keeping the low half's 17 bits and its sign. multiply is one transition,
+# wired as a Processor is; the swap is two crossed arcs.
+
+network integer_multiply
+  in entry: word
+  in factor: word
+  out product: word
+
+places
+  integer_multiply_work.high
+  integer_multiply_work.low
+
+transitions
+  multiply: multiply
+  sign_to_bit_0: rotate_right
+
+arcs
+  factor -> multiply.entry
+  entry -> multiply.factor
+  multiply.partial -> integer_multiply_work.high
+  multiply.low -> integer_multiply_work.low
+  integer_multiply_work.low -> sign_to_bit_0.value
+  sign_to_bit_0.rotated -> product

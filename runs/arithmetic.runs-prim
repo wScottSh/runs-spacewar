@@ -130,25 +130,6 @@ network cosine                                              # cos
   run cosine_angle
   run sine
 
-# BBN integer multiply (imp): mpy with the factors swapped, keeping the low
-# half's 17 bits and sign.
-processor integer_multiply_factors                          # imp: xct, jda mpy, lac imp
-  reads: integer_multiply_call
-  writes: multiply_call
-  set multiply_call.entry = integer_multiply_call.factor
-  set multiply_call.factor = integer_multiply_call.entry
-
-processor integer_multiply_product                          # rir 1s: the low half's sign, bit 17, back to bit 0
-  reads: multiply_call
-  writes: integer_multiply_call
-  set integer_multiply_call.product = rar(multiply_call.low, 1)
-
-network integer_multiply                                    # imp
-  writes: integer_multiply_call, multiply_call
-  run integer_multiply_factors
-  run multiply
-  run integer_multiply_product
-
 # BBN divide (dvd). The 36-bit dividend over the divisor: the quotient, and
 # the remainder with the dividend's sign. When the quotient would not fit,
 # |divisor| comes back signed like a quotient and the dividend's high half
