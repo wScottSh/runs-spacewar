@@ -1,0 +1,16 @@
+# A new heading brought within a turn (hp4), a loop bundle: each pass takes
+# a token of steps, until it reaches 0.
+
+network bring_within_turn
+  counter steps: word
+  inout angle: word
+
+transitions
+  take: count_down                                          # count \hpt, hp4
+  pass: within_turn
+
+arcs
+  steps -> take.counter
+  take.counter -> steps
+  angle -> pass.angle
+  pass.angle -> angle

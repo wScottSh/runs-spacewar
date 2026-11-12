@@ -1,0 +1,30 @@
+# The ship leaves hyperspace (hp3 on), a bundle: the scaled draw as its
+# velocity, and a random heading brought within a turn.
+
+network head_out
+  in high: word
+  in low: word
+  in number: word
+  out dy: word
+  out dx: word
+  out angle: word
+
+places
+  head_out_work.steps
+  head_out_work.angle
+
+transitions
+  begin: begin_heading
+  turns: bring_within_turn
+
+arcs
+  high -> begin.high
+  low -> begin.low
+  number -> begin.number
+  begin.dy -> dy
+  begin.dx -> dx
+  begin.steps -> head_out_work.steps
+  begin.angle -> head_out_work.angle
+  head_out_work.steps -> turns.steps
+  head_out_work.angle -> turns.angle
+  turns.angle -> angle

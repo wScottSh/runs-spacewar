@@ -559,6 +559,24 @@ def rotated(stmts: list) -> list:
     return out
 
 
+def settled(stmts: list, prog: runs.Program) -> list:
+    """Each guard with one arm and no else that the sets just before it
+    decide: its arm when true, nothing when false. A loop bundle's counter
+    set to a constant below 0 needs no test before the first pass (the
+    `setup` and `count` macros: head_out's three passes)."""
+    out: list = []
+    facts = Facts(prog)
+    for s in stmts:
+        g = guard_of(s)
+        if g is not None and (d := facts.decide(g)) is not None:
+            out.extend(s[1][0][1] if d else [])
+            facts = Facts(prog)
+            continue
+        out.append(s)
+        facts = facts.after(s) if s[0] in ("let", "set") else Facts(prog)
+    return out
+
+
 def dead_locals(stmts: list, names: set[str]) -> list:
     """stmts without the lets and sets of each of names no statement reads."""
     read = set()

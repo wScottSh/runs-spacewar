@@ -1,0 +1,14 @@
+# The ship leaves with the scaled draw as its velocity and a random
+# heading; three passes start toward bringing the heading within a turn.
+processor begin_heading
+  in high: word
+  in low: word
+  in number: word
+  out dy: word
+  out dx: word
+  out steps: word
+  out angle: word
+  set dy = high
+  set dx = low
+  set steps = -3                                            # setup \hpt,3
+  set angle = number

@@ -1,0 +1,4 @@
+# What the way out of hyperspace leaves along the way, each written once.
+game record head_out_work
+  steps: word = 0       # \hpt: the passes toward a heading within a turn, -3
+  angle: word = 0       # the random heading, before it is brought within a turn

@@ -1794,7 +1794,7 @@ class Unit:
                     out.append((*s[:-2], rebuild(s[-2]), s[-1]))
                 else:
                     out.append(s)
-            return folds.rotated(out)       # a loop of a Network laid out inline, rotated where it lands
+            return folds.rotated(folds.settled(out, self.prog))   # a loop of a Network laid out inline
         return rebuild(stmts)
 
     def flat_body(self, items: list, r: runs.Routine, in_slots: bool = False, tail: bool = False) -> list:
@@ -4783,7 +4783,7 @@ def outputs_read_first(r: runs.Routine) -> set[str]:
 
 def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dict[tuple[str, str], str],
                  sigs: dict, io: set[str], moves: set[str], calls: frozenset[str] = frozenset(),
-                 first: dict[str, set[str]] | None = None) -> str | None:
+                 first: dict[str, set[str]] | None = None, given: dict[str, str] | None = None) -> str | None:
     """The first read, on any path through the order, of a value whose word
     holds another by then; or of a value runsc keeps in AC after AC was used
     for another; or of what an IO word holds after a call, which the C the
@@ -4798,8 +4798,8 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
     in_ac = lambda w: "." not in w and w not in io  # noqa: E731
     for path in itertools.product(*sides.values()):
         taken = set(path)
-        holds: dict[str, str] = {}
-        ac: str | None = None
+        holds = {w: p for p, w in (given or {}).items()}   # an inline bundle's: what its user left there
+        ac = next((p for p, w in (given or {}).items() if in_ac(w)), None)
         opened: tuple = ()
 
         def read(t, place):
@@ -4859,7 +4859,8 @@ def moves_off_ac(g: graph.Graph, sigs: dict, at: dict[str, str], io: set[str], c
 
 
 def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, decl: dict,
-                  io: set[str], copier: dict[str, str], prog: runs.Program) -> list[str]:
+                  io: set[str], copier: dict[str, str], prog: runs.Program,
+                  given: dict[str, str] | None = None) -> list[str]:
     """The PDP-1 back end's order among the transitions the wiring leaves
     free (#63). Of the orders the wiring allows, it keeps those in which no
     value is read after its word took another, nor read in AC after AC took
@@ -4916,7 +4917,7 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
         return (False, u in tail, key(u)[0], waits, bool(takers), u)
 
     def ok(prefix):
-        return path_hazards(g, prefix, at, word, sigs, io, moves, calls, first) is None
+        return path_hazards(g, prefix, at, word, sigs, io, moves, calls, first, given) is None
 
     def level(within, prefix):
         """Each order of the units of a level, after prefix."""
@@ -4968,7 +4969,8 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
                     if a.transition == t and a.io:
                         word[b, a.io] = at[a.place]
         try:
-            order = network_order(g, sigs, at, word, decl, io, copier, prog)
+            order = network_order(g, sigs, at, word, decl, io, copier, prog,
+                                  {p: at[p] for p in g.ports if (g.name, p) in prog.__dict__.get("inlined_words", {})})
         except BindError as e:
             tried.append(str(e))
             continue
@@ -4980,8 +4982,9 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
                                     f"but {g.name} runs it with {n} in {word[b, n]}")
         wired = any(b == g.name for b, _ in given)
         if wired:                            # laid out inline: its run wires each input and output
-            at = {p: (p if g.port(p) == p else w) for p, w in at.items()}
-        owns = sorted({w for p, w in at.items() if "." not in w and not (wired and g.port(p) == p)})
+            named = {at[p]: p for p in g.ports}
+            at = {p: named.get(w, w) for p, w in at.items()}
+        owns = sorted({w for w in at.values() if "." not in w and not (wired and w in g.ports)})
         skip = {decl["skips"][0]} if "skips" in decl else set()
         return graph.lower(g, sigs, order, graph.Lowering(at, word, copier, owns, skip, inlined, wired))
     raise BindError(tried[0] if tried else f"{g.where}: {g.name}: no word for a value")

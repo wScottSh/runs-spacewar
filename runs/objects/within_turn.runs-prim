@@ -1,0 +1,10 @@
+# One pass toward a heading within a turn (hp4): a turn off when it is
+# not below 0, a turn on when it is.
+processor within_turn
+  inout angle: word
+  let turned = angle
+  if turned >= 0:
+    set turned = turned - 0311040
+  if turned < 0:
+    set turned = turned + 0311040
+  set angle = turned

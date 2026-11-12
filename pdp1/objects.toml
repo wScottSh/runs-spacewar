@@ -1,7 +1,7 @@
 # The calc routines for objects that are not flying spaceships: mex, tcr,
 # hp1 and hp3, jsp routines the main loop enters with its cursors on the
 # current object. The random and diff macros are laid out at each use.
-pool = ["explosion_count.particles"]
+pool = ["explosion_count.particles", "head_out_work.steps"]
 
 # Counts held as the code of their use (docs/rules/held-as-code.md):
 # spread as the address field of the xct that runs one of a table of its
@@ -49,7 +49,6 @@ routine = "in_hyperspace"
 convention = "JSP"
 io_param = "handoff.jump_low"
 io = ["rest"]
-pool = ["angle_steps"]
 
 [[place]]
 routine = "breakout"

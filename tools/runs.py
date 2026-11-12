@@ -647,7 +647,7 @@ def check_template(prog: Program, t: Routine) -> None:
         raise RunsError(f"{t.name}: its Ports are its contract; it declares no reads: or writes:")
     if t.params:
         raise RunsError(f"{t.name}: a routine with Ports takes no slot; its wires choose the field")
-    if named := sorted(mentions([t.body, t.requires], set(prog.records))):
+    if t.name not in prog.graphs and (named := sorted(mentions([t.body, t.requires], set(prog.records)))):  # a lowered inline bundle names its words
         raise RunsError(f"{t.name} names the Record {named[0]}; a routine with Ports touches only its Ports")
     own = set(t.ports) | set(t.owns)
     for s in walk_statements(t.body):

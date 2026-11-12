@@ -1,0 +1,8 @@
+# A ship's way out of hyperspace: what it takes and gives.
+game record head_out_call
+  high: word = 0
+  low: word = 0
+  number: word = 0
+  dy: word = 0
+  dx: word = 0
+  angle: word = 0

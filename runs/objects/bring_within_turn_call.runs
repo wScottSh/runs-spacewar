@@ -1,0 +1,4 @@
+# A heading brought within a turn: the counter its passes consume, and the heading.
+game record bring_within_turn_call
+  steps: word = 0
+  angle: word = 0
