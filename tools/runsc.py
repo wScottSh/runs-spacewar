@@ -233,6 +233,8 @@ def counted_exits(stmts: list, prog: runs.Program, requires: list = ()) -> list:
         if f and s[0] == "for" and s[2][0] == "num" and s[3][0] == "num" and len(s[4]) == 1 \
                 and not runs.mentions(s[4], {s[1]}):
             n, (guard,), where = s[3][1] - s[2][1] + 1, s[4], s[-1]
+            if s[3][1] > 0o377777:
+                raise BindError(f"{where}: a counted loop's bounds are counts, at most 0377777")
             arm = guard[1][0][1] if guard[0] == "if" and len(guard[1]) == 1 and not guard[2] \
                 and guard[1][0][0] == ("bin", "<", f, ("num", 0)) else []
             rest = arm[:-1]
