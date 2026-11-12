@@ -21,6 +21,8 @@ builds=(
 checks=(
   'uv run -q python "$here/check_compiled.py" --sample 8000 | tail -1'     # the full gate runs by hand
   'uv run -q python "$here/check_declarations.py"'
+  # A network file states no order: its transitions renamed, the image is the same.
+  'PYTHONPATH=tools uv run -q python "$here/check_names.py" | tail -1'
   'PYTHONPATH=tools uv run -q python "$here/check_square_root.py"'
   'PYTHONPATH=tools uv run -q python "$here/check_multiply.py"'
   'PYTHONPATH=tools uv run -q python "$here/check_divide.py"'

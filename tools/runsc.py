@@ -4575,6 +4575,7 @@ class Occupancy:
 # and in the original's order among the transitions the wiring leaves free.
 
 ARRIVAL = ("entry", "io_param", "byname")     # the jda call form: AC into the entry word, then IO, then by name
+CALLED = "a call"                               # what an IO word holds, for all a hazard knows, after a call
 
 
 def declaration(name: str) -> dict:
@@ -4762,12 +4763,29 @@ class Storage:
             yield at
 
 
+def outputs_read_first(r: runs.Routine) -> set[str]:
+    """The outputs a Processor reads before it sets them: it takes what
+    their word holds when it starts (draw_jump's scr shifts its IO in)."""
+    outs = {p.name for p in r.ports.values() if p.direction == "out"}
+    found, written = set(), set()
+    for s in r.body:
+        found |= (runs.names_read(s) & outs) - written
+        if s[0] in ("let", "set"):
+            written |= {t[1] for t in (s[1][1] if s[1][0] == "tuple" else [s[1]]) if t[0] == "name"}
+    return found
+
+
 def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dict[tuple[str, str], str],
-                 sigs: dict, io: set[str], moves: set[str]) -> str | None:
+                 sigs: dict, io: set[str], moves: set[str], calls: frozenset[str] = frozenset(),
+                 first: dict[str, set[str]] | None = None) -> str | None:
     """The first read, on any path through the order, of a value whose word
     holds another by then; or of a value runsc keeps in AC after AC was used
-    for another. A guard's place is read once, by its test, before the
-    first transition of its side."""
+    for another; or of what an IO word holds after a call, which the C the
+    back end writes may use IO for. A guard's place is read once, by its
+    test, before the first transition of its side. calls: the transitions
+    the C calls; first: each transition's outputs it reads before it sets
+    them."""
+    first = first or {}
     chain = graph.chains(g)
     tests = sorted({gd[0] for t in order for gd in chain[t]})
     sides = {p: sorted({gd for t in order for gd in chain[t] if gd[0] == p}) for p in tests}
@@ -4800,6 +4818,11 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
             for a in ins:
                 if bad := read(t, a.place):
                     return bad
+            for p in first.get(t, ()):
+                if holds.get(at[p]) == CALLED:
+                    return f"{t} takes what {at[p]} holds, but a call before it may have used IO"
+            if t in calls:
+                holds.update({w: CALLED for w in io})
             if sigs[proc].bundle:
                 for a in ins + outs:
                     holds[word[proc, a.io]] = a.place
@@ -4830,33 +4853,64 @@ def moves_off_ac(g: graph.Graph, sigs: dict, at: dict[str, str], io: set[str], c
 
 
 def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, decl: dict,
-                  io: set[str], copier: dict[str, str]) -> list[str]:
+                  io: set[str], copier: dict[str, str], prog: runs.Program) -> list[str]:
     """The PDP-1 back end's order among the transitions the wiring leaves
     free (#63). Of the orders the wiring allows, it keeps those in which no
     value is read after its word took another, nor read in AC after AC took
-    another; and among the transitions that may go next it takes, in turn:
+    another, nor taken from an IO word after a call (path_hazards); and
+    among the transitions that may go next it takes, in turn:
 
     1. an unguarded one before a test's side: work that does not depend on
        a test is done before it (the graph's guards);
-    2. the one that reads the value the call hands over earliest: the jda
+    2. not one that another side also runs on the same inputs: that one
+       ends its side, so the two sides end in the same code, which the C
+       shares as one tail (breakout's two show_breakout; pdp1/README.md
+       `tails = "shared"`, DDT's `lac X / jmp ssn`);
+    3. the one that reads the value the call hands over earliest: the jda
        entry word, then IO, then the word after the call; one that reads
        none goes after (the routine's declaration);
-    3. names, for the ties left, which decide nothing in the image."""
+    4. not one that hands a value on to a transition of this level that
+       cannot go right after it: a value is made just before it is used,
+       which takes it from AC (breakout's random step before
+       weigh_breakout, `random; ior`; in_hyperspace's before draw_jump,
+       `random; scr 9s`);
+    5. one that hands nothing on to a transition of this level: work no
+       other uses goes first, the made-and-used pairs after it (breakout's
+       end before the recharge time; in_hyperspace's begin before the
+       draws);
+    6. names, for the ties left, which decide nothing in the image
+       (tools/check_names.py renames them)."""
     rank = {decl[k]: n for n, k in enumerate(ARRIVAL) if k in decl}
     reads = {t: {a.place for a in g.arcs if a.transition == t and a.into and a.io} for t in g.transitions}
+    writes = {t: {a.place for a in g.arcs if a.transition == t and not a.into} for t in g.transitions}
     moves = moves_off_ac(g, sigs, at, io, copier)
+    calls = frozenset(t for t, proc in g.transitions.items() if sigs[proc].bundle or declaration(proc))
+    first = {t: {a.place for a in g.arcs if a.transition == t and not a.into
+                 and a.io in outputs_read_first(prog.routines[proc])}
+             for t, proc in g.transitions.items() if proc in prog.routines}
     members, sides, holder = graph.levels(g)
     chain = graph.chains(g)
     inside = {p: [t for t in g.transitions if any(gd[0] == p for gd in chain[t])] for p in sides}
+    wired = {t: (g.transitions[t], g.args.get(t), tuple(sorted((a.io, a.place) for a in g.arcs
+                                                              if a.transition == t and a.into and a.io)))
+             for t in g.transitions}
+    tail = {t for t in g.transitions if any(u != t and wired[u] == wired[t] and chain[u] != chain[t]
+                                            for u in g.transitions)}
 
     def key(t):
         return min((rank.get(g.field(p), len(ARRIVAL)) for p in reads[t]), default=len(ARRIVAL)), t
 
-    def unit_key(u):
-        return (True, *min(key(t) for t in inside[u])) if u in sides else (False, *key(u))
+    def unit_key(u, ms, before, placed):
+        if u in sides:
+            rank, name = min(key(t) for t in inside[u])
+            return (True, False, rank, False, False, name)
+        takers = [t for t in ms if t not in placed and t != u and t not in sides and t not in moves
+                  and reads[t] & writes[u]]
+        waits = bool(takers) and not any(before[t] <= placed | {u} for t in takers)
+        return (False, u in tail, key(u)[0], waits, bool(takers), u)
 
     def ok(prefix):
-        return path_hazards(g, prefix, at, word, sigs, io, moves) is None
+        return path_hazards(g, prefix, at, word, sigs, io, moves, calls, first) is None
 
     def level(within, prefix):
         """Each order of the units of a level, after prefix."""
@@ -4867,7 +4921,8 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
             if len(placed) == len(ms):
                 yield prefix
                 return
-            for u in sorted((u for u in ms if u not in placed and before[u] <= placed), key=unit_key):
+            ready = [u for u in ms if u not in placed and before[u] <= placed]
+            for u in sorted(ready, key=lambda u: unit_key(u, ms, before, placed)):
                 if u in sides:
                     for nxt in test(u, sides[u], prefix):
                         yield from go(placed | {u}, nxt)
@@ -4900,7 +4955,7 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
     tried = []
     for at in st.choices():
         try:
-            order = network_order(g, sigs, at, word, decl, io, copier)
+            order = network_order(g, sigs, at, word, decl, io, copier, prog)
         except BindError as e:
             tried.append(str(e))
             continue
