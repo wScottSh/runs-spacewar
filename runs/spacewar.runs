@@ -240,13 +240,11 @@ game record launch
 # place only because a register carried it: into or out of a tunable the
 # original executes with xct, or into the diff macro.
 game record handoff
-  coordinate: word = 0      # AC into `the`: a torpedo's coordinate, sar 9s
-  acceleration: word = 0    # AC into diff: from `the`, or 0 (cla)
+  acceleration: word = 0    # AC into diff: 0 (cla)
   position: word = 0        # AC out of diff: the new position
   explosion_low: word = 0   # IO: cleared with the count's cma (cli); the dots shift it out unread
-  jump_high: word = 0       # AC: hyperspace's random draw into and out of hr1, hr2;
-  jump_low: word = 0        # IO:   one 36-bit value, scaled as one. IO holds what the main
-                            #   loop left there when hyperspace begins; the draw pushes it out
+  jump_low: word = 0        # IO: what the main loop left there when hyperspace begins (hp1);
+                            #   the first draw pushes it out
   torpedo_direction: word = 0   # AC into tvl: the sine or cosine of the ship's heading
   torpedo_velocity: word = 0    # AC out of tvl
   thrust_direction: word = 0    # AC into sac: the sine or cosine of the heading, sar 9s
@@ -256,8 +254,6 @@ game record handoff
   torpedo_life: word = 0    # AC out of tlf
   hyperspace_shots: word = 0    # AC out of mhs
   hyperspace_time: word = 0     # AC out of hd1
-  breakout_time: word = 0   # AC out of hd2
-  recharge_time: word = 0   # AC out of hd3
   control_word: word = 0    # IO out of the control word routine (jsp i \cwg)
   capture_margin: word = 0  # AC: a ship's squared distance from the star, less the capture radius
   distance_high: word = 0   # AC:IO: the distance from the star cubed, scaled down; a ship
