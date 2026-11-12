@@ -38,13 +38,6 @@ network between_games                                       # a
         run play_off
         run ask
 
-network ask                                                 # a5
-  run read_scores_switch
-  if handoff.scores_switch == 0:
-    run new_game
-  else:
-    run show_scores
-
 # The scores show on the console lights, ship 1's in AC and ship 2's in IO,
 # while the machine waits. Continuing with switch 040 off clears them and
 # starts a new match.
@@ -52,6 +45,8 @@ network show_scores                                         # a4
   run post_scores
   wait                                                      # hlt
   run read_scores_switch
+    test_word: console.test_word
+    switch: handoff.scores_switch
   if handoff.scores_switch != 0:
     run new_game
   else:

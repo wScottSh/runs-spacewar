@@ -1,0 +1,19 @@
+# Whether to show the scores (a5), a bundle: test word switch 040 on halts
+# to show them; off starts the next game.
+
+network ask
+  in switches: console
+
+places
+  ask_work.scores_switch
+
+transitions
+  read: read_scores_switch                                  # lat; and (40
+  play: new_game                                            # sza i; jmp a2
+  show: show_scores
+
+arcs
+  switches.test_word -> read.test_word
+  read.switch -> ask_work.scores_switch
+  ask_work.scores_switch -> play when == 0
+  ask_work.scores_switch -> show when else

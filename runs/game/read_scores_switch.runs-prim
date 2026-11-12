@@ -1,0 +1,6 @@
+# Test word switch 040: on, the machine halts between games to show the
+# scores.
+processor read_scores_switch                                # lat; and (40
+  in test_word: word
+  out switch: word
+  set switch = test_word & 040

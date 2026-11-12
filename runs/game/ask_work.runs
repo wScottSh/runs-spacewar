@@ -1,0 +1,3 @@
+# What the question between games computes, written once.
+game record ask_work
+  scores_switch: word = 0   # test word switch 040: on halts to show the scores

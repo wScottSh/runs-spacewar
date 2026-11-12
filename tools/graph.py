@@ -770,7 +770,7 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
         then = [i for i, (gd, _, _) in enumerate(body) if gd and gd[-1][0] == place and gd[-1][1] != "else"]
         other = [i for i, (gd, _, _) in enumerate(body) if gd and gd[-1][0] == place and gd[-1][1] == "else"]
         written = set().union(*(body[i][2] for i in then))
-        if then and other and all(body[i][2] <= written & low.before_test for i in other):
+        if then and other and all(body[i][2] and body[i][2] <= written & low.before_test for i in other):
             moved = [((), body[i][1], body[i][2]) for i in other]
             for i in reversed(other):
                 del body[i]
