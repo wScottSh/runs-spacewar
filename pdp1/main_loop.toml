@@ -67,9 +67,6 @@ routine = "start_with_control_boxes"
 routine = "between_games"
 
 [[place]]
-routine = "show_scores"
-
-[[place]]
 routine = "new_match"
 
 # AC holds where the outlines go, so the guard on separate_outlines reads
