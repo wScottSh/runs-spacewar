@@ -1,0 +1,7 @@
+# The multiply subroutine's own words (mpy): what a caller hands it and gets back. The second
+# factor is the word after the call (`jda mpy / lac b`); no caller names a word multiply writes.
+game record multiply_call
+  entry: word = 0           # mpy: jda leaves the first factor here
+  factor: word = 0          # the second factor
+  partial: word = 0         # mp2: the product's high half, AC at return
+  low: word = 0             # IO at return: the product's low half

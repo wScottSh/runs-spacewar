@@ -130,29 +130,6 @@ network cosine                                              # cos
   run cosine_angle
   run sine
 
-# BBN multiply (mpy). The product of the two factors: 34 bits and two signs,
-# the high half in multiply_call.partial, the low in multiply_call.low.
-processor multiply                                          # mpy
-  writes: multiply_call
-  let magnitude = multiply_call.entry
-  if magnitude < 0:
-    set magnitude = -magnitude
-  set multiply_call.low = magnitude                         # the multiplier, shifted out as the product shifts in
-  set magnitude = multiply_call.factor
-  if magnitude < 0:
-    set magnitude = -magnitude
-  set multiply_call.partial = magnitude
-  let high = 0
-  for step in 1 .. 021:
-    set (high, multiply_call.low) = mus(high, multiply_call.low, multiply_call.partial)
-  set multiply_call.partial = high
-  if (multiply_call.factor ^ multiply_call.entry) < 0:      # the signs differ: negate the 36 bits
-    set high = -multiply_call.partial
-    set (high, multiply_call.low) = rcr(high, multiply_call.low, 18)
-    set high = -high
-    set (high, multiply_call.low) = rcr(high, multiply_call.low, 18)
-    set multiply_call.partial = high
-
 # BBN integer multiply (imp): mpy with the factors swapped, keeping the low
 # half's 17 bits and sign.
 processor integer_multiply_factors                          # imp: xct, jda mpy, lac imp

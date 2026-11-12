@@ -1,0 +1,10 @@
+# Every value multiply computes on the way, each written once.
+game record multiply_work
+  entry_magnitude: word = 0
+  factor_magnitude: word = 0
+  high: word = 0            # the product's high half, before its sign
+  low: word = 0             # the product's low half, before its sign
+  saved_high: word = 0
+  signs: word = 0           # negative when the factors' signs differ
+  reloaded_high: word = 0
+  negated_high: word = 0

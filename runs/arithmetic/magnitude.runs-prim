@@ -1,0 +1,7 @@
+processor magnitude                                         # spa; cma
+  in value: word
+  out magnitude: word
+  let m = value
+  if m < 0:
+    set m = -m
+  set magnitude = m

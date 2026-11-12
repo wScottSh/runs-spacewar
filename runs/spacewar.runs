@@ -285,15 +285,8 @@ game record square_root_call
   passes_left: word = 0     # sq1
   root: word = 0            # sq2: the result
 
-# The multiply subroutines' own words (mpy, imp). The second factor is the
-# word after the call (`jda mpy / lac b`); no caller names a word the
-# routine writes, so reading it once or each time gives the same value.
-game record multiply_call
-  entry: word = 0           # mpy: jda leaves the first factor here
-  factor: word = 0          # the second factor
-  partial: word = 0         # mp2: |factor|, then the product's high half, AC at return
-  low: word = 0             # IO at return: the product's low half
-
+# The integer multiply subroutine's own words (imp). The second factor is
+# the word after the call (`jda imp / lac b`).
 game record integer_multiply_call
   entry: word = 0           # imp: jda leaves the first factor here
   factor: word = 0          # the second factor
