@@ -1858,6 +1858,20 @@ class Unit:
         self.as_run = stmts                     # each branch with its own copy of a shared tail
         seen: dict[str, int] = {}
 
+        def passed(items):
+            """The shared runs inside a tail that is jumped to, not laid out
+            here: they are laid out with that tail."""
+            for s in items:
+                if s[0] == "shared":
+                    seen[s[1]] = seen.get(s[1], 0) + 1
+                    passed(s[2])
+                elif s[0] == "if":
+                    for _, b in s[1]:
+                        passed(b)
+                    passed(s[2])
+                elif s[0] in ("loop", "slots"):
+                    passed(s[-2])
+
         def rebuild(items):
             out = []
             for s in items:
@@ -1868,6 +1882,7 @@ class Unit:
                     elif seen[s[1]] == runs_at.count(s[1]):
                         out += [("label", s[1], s[-1])] + rebuild(s[2])
                     else:
+                        passed(s[2])
                         out.append(("goto", s[1], s[-1]))
                 elif s[0] == "if":
                     out.append(("if", [(c, rebuild(b)) for c, b in s[1]], rebuild(s[2]), s[3]))
@@ -4763,13 +4778,27 @@ def shared_fields() -> dict[str, str]:
 
 def memory_words() -> set[str]:
     """The fields the declarations give a word in memory: each routine's
-    entry word, its cells, and the fields of a `fields` list."""
+    entry word, its cells, the fields of a `fields` list, and a unit's
+    pool words (its \\ variables)."""
     out: set[str] = set()
     for f in sorted(BINDINGS.glob("*.toml")):
-        for p in parsed(f).get("place", []):
+        spec = parsed(f)
+        out |= set(spec.get("pool", []))
+        for p in spec.get("place", []):
             out |= {p["entry"]} if "entry" in p else set()
             out |= set(p.get("cells", [])) | set(p.get("fields", []))
     return out
+
+
+def ac_results() -> set[str]:
+    """The fields a called routine returns in AC and keeps in no word of
+    memory (sine_call.result): read after anything else that uses AC,
+    the value is gone."""
+    out: set[str] = set()
+    for f in sorted(BINDINGS.glob("*.toml")):
+        for p in tomllib.loads(f.read_text()).get("place", []):
+            out |= set(p.get("result", [])[:1])
+    return out - memory_words()
 
 
 def operands(body) -> tuple[set[str], set[str], set[str]]:
@@ -4793,6 +4822,19 @@ def operands(body) -> tuple[set[str], set[str], set[str]]:
                 walk(y)
     walk(body)
     return memory, ac, io
+
+
+def port_word(prog: runs.Program, sigs: dict, copier: dict[str, str], bundle: str, n: str) -> str:
+    """The word a called bundle keeps its input or output n in, as its own
+    lowering places it (integer divide gives its result in divide's
+    word); else its call Record's field."""
+    cache = prog.__dict__.setdefault("port_words", {})
+    if bundle not in cache:
+        st = Storage(prog.graphs[bundle], sigs, copier, prog)
+        chosen = {p for cls, _ in st.options for p in cls}
+        cache[bundle] = {m: w for m, w in st.where.items() if m in prog.graphs[bundle].ports
+                         and m not in chosen and "." in w}
+    return cache[bundle].get(n, f"{bundle}_call.{n}")
 
 
 class Storage:
@@ -4895,13 +4937,21 @@ class Storage:
         for a in g.arcs:
             if not a.into:
                 writers[a.place] = writers.get(a.place, 0) + 1
+        # A value a bundle takes by name is the caller's word (jda imp / lac \t1): it lives in
+        # memory, not in a word of the bundle, unless a constant gives it (the word names a literal).
+        given_by_constant = {a.place for a in g.arcs if not a.into and a.io and not any(
+            b.transition == a.transition and b.into and b.io for b in g.arcs)}
         bundle_word: dict[str, str] = {}
         for t, proc in sorted(g.transitions.items()):
             if declaration(proc) and (sigs[proc].bundle or f"{proc}_call" in prog.records):
                 for n, ps in ends[t].items():
                     for p in ps:
+                        if p in memory and p not in given_by_constant:
+                            continue
                         if sigs[proc].types[n] not in g.wholes:     # a whole Record lives in its own words
-                            bundle_word.setdefault(p, f"{proc}_call.{n}")
+                            gives = n in sigs[proc].outputs
+                            held = port_word(prog, sigs, copier, proc, n) if sigs[proc].bundle else f"{proc}_call.{n}"
+                            bundle_word[p] = min(bundle_word.get(p, (2, "")), (0 if gives else 1, held))
                 if sigs[proc].bundle:
                     continue
             for n in sigs[proc].inout:
@@ -4926,7 +4976,9 @@ class Storage:
         for root in dict.fromkeys(self.find(p) for p in g.places):
             cls = [q for q in g.places if self.find(q) == root]
             words = sorted({word(q) for q in cls} - {None})
-            bundles = sorted({bundle_word[q] for q in cls if q in bundle_word})
+            # a value is born in the word of the bundle that gives it; a bundle that takes it
+            # gets it there just before its call
+            bundles = [w for _, w in sorted({bundle_word[q] for q in cls if q in bundle_word})]
             local = root.split(".")[-1]
             w = words[0] if words else bundles[0] if bundles else local
             for q in cls:
@@ -4981,7 +5033,8 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
     chain = graph.chains(g)
     tests = sorted({gd[0] for t in order for gd in chain[t]})
     sides = {p: sorted({gd for t in order for gd in chain[t] if gd[0] == p}) for p in tests}
-    in_ac = lambda w: "." not in w and w not in io and w not in g.wholes  # noqa: E731
+    results = ac_results()
+    in_ac = lambda w: "." not in w and w not in io and w not in g.wholes or w in results  # noqa: E731
     for path in itertools.product(*sides.values()):
         taken = set(path)
         holds = {w: p for p, w in (given or {}).items()}   # an inline bundle's: what its user left there
@@ -5147,12 +5200,12 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
     def unit_key(u, ms, before, placed):
         if u in sides:
             rank, name = min(key(t) for t in inside[u])
-            return (False, True, False, rank, False, False, False, name)
+            return (False, True, False, rank, False, False, False, False, name)
         takers = [t for t in ms if t not in placed and t != u and t not in sides and t not in moves
                   and reads[t] & writes[u]] + [x for x in ms if x in sides and x not in placed and x in writes[u]]
         waits = bool(takers) and not any(before[t] <= placed | {u} for t in takers)
         tested = any(p in sides and p in ms and p not in placed for p in writes[u])
-        return (jumps(u), False, u in tail, key(u)[0], waits, bool(takers), tested, u)
+        return (jumps(u), False, u in tail, key(u)[0], waits, bool(takers), tested, u not in calls, u)
 
     def reached(before, v):
         """The units v comes after, directly or not."""
@@ -5290,7 +5343,8 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
     decl = declaration(g.name)
     st = Storage(g, sigs, copier, prog)
     bundles = {p for p in g.transitions.values() if sigs[p].bundle}
-    word = {(b, n): f"{b}_call.{n}" for b in bundles for n in sigs[b].inputs + sigs[b].outputs}
+    word = {(b, n): port_word(prog, sigs, copier, b, n) if declaration(b) else f"{b}_call.{n}"
+            for b in bundles for n in sigs[b].inputs + sigs[b].outputs}
     io: set[str] = set()
     for d in [decl] + [declaration(b) for b in bundles] + \
             ([declaration(u.name) for u in prog.graphs.values() if g.name in u.transitions.values()] if not decl else []):
