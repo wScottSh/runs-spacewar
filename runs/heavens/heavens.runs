@@ -25,6 +25,10 @@ network star_line                                           # bpt
   run random_step
     number: random.number
   run draw_star
+    number: random.number
+    slope_x: central_star.slope_x
+    slope_y: central_star.slope_y
+    points: display
 
 # The Expensive Planetarium (bck), the `background` macro: the stars of the
 # catalog, in four magnitudes, through a window one screen wide that moves
@@ -37,10 +41,38 @@ network expensive_planetarium                               # bck
     if planetarium.alternate_frames >= 0:
       run skip_a_frame                                      # law i 2
         frames: planetarium.alternate_frames
-      run show_magnitude(0)                                 # dislis 1j, 1q, 3
-      run show_magnitude(1)                                 # dislis 2j, 2q, 2
-      run show_magnitude(2)                                 # dislis 3j, 3q, 1
-      run show_magnitude(3)                                 # dislis 4j, 4q, 0
+      run show_magnitude
+        catalog: star_catalog.words
+        right_margin: planetarium.right_margin
+        first: magnitudes.first[0]
+        past: magnitudes.past[0]
+        intensity: magnitudes.intensity[0]
+        cursor: magnitudes.cursor[0]
+        points: display                                 # dislis 1j, 1q, 3
+      run show_magnitude
+        catalog: star_catalog.words
+        right_margin: planetarium.right_margin
+        first: magnitudes.first[1]
+        past: magnitudes.past[1]
+        intensity: magnitudes.intensity[1]
+        cursor: magnitudes.cursor[1]
+        points: display                                 # dislis 2j, 2q, 2
+      run show_magnitude
+        catalog: star_catalog.words
+        right_margin: planetarium.right_margin
+        first: magnitudes.first[2]
+        past: magnitudes.past[2]
+        intensity: magnitudes.intensity[2]
+        cursor: magnitudes.cursor[2]
+        points: display                                 # dislis 3j, 3q, 1
+      run show_magnitude
+        catalog: star_catalog.words
+        right_margin: planetarium.right_margin
+        first: magnitudes.first[3]
+        past: magnitudes.past[3]
+        intensity: magnitudes.intensity[3]
+        cursor: magnitudes.cursor[3]
+        points: display                                 # dislis 4j, 4q, 0
       run count_steps                                       # isp bkc
         steps: planetarium.window_steps
       if planetarium.window_steps >= 0:

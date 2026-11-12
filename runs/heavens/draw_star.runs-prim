@@ -4,24 +4,26 @@
 # the mirror. Only AC adds, so a dot exchanges y into AC to step it, and
 # back (swap).
 processor draw_star
-  reads: random, central_star
-  writes: display
-  let skipped = random.number >> 14                         # sar 9s; sar 5s: -7..7
+  in number: word
+  in slope_x: word
+  in slope_y: word
+  out points: display
+  let skipped = number >> 14                         # sar 9s; sar 5s: -7..7
   if skipped < 0:
     set skipped = -skipped
   let half = first                                          # clf 6
   let x = 0                                                 # cla cli: the center
   let y = 0
-  emit display: x, y, 0
+  emit points: x, y, 0
   let drawing = going
   for pass in 1 .. 2:                                       # the line, then its mirror
     if drawing == going:
       for dot in skipped .. 017:                            # bds: repeat 20, starp
-        set x = x + central_star.slope_x
+        set x = x + slope_x
         set (x, y) = rcl(x, y, 18)                          # swap
-        set x = x + central_star.slope_y
+        set x = x + slope_y
         set (x, y) = rcl(x, y, 18)                          # swap
-        emit display: x, y, 0
+        emit points: x, y, 0
       if half == mirrored:                                  # szf 6
         set drawing = done
     if drawing == going:

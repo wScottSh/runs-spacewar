@@ -9,18 +9,23 @@
 # when it has gone all the way round. A star outside the window before any
 # is plotted moves the cursor past it, so later scans skip it. star_x and
 # star_y are where the star's x and y lie (fin, fyn).
-processor show_magnitude(m)
-  reads: star_catalog, planetarium
-  writes: magnitudes, display
+processor show_magnitude
+  in catalog: word[01652]
+  in right_margin: word
+  in first: word
+  in past: word
+  in intensity: int
+  inout cursor: word
+  out points: display
   let scan = looking                                        # clf 5
-  let scan_start = magnitudes.cursor[m]                     # lac flo; dap fpo
-  let star_x = magnitudes.cursor[m]                         # dap fin
-  let star_y = magnitudes.cursor[m]                         # dap fyn
+  let scan_start = cursor                     # lac flo; dap fpo
+  let star_x = cursor                         # dap fin
+  let star_y = cursor                         # dap fyn
   set star_y = star_y + 1                                   # idx fyn
   let scanning = going
   for star in 1 .. 0672:                                    # fin: each star looked at, once at most (the most a magnitude has)
     if scanning == going:
-      let x = star_catalog.words[star_x] - planetarium.right_margin
+      let x = catalog[star_x] - right_margin
       if x >= 0:                                            # fgr: round the sky, then test again
         set x = x + (02000 - 020000)
       else:
@@ -29,22 +34,22 @@ processor show_magnitude(m)
         if scan == plotted:
           set scanning = done                               # past the window's stars
         if scanning == going:
-          set magnitudes.cursor[m] = magnitudes.cursor[m] + 1   # idx flo, idx flo: the next scan
-          set magnitudes.cursor[m] = magnitudes.cursor[m] + 1   #   starts after this star
-          if magnitudes.cursor[m] == magnitudes.past[m]:
-            set magnitudes.cursor[m] = magnitudes.first[m]
+          set cursor = cursor + 1   # idx flo, idx flo: the next scan
+          set cursor = cursor + 1   #   starts after this star
+          if cursor == past:
+            set cursor = first
       else:
         set x = (x - 01000) << 8                            # to a display coordinate
-        emit display: x, star_catalog.words[star_y], magnitudes.intensity[m]
+        emit points: x, catalog[star_y], intensity
         set scan = plotted                                  # stf 5
     if scanning == going:
       set star_y = star_y + 1                               # fid: the next star
-      if star_y == magnitudes.past[m]:                      # flp: past the last star, the first
-        if magnitudes.first[m] == scan_start:
+      if star_y == past:                      # flp: past the last star, the first
+        if first == scan_start:
           set scanning = done                               # all the way round
         if scanning == going:
-          set star_x = magnitudes.first[m]
-          set star_y = magnitudes.first[m] + 1
+          set star_x = first
+          set star_y = first + 1
       elif star_y == scan_start:
         set scanning = done                                 # all the way round
       else:

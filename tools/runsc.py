@@ -684,9 +684,11 @@ class Bindings:
         self.inverse_skipped: dict[str, set] = {}  # such a field -> where the test it names stands
         self.device_file(next((p for p in paths if p.name == DEVICES), None))
         for path, spec in self.specs.items():
-            for section in ("place", "inline"):
+            for section in ("place", "inline", "code"):
                 if section in spec:
                     spec[section] = [q for p in spec[section] for q in self.copies_of(path, section, p)]
+            if carry := spec.get("walk", {}).get("carry"):
+                spec["walk"]["carry"] = [self.one_copy(path, "carry", c) for c in carry]
         for word in ("constants", "variables"):
             # a program with no literal constant, or no pool word, has none
             if sum(p.get("machine") == word for s in self.specs.values() for p in s.get("place", [])) > 1:
@@ -781,19 +783,26 @@ class Bindings:
         that routine's one copy."""
         for key in ("args_done", "exit_after", "loaded"):
             if p.get(key) in self.prog.templates:
-                runs_of = [c for c, (t, _) in self.prog.copies.items() if t == p[key]]
-                if len(runs_of) != 1:
-                    raise BindError(f"{path.name}: {key} {p[key]!r} is run {len(runs_of)} ways; it names one run")
-                p = {**p, key: runs_of[0]}
+                p = {**p, key: self.one_copy(path, key, p[key])}
         name = p.get("routine")
         if name not in self.prog.templates:
             return [p]
         copies = [c for c, (t, _) in self.prog.copies.items() if t == name]
-        if section == "place" and len(copies) != 1:
+        if section in ("place", "code") and len(copies) != 1:
             wirings = [", ".join(f"{port}: {runs.text_of(e)}" for port, e in self.prog.copies[c][1]) for c in copies]
             raise BindError(f"{path.name}: {name} is one called routine, but its runs wire it "
                             f"{len(copies)} ways: {wirings}")
         return [{**p, "routine": c} for c in copies]
+
+    def one_copy(self, path: Path, key: str, name: str) -> str:
+        """A key that names one run of a routine with inputs and outputs
+        (args_done, a walk's carry) names its one copy."""
+        if name not in self.prog.templates:
+            return name
+        runs_of = [c for c, (t, _) in self.prog.copies.items() if t == name]
+        if len(runs_of) != 1:
+            raise BindError(f"{path.name}: {key} {name!r} is run {len(runs_of)} ways; it names one run")
+        return runs_of[0]
 
     def register_passing(self):
         """What a called Processor with no entry word takes and gives in AC

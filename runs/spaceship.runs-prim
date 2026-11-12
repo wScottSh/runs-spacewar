@@ -190,76 +190,93 @@ processor mark_center                                       # cla cli; dpy-4000
 # the pen and plots a dot, from the nose down one side to the end; then the
 # out steps are mirrored and the same strokes draw the other side, from the
 # nose again. The pen is left at the tail, and the walk goes back to sq6.
-processor draw_outline(slot)                                # sp5, jmp .
-  reads: ship_outlines, outline_code
-  writes: pen, outline_point, display
-  let at = ship_outlines.outline[slot]
+processor draw_outline                                      # sp5, jmp .
+  in start: word
+  in strokes: stroke[0304]
+  in backs: word[0304]
+  in down_x: word
+  in down_y: word
+  inout x: word
+  inout y: word
+  inout out_x: word
+  inout out_y: word
+  inout out_down_x: word
+  inout out_down_y: word
+  inout in_down_x: word
+  inout in_down_y: word
+  inout saved_x: word
+  inout saved_y: word
+  inout side: side
+  inout point_x: word
+  inout point_y: word
+  out points: display
+  let at = start
   let drawing = going
   for stroke_count in 1 .. 0304:
     if drawing == going:
-      let stroke = outline_code.stroke[at]
+      let stroke = strokes[at]
       if stroke == begin:
-        set pen.side = first                                  # stf 5
+        set side = first                                  # stf 5
       elif stroke == nose:
-        set outline_point.x = pen.x                             # lac \sx1
-        set outline_point.y = pen.y                             # lio \sy1
+        set point_x = x                             # lac \sx1
+        set point_y = y                             # lio \sy1
       elif stroke == down:
-        set outline_point.x = outline_point.x + pen.down_x
-        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)   # swap: only AC adds
-        set outline_point.x = outline_point.x - pen.down_y
-        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)
-        emit display: outline_point.x, outline_point.y, 0
+        set point_x = point_x + down_x
+        set (point_x, point_y) = rcl(point_x, point_y, 18)   # swap: only AC adds
+        set point_x = point_x - down_y
+        set (point_x, point_y) = rcl(point_x, point_y, 18)
+        emit points: point_x, point_y, 0
       elif stroke == out:
-        set outline_point.x = outline_point.x + pen.out_x
-        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)   # swap: only AC adds
-        set outline_point.x = outline_point.x + pen.out_y
-        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)
-        emit display: outline_point.x, outline_point.y, 0
+        set point_x = point_x + out_x
+        set (point_x, point_y) = rcl(point_x, point_y, 18)   # swap: only AC adds
+        set point_x = point_x + out_y
+        set (point_x, point_y) = rcl(point_x, point_y, 18)
+        emit points: point_x, point_y, 0
       elif stroke == out_down:
-        set outline_point.x = outline_point.x + pen.out_down_x
-        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)   # swap: only AC adds
-        set outline_point.x = outline_point.x - pen.out_down_y
-        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)
-        emit display: outline_point.x, outline_point.y, 0
+        set point_x = point_x + out_down_x
+        set (point_x, point_y) = rcl(point_x, point_y, 18)   # swap: only AC adds
+        set point_x = point_x - out_down_y
+        set (point_x, point_y) = rcl(point_x, point_y, 18)
+        emit points: point_x, point_y, 0
       elif stroke == in:
-        set outline_point.x = outline_point.x - pen.out_x
-        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)   # swap: only AC adds
-        set outline_point.x = outline_point.x - pen.out_y
-        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)
-        emit display: outline_point.x, outline_point.y, 0
+        set point_x = point_x - out_x
+        set (point_x, point_y) = rcl(point_x, point_y, 18)   # swap: only AC adds
+        set point_x = point_x - out_y
+        set (point_x, point_y) = rcl(point_x, point_y, 18)
+        emit points: point_x, point_y, 0
       elif stroke == in_down:
-        set outline_point.x = outline_point.x + pen.in_down_x
-        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)   # swap: only AC adds
-        set outline_point.x = outline_point.x - pen.in_down_y
-        set (outline_point.x, outline_point.y) = rcl(outline_point.x, outline_point.y, 18)
-        emit display: outline_point.x, outline_point.y, 0
+        set point_x = point_x + in_down_x
+        set (point_x, point_y) = rcl(point_x, point_y, 18)   # swap: only AC adds
+        set point_x = point_x - in_down_y
+        set (point_x, point_y) = rcl(point_x, point_y, 18)
+        emit points: point_x, point_y, 0
       elif stroke == store:
-        set pen.saved_x = outline_point.x
-        set pen.saved_y = outline_point.y
+        set saved_x = point_x
+        set saved_y = point_y
       elif stroke == restore:
-        set outline_point.x = pen.saved_x
-        set outline_point.y = pen.saved_y
+        set point_x = saved_x
+        set point_y = saved_y
       elif stroke == end:
-        if pen.side == other:                                 # szf 5
-          set pen.x = outline_point.x                           # the tail, where the flame starts
-          set pen.y = outline_point.y
+        if side == other:                                 # szf 5
+          set x = point_x                           # the tail, where the flame starts
+          set y = point_y
           set drawing = done                                # jmp sq6
         if drawing == going:
-          set pen.side = other                                  # clf 5: the other side
+          set side = other                                  # clf 5: the other side
           # The point is spent: AC and IO carry the mirror's words.
-          set outline_point.x = -pen.out_x                        # out is in
-          set pen.out_x = outline_point.x
-          set outline_point.x = -pen.out_y
-          set pen.out_y = outline_point.x
-          set outline_point.x = pen.out_down_y                    # out and down is in and down
-          set outline_point.y = pen.in_down_y
-          set pen.in_down_y = outline_point.x
-          set pen.out_down_y = outline_point.y
-          set outline_point.x = pen.out_down_x
-          set outline_point.y = pen.in_down_x
-          set pen.in_down_x = outline_point.x
-          set pen.out_down_x = outline_point.y
-          set at = outline_code.back[at]                        # the nose again
+          set point_x = -out_x                        # out is in
+          set out_x = point_x
+          set point_x = -out_y
+          set out_y = point_x
+          set point_x = out_down_y                    # out and down is in and down
+          set point_y = in_down_y
+          set in_down_y = point_x
+          set out_down_y = point_y
+          set point_x = out_down_x
+          set point_y = in_down_x
+          set in_down_x = point_x
+          set out_down_x = point_y
+          set at = backs[at]                        # the nose again
       if stroke != end:
         set at = at + 1
 

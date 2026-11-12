@@ -579,6 +579,8 @@ def owned_record(network: str) -> str:
 
 
 def substitute_names(tree, names: dict):
+    if isinstance(tree, tuple) and tree[:1] == ("emit",) and names.get(tree[1], ("",))[0] == "name":
+        tree = ("emit", names[tree[1]][1], *tree[2:])         # a stream output: the stream wired to it
     if isinstance(tree, tuple):
         if len(tree) == 2 and tree[0] == "name" and tree[1] in names:
             return names[tree[1]]
@@ -626,6 +628,8 @@ def wired_kind(prog: Program, e) -> tuple[str, int | None] | None:
     single Record, is its type; a whole field of a collection is type[N].
     None: no field."""
     base = e[1] if e[0] == "index" else e
+    if base[0] == "name" and base is e and base[1] in prog.records and prog.records[base[1]].stream:
+        return base[1], None                    # a whole stream, wired to a stream output
     if not (base[0] == "field" and base[1][0] == "name" and base[1][1] in prog.records):
         return None
     rec = prog.records[base[1][1]]
@@ -675,7 +679,10 @@ def expand_ports(prog: Program) -> None:
         for p in [*r.ports.values(), *r.owns.values()]:
             if p.name in prog.records:
                 raise RunsError(f"{r.name}: its {p.direction} {p.name} has a Record's name")
-            if p.type not in ("word", "insn") and p.type not in prog.enums:
+            stream = p.type in prog.records and prog.records[p.type].stream
+            if stream and (p.direction == "in" or p.count is not None):
+                raise RunsError(f"{r.name}: {p.name}: a stream output is `out` or `inout`, one stream, not {p.direction}")
+            if p.type not in ("word", "int", "insn") and p.type not in prog.enums and not stream:
                 raise RunsError(f"{r.name}: {p.name}: no kind {p.type}")
             if p.direction == "owns" and p.count is not None:
                 raise RunsError(f"{r.name}: owns {p.name}: scratch is one field, not {kind_text(p.type, p.count)}")
