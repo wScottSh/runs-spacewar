@@ -4665,7 +4665,7 @@ class Storage:
         def word(p):
             """A table entry is its own word; any other place, the one the declarations give."""
             f = g.field(p)
-            return f if g.port(p) in g.tables or re.sub(r"\[\w+\]", "", f) in declared else None
+            return f if g.port(p) in g.records or re.sub(r"\[\w+\]", "", f) in declared else None
 
         memory: set[str] = set()
         in_ac: set[str] = set()
@@ -4723,7 +4723,8 @@ class Storage:
                 share(ends[t]["source"][0], ends[t]["target"][0])
         own = [f"{g.call}.{f}" for f in prog.records[g.call].fields] if g.call in prog.records else []
         in_memory = [f for f in own if f in memory_words()]
-        io_words = [f for f in own if f == decl.get("io_param") or f in decl.get("io", [])]
+        io_words = [f for f in own if f == decl.get("io_param") or f in decl.get("io", [])] if own \
+            else [f for f in [decl.get("io_param")] if f]     # no call Record: the IO the routine is entered with
         self.where: dict[str, str] = {}
         self.options: list[tuple[list[str], list[str]]] = []    # (a class, the words it may take)
         for root in dict.fromkeys(self.find(p) for p in g.places):

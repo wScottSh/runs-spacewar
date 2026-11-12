@@ -1,4 +1,4 @@
-processor time_breakout(slot)                               # dac i ma1
-  reads: handoff
-  writes: objects
-  set objects.counter[slot] = handoff.breakout_time
+processor time_breakout                                     # dac i ma1
+  in time: word
+  out counter: word
+  set counter = time

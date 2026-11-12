@@ -40,26 +40,6 @@ network explosion(slot)                                     # mex
   if objects.counter[slot] >= 0:
     run free_slot(slot)
 
-# A ship in hyperspace is not drawn and does not collide. When its time is
-# up it jumps by a random displacement, takes a random velocity and
-# heading, and breakout begins.
-network in_hyperspace(slot)                                 # hp1
-  requires: slot < 2
-  run count_down                                      # count i ma1, hp2
-    counter: objects.counter[slot]
-  if objects.counter[slot] >= 0:
-    run begin_breakout(slot)
-    run next_random
-    run draw_jump
-    run hyperspatial_displacement
-    run jump(slot)
-    run next_random
-    run draw_jump
-    run hyperspatial_velocity
-    run head_out(slot)
-    run breakout_time
-    run time_breakout(slot)
-
 # Breakout: the ship shows as a dot and can collide again. When its time is
 # up it gets its own calc routine back, uses up a jump, starts the
 # hyperfield generators' recharge and takes on more uncertainty; then it

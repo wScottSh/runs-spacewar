@@ -814,7 +814,7 @@ def lower_graphs(prog: Program, lower) -> None:
             graph.check(g, sigs, fields)
         except graph.GraphError as e:
             raise RunsError(str(e)) from e
-        if want := {n: typ for n, (_, typ) in g.ports.items() if n not in g.tables}:
+        if want := {n: typ for n, (_, typ) in g.ports.items() if n not in g.records}:
             if fields.get(g.call) != want:
                 raise RunsError(f"{g.where}: the Record {g.call} must hold {g.name}'s inputs and outputs, "
                                 f"{want}, and nothing else")

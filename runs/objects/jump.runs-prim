@@ -1,9 +1,10 @@
-processor jump(slot)                                        # add i mx1; dac i mx1; swap; add i my1; dac i my1
-  reads: handoff
-  writes: objects
-  let high = handoff.jump_high + objects.x[slot]
-  set objects.x[slot] = high
-  let low = handoff.jump_low
-  set (high, low) = rcl(high, low, 18)
-  set high = high + objects.y[slot]
-  set objects.y[slot] = high
+processor jump                                              # add i mx1; dac i mx1; swap; add i my1; dac i my1
+  in high: word
+  in low: word
+  inout x: word
+  inout y: word
+  let moved = high + x
+  set x = moved
+  let rest = low
+  set (moved, rest) = rcl(moved, rest, 18)
+  set y = moved + y

@@ -1,16 +1,21 @@
-processor head_out(slot)
-  requires: slot < 2
-  reads: handoff, random
-  writes: objects, ship_flight
-  set objects.dy[slot] = handoff.jump_high
-  set objects.dx[slot] = handoff.jump_low
+# The ship leaves with the scaled draw as its velocity and a random
+# turned, brought within a turn.
+processor head_out
+  in high: word
+  in low: word
+  in number: word
+  out dy: word
+  out dx: word
+  out angle: word
+  set dy = high
+  set dx = low
   let angle_steps = -3
-  set ship_flight.angle[slot] = random.number
-  for pass in 1 .. -angle_steps:    # bring the new heading within a turn
-    let heading = ship_flight.angle[slot]
-    if heading >= 0:
-      set heading = heading - 0311040
-    if heading < 0:
-      set heading = heading + 0311040
-    set ship_flight.angle[slot] = heading
+  set angle = number
+  for pass in 1 .. -angle_steps:    # bring the new turned within a turn
+    let turned = angle
+    if turned >= 0:
+      set turned = turned - 0311040
+    if turned < 0:
+      set turned = turned + 0311040
+    set angle = turned
     set angle_steps = angle_steps + 1

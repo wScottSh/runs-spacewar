@@ -48,7 +48,7 @@ convention = "JSP"
 routine = "in_hyperspace"
 convention = "JSP"
 io_param = "handoff.jump_low"
-io = ["low"]
+io = ["rest"]
 pool = ["angle_steps"]
 
 [[place]]

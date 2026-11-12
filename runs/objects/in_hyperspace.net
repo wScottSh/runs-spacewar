@@ -1,0 +1,87 @@
+# A ship in hyperspace (hp1), a bundle. It is not drawn and does not
+# collide. When its time is up it jumps by a random displacement, takes a
+# random velocity and heading, and breakout begins. It takes the object
+# table and the random number and gives the next of each.
+
+network in_hyperspace(slot)
+  requires: slot < 2
+  inout table: objects
+  inout seed: random
+
+places
+  in_hyperspace_work.counted
+  in_hyperspace_work.first_draw
+  in_hyperspace_work.jump_high
+  in_hyperspace_work.jump_low
+  in_hyperspace_work.jump_high_scaled
+  in_hyperspace_work.jump_low_scaled
+  in_hyperspace_work.second_draw
+  in_hyperspace_work.velocity_high
+  in_hyperspace_work.velocity_low
+  in_hyperspace_work.velocity_high_scaled
+  in_hyperspace_work.velocity_low_scaled
+  in_hyperspace_work.breakout_time
+  ship_flight.angle[slot]
+
+transitions
+  count: count_down                                         # count i ma1, hp2
+  begin: begin_breakout
+  draw_first: random_step
+  split_jump: draw_jump
+  scale_jump: hyperspatial_displacement                     # xct hr1
+  move: jump
+  draw_second: random_step
+  split_velocity: draw_jump
+  scale_velocity: hyperspatial_velocity                     # xct hr2
+  head: head_out
+  time: breakout_time                                       # xct hd2
+  give_time: time_breakout
+  give_counter: copy
+  give_seed: copy
+
+arcs
+  table[slot].counter -> count.counter
+  count.counter -> in_hyperspace_work.counted
+  in_hyperspace_work.counted -> begin when >= 0
+  begin.routine -> table[slot].routine
+  begin.cycles -> table[slot].cycles
+  in_hyperspace_work.counted -> draw_first when >= 0
+  seed.number -> draw_first.number
+  draw_first.number -> in_hyperspace_work.first_draw
+  in_hyperspace_work.first_draw -> split_jump.number
+  split_jump.high -> in_hyperspace_work.jump_high
+  split_jump.low -> in_hyperspace_work.jump_low
+  in_hyperspace_work.jump_high -> scale_jump.high
+  in_hyperspace_work.jump_low -> scale_jump.low
+  scale_jump.high -> in_hyperspace_work.jump_high_scaled
+  scale_jump.low -> in_hyperspace_work.jump_low_scaled
+  in_hyperspace_work.jump_high_scaled -> move.high
+  in_hyperspace_work.jump_low_scaled -> move.low
+  table[slot].x -> move.x
+  table[slot].y -> move.y
+  move.x -> table[slot].x
+  move.y -> table[slot].y
+  in_hyperspace_work.first_draw -> draw_second.number
+  draw_second.number -> in_hyperspace_work.second_draw
+  in_hyperspace_work.second_draw -> split_velocity.number
+  split_velocity.high -> in_hyperspace_work.velocity_high
+  split_velocity.low -> in_hyperspace_work.velocity_low
+  in_hyperspace_work.velocity_high -> scale_velocity.high
+  in_hyperspace_work.velocity_low -> scale_velocity.low
+  scale_velocity.high -> in_hyperspace_work.velocity_high_scaled
+  scale_velocity.low -> in_hyperspace_work.velocity_low_scaled
+  in_hyperspace_work.velocity_high_scaled -> head.high
+  in_hyperspace_work.velocity_low_scaled -> head.low
+  in_hyperspace_work.second_draw -> head.number
+  head.dy -> table[slot].dy
+  head.dx -> table[slot].dx
+  head.angle -> ship_flight.angle[slot]
+  in_hyperspace_work.counted -> time when >= 0
+  time.time -> in_hyperspace_work.breakout_time
+  in_hyperspace_work.breakout_time -> give_time.time
+  give_time.counter -> table[slot].counter
+  in_hyperspace_work.second_draw -> give_seed.source
+  give_seed.target -> seed.number
+  in_hyperspace_work.counted -> give_counter when else
+  in_hyperspace_work.counted -> give_counter.source
+  give_counter.target -> table[slot].counter

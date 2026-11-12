@@ -1,4 +1,6 @@
-processor begin_breakout(slot)
-  writes: objects
-  set objects.routine[slot] = breakout
-  set objects.cycles[slot] = 7
+# Breakout begins: the ship's calc routine is breakout, which takes 7.
+processor begin_breakout
+  out routine: calc_routine
+  out cycles: word
+  set routine = breakout
+  set cycles = 7

@@ -1,0 +1,15 @@
+# Every value a ship's jump out of hyperspace computes on the way, each
+# written once.
+game record in_hyperspace_work
+  counted: word = 0             # its time in hyperspace, one frame on; at 0 it breaks out
+  first_draw: word = 0          # the random number, one step on
+  jump_high: word = 0           # the draw's high half, signed (AC)
+  jump_low: word = 0            # its low half (IO)
+  jump_high_scaled: word = 0    # out of hr1: the displacement in y
+  jump_low_scaled: word = 0     #   and in x, after the swap
+  second_draw: word = 0         # the random number, two steps on
+  velocity_high: word = 0
+  velocity_low: word = 0
+  velocity_high_scaled: word = 0    # out of hr2: dy
+  velocity_low_scaled: word = 0     #   and dx
+  breakout_time: word = 0       # out of hd2

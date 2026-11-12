@@ -2,8 +2,9 @@
 # sign, for hr1 or hr2 to scale. The original shifts it into IO, which
 # holds whatever came before; the shifts push all of that out.
 processor draw_jump
-  reads: random
-  writes: handoff
-  set handoff.jump_high = random.number
-  set (handoff.jump_high, handoff.jump_low) = scr(handoff.jump_high, handoff.jump_low, 9)
-  set handoff.jump_low = handoff.jump_low >> 9
+  in number: word
+  out high: word
+  out low: word
+  set high = number
+  set (high, low) = scr(high, low, 9)
+  set low = low >> 9

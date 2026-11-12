@@ -70,6 +70,7 @@ class Graph:
     arcs: list[Arc]
     params: list[str] = field(default_factory=list)       # which slot, as `network torpedo(slot)`
     args: dict[str, str] = field(default_factory=dict)    # transition -> the slot it passes, "(slot)"
+    requires: str = ""                                    # `requires: slot < 2`, on the lowered Network
 
     @property
     def call(self) -> str:
@@ -88,25 +89,26 @@ class Graph:
         return s
 
     def port(self, place: str) -> str | None:
-        """The input or output a place is, or is an entry of (`table[slot].x`)."""
+        """The input or output a place is, or is an entry of (`table[slot].x`,
+        `seed.number`)."""
         root = re.match(r"\w+", place)[0]
         return root if root in self.ports else None
 
     def field(self, place: str) -> str:
         """A place as a Record field: an input or output is its call Record's;
-        an entry of a table input or output is the table Record's."""
+        an entry of a Record input or output is that Record's."""
         if (n := self.port(place)) and n != place:
-            index, fld = re.fullmatch(r"\w+\[(\w+)\]\.(\w+)", place).groups()
-            return f"{self.ports[n][1]}.{fld}[{index}]"
+            index, fld = re.fullmatch(r"\w+(?:\[(\w+)\])?\.(\w+)", place).groups()
+            return f"{self.ports[n][1]}.{fld}" + (f"[{index}]" if index else "")
         return place if "." in place else f"{self.call}.{place}"
 
     @property
-    def tables(self) -> set[str]:
-        """The inputs and outputs that are a whole table, named by entry."""
-        return {n for n in self.ports if any(a.place.startswith(n + "[") for a in self.arcs)}
+    def records(self) -> set[str]:
+        """The inputs and outputs that are a whole Record, named by entry."""
+        return {n for n in self.ports if any(a.place != n and self.port(a.place) == n for a in self.arcs)}
 
 
-NAME = r"\w+(?:\[\w+\])?(?:\.\w+)?"
+NAME = r"\w+(?:\[\w+\])?(?:\.\w+(?:\[\w+\])?)?"
 
 
 def parse(path: Path) -> Graph:
@@ -126,6 +128,8 @@ def parse(path: Path) -> Graph:
             section = line.strip()
             if section not in ("places", "transitions", "arcs"):
                 raise GraphError(f"{where}: unknown section {section!r}")
+        elif section is None and line.strip().startswith("requires:"):
+            g.requires = line.strip()
         elif section is None:
             m = re.fullmatch(r"\s+(in|out|inout) (\w+): (\w+)", line)
             if not m:
@@ -389,7 +393,7 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
                 del body[i]
             body[then[0]:then[0]] = moved
     head = f"network {g.name}({', '.join(g.params)})" if g.params else f"network {g.name}"
-    out = [head] + [f"  owns {n}: word" for n in low.owns]
+    out = [head] + ([f"  {g.requires}"] if g.requires else []) + [f"  owns {n}: word" for n in low.owns]
     opened = None
     for gd, lines, _ in body:
         if gd != opened and gd is not None:
@@ -397,7 +401,7 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
         opened = gd
         pad = "    " if gd else "  "
         out += [pad + line for line in lines]
-    if len(out) == 1 + len(low.owns):
+    if len(out) == 1 + bool(g.requires) + len(low.owns):
         raise GraphError(f"{g.where}: {g.name} lowers to no statement")
     return "\n".join(out) + "\n"
 

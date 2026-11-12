@@ -37,17 +37,19 @@ processor time_before_breakout                              # hd1: time in hyper
   set handoff.hyperspace_time = -040
 
 processor breakout_time                                     # hd2: time in hyperspace breakout
-  writes: handoff
-  set handoff.breakout_time = -0100
+  out time: word
+  set time = -0100
 
 processor hyperfield_recharge_time                          # hd3: time to recharge the hyperfield generators
   writes: handoff
   set handoff.recharge_time = -0200
 
 processor hyperspatial_displacement                         # hr1: scale on the hyperspatial displacement
-  writes: handoff
-  set (handoff.jump_high, handoff.jump_low) = scl(handoff.jump_high, handoff.jump_low, 9)
+  inout high: word
+  inout low: word
+  set (high, low) = scl(high, low, 9)
 
 processor hyperspatial_velocity                             # hr2: scale on the hyperspatially induced velocity
-  writes: handoff
-  set (handoff.jump_high, handoff.jump_low) = scl(handoff.jump_high, handoff.jump_low, 4)
+  inout high: word
+  inout low: word
+  set (high, low) = scl(high, low, 4)
