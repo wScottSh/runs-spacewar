@@ -1,0 +1,9 @@
+# Every value breakout computes on the way, each written once.
+game record breakout_work
+  counted: word = 0             # its time in breakout, one frame on; at 0 it ends
+  routine: calc_routine = none  # the ship's own calc routine, back
+  cycles: word = 0
+  recharge_time: word = 0       # out of hd3
+  uncertainty: word = 0         # the ship's uncertainty, grown
+  drawn: word = 0               # the random number, one step on
+  margin: word = 0              # at 0 or above the ship is lost

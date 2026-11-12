@@ -1,0 +1,87 @@
+# Breakout (hp3), a bundle: the ship shows as a dot and can collide again.
+# When its time is up it gets its own calc routine back, uses up a jump,
+# starts the hyperfield generators' recharge and takes on more
+# uncertainty; then it survives only if a random number outweighs the
+# uncertainty.
+
+network breakout(slot)
+  requires: slot < 2
+  inout table: objects
+  inout fleet: ships
+  inout seed: random
+
+places
+  breakout_work.counted
+  breakout_work.routine
+  breakout_work.cycles
+  breakout_work.recharge_time
+  breakout_work.uncertainty
+  breakout_work.drawn
+  breakout_work.margin
+  tunables.hyperspatial_uncertainty
+
+transitions
+  count: count_down                                         # count i ma1, hp6
+  show_waiting: show_breakout(slot)                         # hp6
+  wait: copy
+  end: end_breakout
+  recharge_time: hyperfield_recharge_time                   # xct hd3
+  recharge: recharge_hyperfield
+  step: random_step
+  weigh: weigh_breakout
+  lost: lost_in_hyperspace
+  show_lost: show_breakout(slot)
+  keep_routine: copy_calc_routine
+  keep_cycles: copy
+  keep_counter: copy
+  give_uncertainty: copy
+  give_seed: copy
+
+arcs
+  table[slot].counter -> count.counter
+  count.counter -> breakout_work.counted
+  breakout_work.counted -> show_waiting when < 0
+  table[slot].x -> show_waiting
+  table[slot].y -> show_waiting
+  breakout_work.counted -> wait when < 0
+  breakout_work.counted -> wait.source
+  wait.target -> table[slot].counter
+  breakout_work.counted -> end when else
+  fleet[slot].saved_routine -> end.saved
+  fleet[slot].jumps_left -> end.jumps
+  end.jumps -> fleet[slot].jumps_left
+  end.routine -> breakout_work.routine
+  end.cycles -> breakout_work.cycles
+  breakout_work.counted -> recharge_time when else
+  recharge_time.time -> breakout_work.recharge_time
+  breakout_work.recharge_time -> recharge.time
+  tunables.hyperspatial_uncertainty -> recharge.more
+  fleet[slot].uncertainty -> recharge.uncertainty
+  recharge.uncertainty -> breakout_work.uncertainty
+  recharge.recharge -> fleet[slot].recharge
+  breakout_work.counted -> step when else
+  seed.number -> step.number
+  step.number -> breakout_work.drawn
+  breakout_work.drawn -> weigh.number
+  breakout_work.uncertainty -> weigh.uncertainty
+  weigh.margin -> breakout_work.margin
+  breakout_work.margin -> lost when >= 0
+  lost.routine -> table[slot].routine
+  lost.counter -> table[slot].counter
+  lost.cycles -> table[slot].cycles
+  breakout_work.margin -> show_lost when >= 0
+  table[slot].x -> show_lost
+  table[slot].y -> show_lost
+  breakout_work.margin -> keep_routine when else
+  breakout_work.routine -> keep_routine.source
+  keep_routine.target -> table[slot].routine
+  breakout_work.margin -> keep_cycles when else
+  breakout_work.cycles -> keep_cycles.source
+  keep_cycles.target -> table[slot].cycles
+  breakout_work.margin -> keep_counter when else
+  breakout_work.counted -> keep_counter.source
+  keep_counter.target -> table[slot].counter
+  breakout_work.uncertainty -> give_uncertainty.source
+  give_uncertainty.target -> fleet[slot].uncertainty
+  breakout_work.drawn -> give_seed.source
+  give_seed.target -> seed.number

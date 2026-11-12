@@ -1,6 +1,9 @@
-processor recharge_hyperfield(slot)
-  requires: slot < 2
-  reads: handoff, tunables
-  writes: ships
-  set ships.recharge[slot] = handoff.recharge_time
-  set ships.uncertainty[slot] = ships.uncertainty[slot] + tunables.hyperspatial_uncertainty
+# The hyperfield generators start their recharge, and the ship takes on
+# more uncertainty.
+processor recharge_hyperfield
+  in time: word
+  in more: word
+  inout uncertainty: word
+  out recharge: word
+  set recharge = time
+  set uncertainty = uncertainty + more

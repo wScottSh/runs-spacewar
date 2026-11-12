@@ -1,5 +1,7 @@
-processor lost_in_hyperspace(slot)
-  writes: objects
-  set objects.routine[slot] = explosion
-  set objects.counter[slot] = -010
-  set objects.cycles[slot] = 02000
+processor lost_in_hyperspace
+  out routine: calc_routine
+  out counter: word
+  out cycles: word
+  set routine = explosion
+  set counter = -010
+  set cycles = 02000

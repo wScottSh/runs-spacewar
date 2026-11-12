@@ -41,8 +41,8 @@ processor breakout_time                                     # hd2: time in hyper
   set time = -0100
 
 processor hyperfield_recharge_time                          # hd3: time to recharge the hyperfield generators
-  writes: handoff
-  set handoff.recharge_time = -0200
+  out time: word
+  set time = -0200
 
 processor hyperspatial_displacement                         # hr1: scale on the hyperspatial displacement
   inout high: word

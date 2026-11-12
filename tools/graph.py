@@ -193,6 +193,58 @@ def guards(g: Graph) -> dict[str, tuple[str, str] | None]:
     return out
 
 
+def enclosing(g: Graph) -> dict[str, tuple[str, str] | None]:
+    """Each test's place -> the side its test lies in: the guard of the
+    transitions that write the place, when they all have one; else None,
+    the network's top."""
+    guard = guards(g)
+    out: dict[str, tuple[str, str] | None] = {}
+    for a in g.arcs:
+        if a.guard:
+            ws = {guard[w.transition] for w in g.arcs if w.place == a.place and not w.into}
+            out[a.place] = ws.pop() if len(ws) == 1 else None
+    return out
+
+
+def chains(g: Graph) -> dict[str, tuple[tuple[str, str], ...]]:
+    """t -> the guards it runs under, the outermost first."""
+    guard, encl = guards(g), enclosing(g)
+    out = {}
+    for t in g.transitions:
+        c, gd = [], guard[t]
+        while gd and gd not in c:
+            c.insert(0, gd)
+            gd = encl.get(gd[0])
+        out[t] = tuple(c)
+    return out
+
+
+def levels(g: Graph):
+    """The units of each level: within a side (or None, the top) -> the
+    transitions under exactly that side and the tests that lie in it; each
+    test's sides, its test's side first and else last; and, for a level,
+    which of its units holds a transition."""
+    guard, encl, chain = guards(g), enclosing(g), chains(g)
+    tests: dict[str, list[str]] = {}
+    for a in g.arcs:
+        if a.guard:
+            tests.setdefault(a.place, [])
+            if a.guard not in tests[a.place]:
+                tests[a.place].append(a.guard)
+    sides = {p: sorted(gs, key=lambda k: k == "else") for p, gs in tests.items()}
+
+    def members(within):
+        return [t for t in g.transitions if guard[t] == within] + [p for p in tests if encl[p] == within]
+
+    def holder(t, within):
+        c = chain[t]
+        if within is not None and within not in c:
+            return None
+        depth = 0 if within is None else c.index(within) + 1
+        return t if len(c) == depth else c[depth][0]
+    return members, sides, holder
+
+
 def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]]) -> None:
     """Every input and output wired once, to a place of its type; every place
     a Record field or one of the network's own inputs and outputs; each place
@@ -233,16 +285,17 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
             threaded = len(ends) == 1 and (p := g.port(next(iter(ends)))) and g.ports[p][0] == "inout"
             if len(ends) != 2 and not threaded:   # a network inout's in value is read, its out value given
                 fail(f"{t}.{n} is inout: it takes one place and gives a fresh one, not {sorted(ends)}")
-    guard = guards(g)
+    chain = chains(g)
+
+    def apart(a, b):
+        """Two transitions that never both run: on two sides of one test."""
+        return any(x[0] == y[0] and x[1] != y[1] for x, y in zip(chain[a], chain[b]))
     for place in g.places:
         writers = [a.transition for a in g.arcs if a.place == place and not a.into]
         if g.port(place) and g.ports[g.port(place)][0] == "in" and writers:
             fail(f"{place} is an input of {g.name}; {writers[0]} writes it")
-        branches = [guard[w] for w in writers]
-        if len(branches) != len(set(branches)) or len(writers) > 1 and not all(branches):
-            fail(f"{place} is written by {sorted(writers)}: a place is written once, or once a branch")
-        if len(writers) > 1 and len({b[0] for b in branches}) != 1:
-            fail(f"{place} is written on branches of different tests")
+        if any(not apart(a, b) for i, a in enumerate(writers) for b in writers[i + 1:]):
+            fail(f"{place} is written by {sorted(writers)}: a place is written once on each path")
     for n, (d, _) in g.ports.items():
         if d != "in" and not any(g.port(a.place) == n and not a.into for a in g.arcs):
             fail(f"nothing gives its output {n}")
@@ -277,49 +330,42 @@ def depends(g: Graph) -> dict[str, set[str]]:
     return out
 
 
-def units(g: Graph) -> tuple[list[str], dict[str, list[list[str]]]]:
-    """The unguarded transitions, and each test's branches: test place -> one
-    list of transitions a side, the test's side first and else last."""
-    guard = guards(g)
-    plain = [t for t in g.transitions if guard[t] is None]
-    tests: dict[str, dict[str, list[str]]] = {}
-    for t in g.transitions:
-        if guard[t]:
-            tests.setdefault(guard[t][0], {}).setdefault(guard[t][1], []).append(t)
-    return plain, {p: [sides[k] for k in sorted(sides, key=lambda k: k == "else")] for p, sides in tests.items()}
+def before_in(g: Graph, within, members, holder) -> dict[str, set[str]]:
+    """The units of a level -> the units of that level they come after."""
+    before: dict[str, set[str]] = {u: set() for u in members}
+    for t, ds in depends(g).items():
+        if (ut := holder(t, within)) is None:
+            continue
+        for d in ds:
+            if (ud := holder(d, within)) is not None and ud != ut:
+                before[ut].add(ud)
+    return before
 
 
 def ordered(g: Graph, choose) -> list[str]:
     """An order the wiring allows: each transition after the transitions it
-    depends on, each side of a test one block. Among the units that may go
-    next, choose(ready, done) picks one; inside a side, the same."""
-    plain, tests = units(g)
-    dep = depends(g)
-    member = {t: p for p, sides in tests.items() for side in sides for t in side}
-    unit_of = lambda t: member.get(t, t)  # noqa: E731
-    before = {u: set() for u in plain + list(tests)}
-    for t, ds in dep.items():
-        for d in ds:
-            if unit_of(d) != unit_of(t):
-                before[unit_of(t)].add(unit_of(d))
+    depends on, each side of a test one block, a test that lies in a side
+    inside that side's block. Among the units that may go next at a level,
+    choose(ready, done) picks one."""
+    members, sides, holder = levels(g)
     done: list[str] = []
-    placed: set[str] = set()
-    while len(placed) < len(before):
-        ready = sorted(u for u in before if u not in placed and before[u] <= placed)
-        if not ready:
-            raise GraphError(f"{g.where}: {g.name}: the wiring has a cycle")
-        u = choose(ready, done)
-        placed.add(u)
-        if u not in tests:
-            done.append(u)
-            continue
-        for side in tests[u]:
-            left = list(side)
-            while left:
-                inner = sorted(t for t in left if not dep[t] & set(left))
-                t = choose(inner, done)
-                left.remove(t)
-                done.append(t)
+
+    def level(within):
+        ms = members(within)
+        before = before_in(g, within, ms, holder)
+        placed: set[str] = set()
+        while len(placed) < len(ms):
+            ready = sorted(u for u in ms if u not in placed and before[u] <= placed)
+            if not ready:
+                raise GraphError(f"{g.where}: {g.name}: the wiring has a cycle")
+            u = choose(ready, done)
+            placed.add(u)
+            if u in sides:
+                for side in sides[u]:
+                    level((u, side))
+            else:
+                done.append(u)
+    level(None)
     return done
 
 
@@ -342,8 +388,8 @@ class Lowering:
 
 
 def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering) -> list:
-    """Each transition's statements: (guard, lines, fields written)."""
-    guard = guards(g)
+    """Each transition's statements: (the guards it runs under, lines, fields written)."""
+    guard = chains(g)
     out = []
 
     def copy(typ: str, source: str, target: str) -> list[str]:
@@ -383,24 +429,27 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
     """The graph as one Network of today's RUNS: each transition a wired
     run, each side of a test under its `if` or `else`."""
     body = steps(g, sigs, order, low)
-    for place in sorted({gd[0] for gd, _, _ in body if gd}):
-        then = [i for i, (gd, _, _) in enumerate(body) if gd and gd[0] == place and gd[1] != "else"]
-        other = [i for i, (gd, _, _) in enumerate(body) if gd and gd[0] == place and gd[1] == "else"]
+    for place in sorted({gd[0][0] for gd, _, _ in body if len(gd) == 1}):
+        then = [i for i, (gd, _, _) in enumerate(body) if gd and gd[-1][0] == place and gd[-1][1] != "else"]
+        other = [i for i, (gd, _, _) in enumerate(body) if gd and gd[-1][0] == place and gd[-1][1] == "else"]
         written = set().union(*(body[i][2] for i in then))
         if then and other and all(body[i][2] <= written & low.before_test for i in other):
-            moved = [(None, body[i][1], body[i][2]) for i in other]
+            moved = [((), body[i][1], body[i][2]) for i in other]
             for i in reversed(other):
                 del body[i]
             body[then[0]:then[0]] = moved
     head = f"network {g.name}({', '.join(g.params)})" if g.params else f"network {g.name}"
     out = [head] + ([f"  {g.requires}"] if g.requires else []) + [f"  owns {n}: word" for n in low.owns]
-    opened = None
+    opened: tuple = ()
     for gd, lines, _ in body:
-        if gd != opened and gd is not None:
-            out.append("  else:" if gd[1] == "else" else f"  if {low.at[gd[0]]} {gd[1]}:")
+        k = 0
+        while k < min(len(opened), len(gd)) and opened[k] == gd[k]:
+            k += 1
+        for depth in range(k, len(gd)):
+            test = gd[depth]
+            out.append("  " * (depth + 1) + ("else:" if test[1] == "else" else f"if {low.at[test[0]]} {test[1]}:"))
         opened = gd
-        pad = "    " if gd else "  "
-        out += [pad + line for line in lines]
+        out += ["  " * (len(gd) + 1) + line for line in lines]
     if len(out) == 1 + bool(g.requires) + len(low.owns):
         raise GraphError(f"{g.where}: {g.name} lowers to no statement")
     return "\n".join(out) + "\n"

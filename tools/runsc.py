@@ -1528,16 +1528,21 @@ class Unit:
             out.append(f"RESERVE word {name}_spare[{octal(p['reserve'])}];")
         return out
 
+    def starts_at_zero(self, f: str) -> bool:
+        """The field's RUNS initial value is its zero word: none, 0, or a
+        member its enum encodes as 0."""
+        rec, fld = f.split(".")
+        typ, e = self.prog.records[rec].fields[fld]
+        return e is None or e == ("num", 0) or e[0] == "name" and self.binds.encoded.get(
+            resolve(self.prog, e[1], typ, f), {}).get(e[1]) == 0
+
     def table_words(self) -> str:
         """The object table's words. The tape does not load them, and a new
         game clears them before anything reads them: each field's RUNS
         initial value is its zero word. Then the room of each collection
         that lies after the table."""
         for f in self.binds.table_fields():
-            rec, fld = f.split(".")
-            e = self.prog.records[rec].fields[fld][1]
-            if not (e == ("num", 0) or e[0] == "name" and self.binds.encoded.get(
-                    resolve(self.prog, e[1], self.prog.records[rec].fields[fld][0], f), {}).get(e[1]) == 0):
+            if self.prog.records[f.split(".")[0]].fields[f.split(".")[1]][1] is None or not self.starts_at_zero(f):
                 raise BindError(f"{self.path.name}: {f} is not on the tape, so it starts at its zero word")
         after = [f"RESERVE word {self.binds.c_name(d)}"
                  f"[{octal(self.binds.code_words.get(d, self.prog.records[d.split('.')[0]].count))}];"
@@ -1556,9 +1561,7 @@ class Unit:
                 b = self.binds.bound[p["routine"]]
                 fields |= {b.entry, b.ac_param, b.io_param, b.byname, *b.result, *b.cells} - {None}
         for f in sorted(fields - set(self.binds.placed)):
-            rec, fld = f.split(".")
-            e = self.prog.records[rec].fields[fld][1]
-            if e is not None and e != ("num", 0):
+            if not self.starts_at_zero(f):
                 raise BindError(f"{self.path.name}: {f} has no data word, so its initial value is 0")
 
     def shift_homes(self, stmts):
@@ -4765,15 +4768,15 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
     holds another by then; or of a value runsc keeps in AC after AC was used
     for another. A guard's place is read once, by its test, before the
     first transition of its side."""
-    guard = graph.guards(g)
-    tests = sorted({guard[t][0] for t in order if guard[t]})
-    sides = {p: sorted({guard[t] for t in order if guard[t] and guard[t][0] == p}) for p in tests}
+    chain = graph.chains(g)
+    tests = sorted({gd[0] for t in order for gd in chain[t]})
+    sides = {p: sorted({gd for t in order for gd in chain[t] if gd[0] == p}) for p in tests}
     in_ac = lambda w: "." not in w and w not in io  # noqa: E731
     for path in itertools.product(*sides.values()):
         taken = set(path)
         holds: dict[str, str] = {}
         ac: str | None = None
-        opened = None
+        opened: tuple = ()
 
         def read(t, place):
             w = at[place]
@@ -4785,11 +4788,12 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
                 return f"{t} reads {place} in AC, but AC holds {ac}"
             return None
         for t in order:
-            if guard[t] and guard[t] not in taken:
+            if not taken.issuperset(chain[t]):
                 continue
-            if guard[t] and guard[t] != opened and (bad := read(t, guard[t][0])):
-                return bad
-            opened = guard[t]
+            for gd in chain[t]:
+                if gd not in opened and (bad := read(t, gd[0])):
+                    return bad
+            opened = chain[t]
             proc = g.transitions[t]
             ins = [a for a in g.arcs if a.transition == t and a.into and a.io]
             outs = [a for a in g.arcs if a.transition == t and not a.into]
@@ -4838,62 +4842,47 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
        entry word, then IO, then the word after the call; one that reads
        none goes after (the routine's declaration);
     3. names, for the ties left, which decide nothing in the image."""
-    guard = graph.guards(g)
     rank = {decl[k]: n for n, k in enumerate(ARRIVAL) if k in decl}
     reads = {t: {a.place for a in g.arcs if a.transition == t and a.into and a.io} for t in g.transitions}
     moves = moves_off_ac(g, sigs, at, io, copier)
-    plain, tests = graph.units(g)
-    dep = graph.depends(g)
+    members, sides, holder = graph.levels(g)
+    chain = graph.chains(g)
+    inside = {p: [t for t in g.transitions if any(gd[0] == p for gd in chain[t])] for p in sides}
 
     def key(t):
-        return (guard[t] is not None, min((rank.get(g.field(p), len(ARRIVAL)) for p in reads[t]),
-                                          default=len(ARRIVAL)), t)
-
-    member = {t: p for p, sides in tests.items() for side in sides for t in side}
+        return min((rank.get(g.field(p), len(ARRIVAL)) for p in reads[t]), default=len(ARRIVAL)), t
 
     def unit_key(u):
-        return min(key(t) for side in tests[u] for t in side) if u in tests else key(u)
-
-    unit_of = lambda t: member.get(t, t)  # noqa: E731
-    before = {u: set() for u in plain + list(tests)}
-    for t, ds in dep.items():
-        for d in ds:
-            if unit_of(d) != unit_of(t):
-                before[unit_of(t)].add(unit_of(d))
+        return (True, *min(key(t) for t in inside[u])) if u in sides else (False, *key(u))
 
     def ok(prefix):
         return path_hazards(g, prefix, at, word, sigs, io, moves) is None
 
-    def sides(u, prefix):
-        """Each order of u's sides, the test's side first."""
-        def inner(side_list, prefix):
-            if not side_list:
+    def level(within, prefix):
+        """Each order of the units of a level, after prefix."""
+        ms = members(within)
+        before = graph.before_in(g, within, ms, holder)
+
+        def go(placed, prefix):
+            if len(placed) == len(ms):
                 yield prefix
                 return
-            side = side_list[0]
+            for u in sorted((u for u in ms if u not in placed and before[u] <= placed), key=unit_key):
+                if u in sides:
+                    for nxt in test(u, sides[u], prefix):
+                        yield from go(placed | {u}, nxt)
+                elif ok(prefix + [u]):
+                    yield from go(placed | {u}, prefix + [u])
+        yield from go(frozenset(), prefix)
 
-            def go(left, prefix):
-                if not left:
-                    yield from inner(side_list[1:], prefix)
-                    return
-                for t in sorted((t for t in left if not dep[t] & set(left)), key=key):
-                    nxt = prefix + [t]
-                    if ok(nxt):
-                        yield from go([x for x in left if x != t], nxt)
-            yield from go(list(side), prefix)
-        yield from inner(tests[u], prefix)
-
-    def go(placed, prefix):
-        if len(placed) == len(before):
+    def test(place, left, prefix):
+        """Each order of a test's sides, the test's side first."""
+        if not left:
             yield prefix
             return
-        for u in sorted((u for u in before if u not in placed and before[u] <= placed), key=unit_key):
-            if u in tests:
-                for nxt in sides(u, prefix):
-                    yield from go(placed | {u}, nxt)
-            elif ok(prefix + [u]):
-                yield from go(placed | {u}, prefix + [u])
-    for order in go(frozenset(), []):
+        for nxt in level((place, left[0]), prefix):
+            yield from test(place, left[1:], nxt)
+    for order in level(None, []):
         return order
     raise BindError(f"{g.where}: {g.name}: no order the wiring allows keeps every value in its word until read")
 

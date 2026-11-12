@@ -1,8 +1,8 @@
-# Calc routines for objects that are not flying spaceships: the explosion,
-# the torpedo, and a ship in hyperspace and at breakout. The main loop runs
-# the one the object's routine word names, once a frame. Each fires the
-# Processors of objects.runs-prim, the macros and the tunables in the
-# original's order; the guards test what the original's skips test.
+# The explosion's calc routine (mex). It is not a network file yet: its dots
+# are a loop whose count the game computes, which a network file cannot
+# state (no fold transition), and its dots are emitted by Processors that
+# name the display. The torpedo, in_hyperspace and breakout are network
+# files beside it in objects/.
 
 # An exploding object keeps drifting and is drawn as a cloud of dots, one
 # per 8 instructions of its size, for as many frames as its counter has
@@ -39,23 +39,3 @@ network explosion(slot)                                     # mex
     counter: objects.counter[slot]
   if objects.counter[slot] >= 0:
     run free_slot(slot)
-
-# Breakout: the ship shows as a dot and can collide again. When its time is
-# up it gets its own calc routine back, uses up a jump, starts the
-# hyperfield generators' recharge and takes on more uncertainty; then it
-# survives only if a random number outweighs the uncertainty.
-network breakout(slot)                                      # hp3
-  requires: slot < 2
-  run count_down                                      # count i ma1, hp6
-    counter: objects.counter[slot]
-  if objects.counter[slot] < 0:
-    run show_breakout(slot)                                 # hp6
-  else:
-    run end_breakout(slot)
-    run hyperfield_recharge_time                            # hp7
-    run recharge_hyperfield(slot)
-    run next_random
-    run weigh_breakout(slot)
-    if breakout_check.margin >= 0:                          # spa; jmp hp5
-      run lost_in_hyperspace(slot)
-      run show_breakout(slot)
