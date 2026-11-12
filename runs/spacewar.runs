@@ -243,14 +243,9 @@ game record handoff
   explosion_low: word = 0   # IO: cleared with the count's cma (cli); the dots shift it out unread
   jump_low: word = 0        # IO: what the main loop left there when hyperspace begins (hp1);
                             #   the first draw pushes it out
-  thrust_direction: word = 0    # AC into sac: the sine or cosine of the heading, sar 9s
-  thrust: word = 0              # AC out of sac
   torpedo_supply: word = 0  # AC out of tno
   hyperspace_shots: word = 0    # AC out of mhs
   control_word: word = 0    # IO out of the control word routine (jsp i \cwg)
-  capture_margin: word = 0  # AC: a ship's squared distance from the star, less the capture radius
-  distance_high: word = 0   # AC:IO: the distance from the star cubed, scaled down; a ship
-  distance_low: word = 0    #   feels gravity only when the high half is 0
 
 # The explosion's dot in AC and IO: IO carries the low half from one dot's
 # shifts to the next; the high half is the dot's own local.
