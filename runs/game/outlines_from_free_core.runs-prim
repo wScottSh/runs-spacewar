@@ -1,0 +1,6 @@
+# The outlines go into the free core after the table, from its first word.
+processor outlines_from_free_core                           # law nnn; dac not
+  out code: word
+  out outline: word
+  set code = 0
+  set outline = code

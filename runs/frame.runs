@@ -25,23 +25,3 @@ network show_scores                                         # a4
   else:
     run clear_scores
     run new_match
-
-# A new game (a2): clear the object table (the outlines' words are set here
-# before anything reads them), put the ships in opposite
-# corners with the needle turned around, compile their outlines into the
-# free core after the table, and arm them.
-network new_game                                            # a2
-  run clear_tables
-  run place_ships
-  run outlines_from_free_core
-  # When separate_outlines is +0 both ships share one outline, the wedge,
-  # which leaves room for ddt (a3).
-  if outline_setting.separate_outlines < 0:                        # lio ddd; spi i
-    run choose_needle
-    run compile_outline                                     # jda oc / ot1
-  run second_outline                                        # a3
-  run compile_outline                                       # jda oc / ot2
-  run torpedo_supply                                        # xct tno
-  run arm_ships
-  run hyperspace_shots                                      # xct mhs
-  run give_jumps

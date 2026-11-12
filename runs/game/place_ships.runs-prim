@@ -1,0 +1,15 @@
+# The ships in opposite corners, the second with the needle turned around.
+processor place_ships
+  inout routine: calc_routine[030]
+  inout x: word[030]
+  inout y: word[030]
+  inout angle: word[2]
+  set routine[0] = first_spaceship
+  set routine[1] = second_spaceship
+  let corner = 0200000
+  set x[0] = corner
+  set y[0] = corner
+  set corner = -corner
+  set x[1] = corner
+  set y[1] = corner
+  set angle[0] = 0144420                                    # pi

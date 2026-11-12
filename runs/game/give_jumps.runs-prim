@@ -1,0 +1,7 @@
+# Each ship's hyperspace jumps.
+processor give_jumps
+  in shots: word
+  inout jumps: word[2]
+  let each = shots
+  set jumps[0] = each
+  set jumps[1] = each

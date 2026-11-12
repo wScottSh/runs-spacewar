@@ -1,0 +1,36 @@
+# Every object and ship property cleared (clear mtb, nnn-1).
+processor clear_tables                                      # clear mtb, nnn-1
+  out routine: calc_routine[030]
+  out x: word[030]
+  out y: word[030]
+  out counter: word[030]
+  out cycles: word[030]
+  out dx: word[030]
+  out dy: word[030]
+  out angular_momentum: word[2]
+  out angle: word[2]
+  out fuel: word[2]
+  out torpedoes: word[2]
+  out previous_control: word[2]
+  out saved_routine: calc_routine[2]
+  out jumps_left: word[2]
+  out recharge: word[2]
+  out uncertainty: word[2]
+  for slot in 0 .. 027:
+    set routine[slot] = none
+    set x[slot] = 0
+    set y[slot] = 0
+    set counter[slot] = 0
+    set cycles[slot] = 0
+    set dx[slot] = 0
+    set dy[slot] = 0
+  for ship in 0 .. 1:
+    set angular_momentum[ship] = 0
+    set angle[ship] = 0
+    set fuel[ship] = 0
+    set torpedoes[ship] = 0
+    set previous_control[ship] = 0
+    set saved_routine[ship] = none
+    set jumps_left[ship] = 0
+    set recharge[ship] = 0
+    set uncertainty[ship] = 0

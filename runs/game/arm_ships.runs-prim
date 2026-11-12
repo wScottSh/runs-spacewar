@@ -1,0 +1,17 @@
+# Each ship's torpedoes and fuel, and its calc routine's time for the
+# first frame, before it has run.
+processor arm_ships
+  in supply: word
+  in fuel_supply: word
+  inout torpedoes: word[2]
+  inout fuel: word[2]
+  inout cycles: word[030]
+  let torpedoes_each = supply
+  set torpedoes[0] = torpedoes_each
+  set torpedoes[1] = torpedoes_each
+  let fuel_each = fuel_supply
+  set fuel[0] = fuel_each
+  set fuel[1] = fuel_each
+  let time = 02000
+  set cycles[0] = time
+  set cycles[1] = time

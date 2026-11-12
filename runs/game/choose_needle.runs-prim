@@ -1,0 +1,4 @@
+# Ship 1's own outline, the needle (ot1).
+processor choose_needle
+  out table: word
+  set table = 0                                             # ot1
