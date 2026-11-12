@@ -1,0 +1,12 @@
+# The spare-time loop's passes (count \mtc, .), a loop bundle: each pass
+# takes a token of the budget, and does nothing else, until it reaches 0.
+
+network burn_time
+  counter budget: word
+
+transitions
+  take: count_down                                          # count \mtc, .
+
+arcs
+  budget -> take.counter
+  take.counter -> budget

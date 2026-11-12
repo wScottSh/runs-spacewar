@@ -1,0 +1,3 @@
+# The spare-time loop's passes: the budget they consume.
+presentation record burn_time_call
+  budget: word = 0

@@ -39,7 +39,10 @@ FIELDS = {
     ("ships", "saved_routine"): "nh1", ("ships", "jumps_left"): "nh2", ("ships", "recharge"): "nh3",
     ("ships", "uncertainty"): "nh4",
     ("random", "number"): "ran",
-    ("pacing", "spare_time"): "mtc", ("frame", "restart_delay"): "ntd", ("frame", "objects_seen"): "moc",
+    # mtc holds a chain of values: the budget up to the spare-time loop, then the loop bundle's tokens.
+    # A check compares it with the one its stop sees (check_game at ml1, check_frame at the frame's end).
+    ("burn_time_call", "budget"): "mtc", ("pacing", "spare_time"): "mtc",
+    ("frame", "restart_delay"): "ntd", ("frame", "objects_seen"): "moc",
     ("score", "first"): "1sc", ("score", "second"): "2sc", ("score", "games_left"): "gct",
     ("controls", "source"): "cwg",
     ("tunables", "fuel_supply"): "foo", ("tunables", "angular_acceleration"): "maa",

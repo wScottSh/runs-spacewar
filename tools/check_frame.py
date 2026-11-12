@@ -43,7 +43,7 @@ from pdp1cc.gate import corpus, simh
 from pdp1cc.gate.simh import Inputs, STUB, CALL
 from oracle_check import built_listing
 
-RECORDS = ["objects", "ship_flight", "ship_outlines", "ships", "random", "frame", "pacing", "tunables", "spaceship", "heading", "ship_nose", "pen", "planetarium", "magnitudes"]
+RECORDS = ["objects", "ship_flight", "ship_outlines", "ships", "random", "frame", "burn_time_call", "tunables", "spaceship", "heading", "ship_nose", "pen", "planetarium", "magnitudes"]
 NEG = lambda v: v ^ runs.MASK
 JMP = 0o600000
 
@@ -96,7 +96,7 @@ def a_frame(m: runs.Machine, rng: random.Random, outlines) -> tuple[dict, int]:
     st["random"]["number"] = runs.W(rng.randrange(1 << 18))
     st["frame"]["restart_delay"] = runs.W(NEG(rng.randrange(2, 0o377777)))
     st["frame"]["objects_seen"] = runs.W(rng.randrange(1 << 18))
-    st["pacing"]["spare_time"] = runs.W(rng.randrange(1 << 18))
+    st["burn_time_call"]["budget"] = runs.W(rng.randrange(1 << 18))
     sky = check_heavens.a_frame(rng)
     for f in ("alternate_frames", "window_steps", "right_margin"):
         st["planetarium"][f] = runs.W(sky[f])

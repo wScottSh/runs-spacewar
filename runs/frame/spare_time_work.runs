@@ -1,0 +1,3 @@
+# What the spare-time loop leaves along the way, each written once.
+presentation record spare_time_work
+  counted: word = 0     # mtc after its first token is taken

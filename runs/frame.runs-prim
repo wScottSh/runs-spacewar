@@ -64,16 +64,6 @@ processor charge_time(slot)                                 # mq4
   reads: objects
   set pacing.spare_time = objects.cycles[slot] + pacing.spare_time
 
-# The spare-time loop burns the rest of the frame's instruction budget. It
-# is pacing: begin_frame, charge_time and spare_time alone use the budget,
-# and nothing in the game reads it after, so its effects are presentation.
-processor spare_time
-  writes: pacing
-  set pacing.spare_time = pacing.spare_time + 1
-  if pacing.spare_time < 0:
-    for pass in 1 .. -pacing.spare_time:
-      set pacing.spare_time = pacing.spare_time + 1
-
 # The survivors score: a ship whose routine word is still its own calc
 # routine survived. Program flags 1 and 2 light for the survivors, but flag
 # 2 is cleared again at once.
