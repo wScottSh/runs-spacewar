@@ -9,12 +9,14 @@
 # left; then its slot is freed.
 network explosion(slot)                                     # mex
   run coast                                                 # cla
+    acceleration: handoff.acceleration
   run inertia
     acceleration: handoff.acceleration
     velocity: objects.dx[slot]
     place: objects.x[slot]
     position: handoff.position
   run coast                                                 # cla
+    acceleration: handoff.acceleration
   run inertia
     acceleration: handoff.acceleration
     velocity: objects.dy[slot]

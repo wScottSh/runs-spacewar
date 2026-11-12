@@ -1,3 +1,4 @@
-processor coast                                             # cla: no force
-  writes: handoff
-  set handoff.acceleration = 0
+# No force: an exploding object drifts.
+processor coast                                             # cla
+  out acceleration: word
+  set acceleration = 0
