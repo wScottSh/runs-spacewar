@@ -1,5 +1,0 @@
-processor exclusive_or                                      # xor
-  in a: word
-  in b: word
-  out result: word
-  set result = a ^ b

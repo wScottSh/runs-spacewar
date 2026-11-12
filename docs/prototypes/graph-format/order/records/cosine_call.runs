@@ -1,4 +1,0 @@
-# The cosine subroutine's own words (cos): what a caller hands it and gets back.
-game record cosine_call
-  angle: word = 0           # cos: jda leaves the angle here
-  result: word = 0          # AC at return

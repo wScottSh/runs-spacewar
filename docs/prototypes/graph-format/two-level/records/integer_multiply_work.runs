@@ -1,4 +1,0 @@
-# What integer multiply gets back from multiply, each value written once.
-game record integer_multiply_work
-  high: word = 0            # the product's high half, which imp drops
-  low: word = 0             # the product's low half

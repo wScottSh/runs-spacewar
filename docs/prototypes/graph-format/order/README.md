@@ -1,5 +1,12 @@
 # Order between independent transitions
 
+> **Moved to the real source (#62).** The arc-list loader is `tools/graph.py`,
+> read by `runs.load`; the order rule and the storage rule are the PDP-1 back
+> end's (`lower_for_pdp1` in `tools/runsc.py`), with no storage entries. The
+> arithmetic's network, Processor and Record files are in `runs/arithmetic/`.
+> The code and files this page runs are deleted; its tables and findings stand
+> as the record of the prototype.
+
 Prototype for "Order between independent transitions" (#63), part of #54.
 Nothing here is in `runs/` or `pdp1/`. One `tools/runsc.py` change, below.
 

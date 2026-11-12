@@ -1,4 +1,0 @@
-processor add_sine_c3                                       # add (532511
-  in value: word
-  out sum: word
-  set sum = value + -0245266

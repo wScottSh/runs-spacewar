@@ -1,5 +1,12 @@
 # How a Network is written as a literal graph: three formats for multiply
 
+> **Moved to the real source (#62).** The arc-list loader is `tools/graph.py`,
+> read by `runs.load`; the order rule and the storage rule are the PDP-1 back
+> end's (`lower_for_pdp1` in `tools/runsc.py`), with no storage entries. The
+> arithmetic's network, Processor and Record files are in `runs/arithmetic/`.
+> The code and files this page runs are deleted; its tables and findings stand
+> as the record of the prototype.
+
 Prototype for "How a Network is written as a literal graph" (#56), part of "Write
 RUNS as the vision's literal graph" (#54). Nothing here is in `runs/`, `pdp1/` or
 `tools/`.

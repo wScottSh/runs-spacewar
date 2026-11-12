@@ -1,4 +1,0 @@
-processor add_sine_c1                                       # add (144417
-  in value: word
-  out sum: word
-  set sum = value + 0144417

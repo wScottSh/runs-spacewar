@@ -1,3 +1,0 @@
-processor division_fits                                     # idx: return one word further
-  out outcome: division
-  set outcome = fits

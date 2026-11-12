@@ -1,8 +1,0 @@
-processor saturate                                          # lac (377777; lio; spi; cma: +-1, signed like
-  in like: word
-  out result: word
-  let r = 0377777
-  let sign = like
-  if sign < 0:
-    set r = -r
-  set result = r

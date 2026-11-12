@@ -1,3 +1,0 @@
-processor clear                                             # cla
-  out value: word
-  set value = 0

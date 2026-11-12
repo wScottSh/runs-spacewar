@@ -1,7 +1,0 @@
-processor sign_like_in_place                                # spi; cma: the output set, then negated
-  in value: word
-  in sign: word
-  out signed: word
-  set signed = value
-  if sign < 0:
-    set signed = -signed

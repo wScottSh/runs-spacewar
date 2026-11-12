@@ -1,7 +1,0 @@
-processor negate_double                                     # cma; rcr 9s; rcr 9s; cma; rcr 9s; rcr 9s
-  inout high: word
-  inout low: word
-  set high = -high
-  set (high, low) = rcr(high, low, 18)
-  set high = -high
-  set (high, low) = rcr(high, low, 18)

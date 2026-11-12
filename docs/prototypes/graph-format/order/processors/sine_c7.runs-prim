@@ -1,3 +1,0 @@
-processor sine_c7                                           # (756103
-  out value: word
-  set value = -021674

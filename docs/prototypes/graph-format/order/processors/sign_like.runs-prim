@@ -1,8 +1,0 @@
-processor sign_like                                         # spi; cma
-  in value: word
-  in sign: word
-  out signed: word
-  let v = value
-  if sign < 0:
-    set v = -v
-  set signed = v

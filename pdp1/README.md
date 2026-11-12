@@ -145,6 +145,14 @@ A `[[place]]` may instead lay out words that the PDP-1 and its operator need and
 
 A field with no data word of its own (an entry word, a register) has no value on the tape, so its RUNS initial value must be 0; `runsc` refuses any other.
 
+## Network files
+
+A network file (`runs/arithmetic/*.net`, `tools/graph.py`) states places, transitions and arcs, and no order and no word. `runsc.pdp1_program()` lowers each to a Network for the PDP-1 (`lower_for_pdp1`); no declaration is added for it. A bundle's inputs and outputs are the fields of its call Record, `<bundle>_call`, and its own declaration (`[[place]] routine = <bundle>`) is the one above.
+
+- Words. The two ends of an inout share a word: a fresh value takes its dead predecessor's word. Then the two ends of a copy share one when both sides of a test write its target (`give_high`, `keep_low`). Two places never share when the declarations give each its own word, or when one is the high half of a pair operation (held in AC) and the other has a word in memory. A class of places that share lives in a word the declarations give, else the word of the bundle that takes or gives it. Else: a value that must be in memory (the operand of `mus` or `dis`, or what a bundle takes `byname`) takes a memory word of the network's call Record (an `entry`, `cells` or `fields` word); the low half of a pair operation takes the routine's IO word (`io_param` or an `io` field); any other value is the Network's own scratch in AC, else the IO word. Of these choices, `runsc` keeps the first under which some order reads every value from its word before the next value takes it.
+- Order. Of the orders the wiring allows (each transition after the writers of what it and its guard read; each side of a test one block; an inout of the network written after its reads), `runsc` keeps those in which no value is read after its word took another, and none read in AC after AC took another (a copy or a constant into IO, or a copy whose ends share a word, leaves AC alone). Among the transitions that may go next it takes an unguarded one before a test's side, then the one that reads the value the call hands over earliest (`entry`, then `io_param`, then `byname`), then names, which decide nothing in the image.
+- A copy whose ends share a word compiles to nothing. A side of a test that only sets the routine's `skips` field is written before the test, as an empty `else` would compile to a jump.
+
 ## Names
 
 A C function is named after its RUNS routine, and a field's word `record_field`. Two fields that share a word (`[share]`) take the name of the one they share. A copy's own locals and slots take the copy's number or the slot's (`star_x_1`, `magnitudes_cursor_0`). The names do not reach the image.

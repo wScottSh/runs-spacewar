@@ -1,4 +1,0 @@
-processor add_half_pi                                       # lac (62210; add: cos a = sin(a + pi/2)
-  in angle: word
-  out shifted: word
-  set shifted = 062210 + angle

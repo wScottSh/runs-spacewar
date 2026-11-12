@@ -1,3 +1,0 @@
-processor clear                                             # cla, or cli when the value lives in IO
-  out value: word
-  set value = 0
