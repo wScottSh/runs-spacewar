@@ -465,6 +465,47 @@ def depends(g: Graph) -> dict[str, set[str]]:
     for t in g.transitions:
         if guard[t]:
             out[t] |= writers.get(guard[t][0], set())
+    return shared_words(g, out, writers)
+
+
+def shared_words(g: Graph, out: dict[str, set[str]], writers: dict[str, set[str]]) -> dict[str, set[str]]:
+    """Places that hold a Record whole, or an entry of it, live in its words:
+    `drawn: random` and the input seed are one word, random.number. A value
+    in those words is read before the next value takes them: each reader
+    of a place goes before the writer of another place in the same words,
+    unless that writer comes first by the wiring or never runs on the same
+    path."""
+    def words(p):
+        kind = g.whole(p)
+        if kind is None or kind in g.streams:
+            return None
+        index, fld = re.fullmatch(r"\w+(?:\[(\w+)\])?(?:\.(\w+))?", p).groups()
+        return kind, fld, index
+
+    held = {p: w for p in g.places if (w := words(p))}
+    if not any(re.match(r"\w+", p)[0] in g.locals for p in held):
+        return out
+    chain = chains(g)
+
+    def earlier(t):
+        seen, todo = set(), [t]
+        while todo:
+            for d in out[todo.pop()] - seen:
+                seen.add(d)
+                todo.append(d)
+        return seen
+    readers = {p: {a.transition for a in g.arcs if a.place == p and a.into} for p in held}
+    for p, (kind, fld, index) in held.items():
+        for q, (k2, f2, i2) in held.items():
+            if p == q or kind != k2 or fld and f2 and (fld, index) != (f2, i2):
+                continue
+            if (root := re.match(r"\w+", p)[0]) in g.locals and re.match(r"\w+", q)[0] == root:
+                continue                                  # a place of its own and its entries: one value
+            before_p = set().union(*(earlier(w) | {w} for w in writers.get(p, set())))
+            for u in writers.get(q, set()) - before_p:
+                for r in readers[p] - {u}:
+                    if not any(x[0] == y[0] and x[1] != y[1] for x, y in zip(chain[r], chain[u])):
+                        out[u].add(r)
     return out
 
 
@@ -548,11 +589,15 @@ def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
             out.append((guard[t], [f"run {proc}"] + args, written))
             continue
         if s.bundle:
-            for n in s.inputs:
+            for n, ends in wire.items():
+                if s.types[n] in g.wholes and set(ends.values()) != {s.types[n]}:
+                    raise GraphError(f"{g.where}: {t}.{n} is {proc}'s {s.types[n]}, whole: it is wired to a place "
+                                     f"in the words of {s.types[n]}, not {sorted(set(ends.values()))}")
+            for n in [n for n in s.inputs if s.types[n] not in g.wholes]:
                 if wire[n]["in"] != (w := low.word[proc, n]):
                     lines += copy(s.types[n], wire[n]["in"], w)
             lines.append(f"run {proc}{g.args.get(t, '')}")
-            for n in s.outputs:
+            for n in [n for n in s.outputs if s.types[n] not in g.wholes]:
                 if wire[n]["out"] != (w := low.word[proc, n]):
                     lines += copy(s.types[n], w, wire[n]["out"])
             out.append((guard[t], lines, written))

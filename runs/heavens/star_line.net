@@ -1,0 +1,27 @@
+# The central star's line (bpt), a bundle: a fresh random number, and the
+# line it says, drawn along the star's slope.
+
+network star_line
+  inout seed: random
+  inout points: display
+
+places
+  central_star_work.second_draw
+  central_star.slope_x
+  central_star.slope_y
+
+transitions
+  step: random_step
+  draw: draw_star
+  give_seed: copy
+
+arcs
+  seed.number -> step.number
+  step.number -> central_star_work.second_draw
+  central_star_work.second_draw -> draw.number
+  central_star.slope_x -> draw.slope_x
+  central_star.slope_y -> draw.slope_y
+  points -> draw.points
+  draw.points -> points
+  central_star_work.second_draw -> give_seed.source
+  give_seed.target -> seed.number

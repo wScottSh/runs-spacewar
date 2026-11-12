@@ -1,0 +1,40 @@
+# The central star (blp), a bundle: a short line drawn from the center of
+# the screen in a random direction, then mirrored through the center. A new
+# direction and length every frame make it spin and flicker. Sense switch 6
+# turns it off, and with it the draws.
+#
+# Its two draws from the generator that also decides hyperspace are a rule
+# of the game; the line is presentation.
+
+network central_star
+  in switches: console
+  inout seed: random
+  inout points: display
+
+places
+  drawn: random
+  central_star.slope_x
+  central_star.slope_y
+
+transitions
+  step: random_step
+  slope: star_slope                                         # bx, by
+  line: star_line                                           # jsp bpt
+  not_drawn: copy
+
+arcs
+  switches.no_star -> step when == off                      # szs 60
+  switches.no_star -> not_drawn when else
+  seed.number -> step.number
+  step.number -> drawn.number
+  drawn.number -> slope.number
+  slope.slope_x -> central_star.slope_x
+  slope.slope_y -> central_star.slope_y
+  central_star.slope_x -> line
+  central_star.slope_y -> line
+  drawn -> line.seed
+  line.seed -> seed
+  points -> line.points
+  line.points -> points
+  seed.number -> not_drawn.source
+  not_drawn.target -> seed.number

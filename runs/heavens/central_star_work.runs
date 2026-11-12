@@ -1,0 +1,3 @@
+# What the central star draws from the generator, written once.
+interface record central_star_work
+  second_draw: word = 0     # ran, after the line's own draw (bpt)

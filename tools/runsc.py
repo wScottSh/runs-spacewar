@@ -4684,7 +4684,7 @@ class Storage:
             f = g.field(p)
             if g.port(p) and (g.name, g.port(p)) in given and g.port(p) == p:
                 return given[g.name, p]
-            return f if g.port(p) in g.records or re.sub(r"\[\w+\]", "", f) in declared else None
+            return f if g.port(p) in g.records or g.whole(p) or re.sub(r"\[\w+\]", "", f) in declared else None
 
         memory: set[str] = set()
         in_ac: set[str] = set()
@@ -4725,7 +4725,8 @@ class Storage:
             if sigs[proc].bundle and declaration(proc):
                 for n, ps in ends[t].items():
                     for p in ps:
-                        bundle_word.setdefault(p, f"{proc}_call.{n}")
+                        if sigs[proc].types[n] not in g.wholes:     # a whole Record lives in its own words
+                            bundle_word.setdefault(p, f"{proc}_call.{n}")
                 continue
             for n in sigs[proc].inout:
                 share(*ends[t][n])
@@ -4804,7 +4805,7 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
     chain = graph.chains(g)
     tests = sorted({gd[0] for t in order for gd in chain[t]})
     sides = {p: sorted({gd for t in order for gd in chain[t] if gd[0] == p}) for p in tests}
-    in_ac = lambda w: "." not in w and w not in io  # noqa: E731
+    in_ac = lambda w: "." not in w and w not in io and w not in g.wholes  # noqa: E731
     for path in itertools.product(*sides.values()):
         taken = set(path)
         holds = {w: p for p, w in (given or {}).items()}   # an inline bundle's: what its user left there
@@ -4817,6 +4818,10 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
                 return None
             if holds.get(w, place) != place:
                 return f"{t} reads {place}, but {w} holds {holds[w]}"
+            root = re.match(r"\w+", place)[0]
+            for k, held in holds.items() if w in g.wholes else ():
+                if k.startswith(w + ".") and re.match(r"\w+", str(held))[0] != root:
+                    return f"{t} reads {place}, all of {w}, but {k} holds {held}"
             if in_ac(w) and ac != place:
                 return f"{t} reads {place} in AC, but AC holds {ac}"
             return None
