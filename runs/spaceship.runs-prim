@@ -400,10 +400,10 @@ processor spaceship_in_star(slot)                           # pof
     set objects.x[slot] = corner
     set objects.y[slot] = corner
     set spaceship.star_wait = objects.cycles[slot]
-    loop at most 0400001:                                   # count \ssn, .
-      set spaceship.star_wait = spaceship.star_wait + 1
-      if spaceship.star_wait >= 0:
-        break
+    set spaceship.star_wait = spaceship.star_wait + 1       # count \ssn, .
+    for pass in 1 .. 0377777:
+      if spaceship.star_wait < 0:
+        set spaceship.star_wait = spaceship.star_wait + 1
     return
   set objects.routine[slot] = explosion                     # po1
   set objects.counter[slot] = -010
