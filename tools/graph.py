@@ -40,6 +40,31 @@ counter in Spacewar does (the PDP-1's `isp`).
     root -> pass.root
     pass.root -> root
 
+A place may hold a whole Record, a whole field of a collection, or a
+stream, and an arc end may name one entry of it. An input or output whose
+kind is a Record or a stream is that Record whole (`inout table: objects`,
+`table[slot].x`); a whole field of a collection has the kind type[N]
+(`star_catalog.words`, word[1652]); and a network may hold such a place
+itself, one `name: kind` line under places (`drawn: random`,
+`shown_bright: display`). A whole place lives in its Record's own words,
+so the places of one Record are ordered: a value is read before the next
+takes its words (shared_words). A stream's values run in one chain: each
+emitter takes the stream so far and gives it with its points after
+(`inout points: display`), so the lowering appends in the chain's order.
+
+A test has two sides, `when <test>` and `when else`, or is an n-way
+dispatch: `when == m` for distinct members or numbers, then `when else`.
+Exactly one side is true (CONTEXT.md 351-358). On an enum the sides may
+name every member in place of the else, less the members a precondition
+rules out (`assumes: routine != none`, lowered to `requires:`). Any other
+value needs its else.
+
+  network calc(slot)
+    assumes: table[slot].routine != none
+  arcs
+    table[slot].routine -> fly when == torpedo
+    table[slot].routine -> burst when == explosion
+
 Today a `run` passes no values, so the lowering keeps a bundle's inputs and
 outputs in the fields of its call Record, `<bundle>_call`, which a Record
 file declares with exactly the bundle's inputs and outputs. Running a bundle
@@ -376,6 +401,9 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
             tests.setdefault(a.place, set()).add(a.guard)
     for place, gs in tests.items():
         partition(g, place, gs, type_of(place), enums, fail)
+    for place, m in g.assumes:
+        if place not in tests or m not in enums.get(type_of(place) or "", []):
+            fail(f"assumes: {place} != {m} names no member of a value the network tests")
     streams(g, fail)
 
 
@@ -396,9 +424,10 @@ def partition(g: Graph, place: str, gs: set[str], typ: str | None, enums: dict[s
     if "else" in gs:
         return
     assumed = {m for p, m in g.assumes if p == place}
-    if not members or (left := sorted(set(members) - set(eq) - assumed)):
-        fail(f"the guards on {place} leave {left[0] if members else 'other values'} with no side: "
-             f"add `when else`, or `assumes: {place} != m`")
+    if not members:
+        fail(f"the guards on {place} leave its other values with no side: an open-typed value takes `when else`")
+    if left := sorted(set(members) - set(eq) - assumed):
+        fail(f"the guards on {place} leave {left[0]} with no side: add `when else`, or `assumes: {place} != {left[0]}`")
 
 
 def streams(g: Graph, fail) -> None:
@@ -629,7 +658,8 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
                 del body[i]
             body[then[0]:then[0]] = moved
     head = f"network {g.name}({', '.join(g.params)})" if g.params else f"network {g.name}"
-    out = [head] + ([f"  {g.requires}"] if g.requires else []) + [f"  owns {n}: word" for n in low.owns]
+    requires = ([g.requires] if g.requires else []) + [f"requires: {low.at[p]} != {m}" for p, m in g.assumes]
+    out = [head] + [f"  {r}" for r in requires] + [f"  owns {n}: word" for n in low.owns]
     if low.wired:
         out += [f"  {'out' if d == 'out' else 'inout'} {n}: {typ}" for n, (d, typ) in g.ports.items()]
     opened: tuple = ()
@@ -644,7 +674,7 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
                                              f"{'elif' if side else 'if'} {low.at[test[0]]} {test[1]}:"))
         opened = gd
         out += ["  " * (len(gd) + 1) + line for line in lines]
-    head = 1 + bool(g.requires) + len(low.owns) + (len(g.ports) if low.wired else 0)
+    head = 1 + len(requires) + len(low.owns) + (len(g.ports) if low.wired else 0)
     if len(out) == head:
         raise GraphError(f"{g.where}: {g.name} lowers to no statement")
     if take:
