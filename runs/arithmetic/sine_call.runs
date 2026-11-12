@@ -1,0 +1,4 @@
+# The sine subroutine's own words (sin): what a caller hands it and gets back.
+game record sine_call
+  angle: word = 0           # sin: jda leaves the angle here, binary point right of bit 3
+  result: word = 0          # AC at return, binary point right of bit 0

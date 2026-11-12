@@ -1,0 +1,3 @@
+# The angle cosine hands sine.
+game record cosine_work
+  shifted: word = 0

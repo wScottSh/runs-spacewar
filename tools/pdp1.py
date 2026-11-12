@@ -52,7 +52,7 @@ FIELDS = {
     ("multiply_call", "entry"): "mpy", ("multiply_call", "partial"): "mp2",
     ("integer_multiply_call", "entry"): "imp",
     ("divide_call", "high"): "dvd", ("divide_call", "quotient"): "idv",
-    ("sine_call", "x"): "sin", ("sine_call", "answer"): "cos",
+    ("sine_work", "x"): "sin", ("sine_work", "answer"): "cos",
     ("spaceship", "controls"): "scw", ("heading", "sine"): "sn", ("heading", "cosine"): "cs",
     ("spaceship", "gravity_x"): "bx", ("spaceship", "gravity_y"): "by",
     ("spaceship", "operand"): "t1", ("spaceship", "x_squared"): "t2",

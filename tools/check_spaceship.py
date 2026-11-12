@@ -50,7 +50,8 @@ JMP = 0o600000
 RECORDS = ["objects", "ship_flight", "ship_outlines", "ships", "random", "spaceship", "heading", "ship_nose", "pen"]
 # The arithmetic routines' own words that have a place in core.
 SCRATCH = [(rec, fld) for rec, fld in pdp1.FIELDS
-           if rec in ("square_root_call", "multiply_call", "integer_multiply_call", "divide_call", "sine_call")]
+           if rec in ("square_root_call", "multiply_call", "integer_multiply_call", "divide_call", "sine_call",
+                      "sine_work")]
 TWO_PI = 0o311040
 
 

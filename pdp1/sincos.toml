@@ -7,14 +7,14 @@
 routine = "cosine"
 convention = "JDA"
 entry = "cosine_call.angle"
-cells = ["sine_call.x_squared", "sine_call.answer"]
+cells = ["sine_work.x_squared", "sine_work.answer"]
 result = ["sine_call.result"]
 
 [[place]]
 routine = "sine"
 convention = "JDA"
 entry = "sine_call.angle"
-cells = ["sine_call.x"]
+cells = ["sine_work.x"]
 block = "sine_series"
 block_takes_entry = true
 io = ["sign"]

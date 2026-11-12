@@ -1,0 +1,6 @@
+processor scale_up_3                                        # scl 3s
+  in high: word
+  in low: word
+  out scaled: word
+  let (h, _) = scl(high, low, 3)
+  set scaled = h

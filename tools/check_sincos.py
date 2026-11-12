@@ -1,4 +1,4 @@
-"""The sine and cosine Networks of arithmetic.runs-prim against SIMH running
+"""The sine and cosine network files (runs/arithmetic/) against SIMH running
 sin and cos in the oracle image, at every input word (2^18 each, not only
 the documented -2 pi .. 2 pi), or a seeded sample of N words with the edges
 (0, -0, +-max, +-1, +-powers of two, +-pi/2, +-2 pi).
@@ -42,15 +42,15 @@ def check(label: str, entry: str, call: str, seed: int) -> int:
                         [Inputs(a, i) for a, i in zip(inputs, seeded(seed, len(inputs)))],
                         watch=[sym[w] for w in WATCH], timeout=7200)
     m = runs.Machine(runs.program(runs.source()))
-    s, mc = m.state["sine_call"], m.state["multiply_call"]
+    s, wk, mc = m.state["sine_call"], m.state["sine_work"], m.state["multiply_call"]
     differ = saturated = 0
     for a, w in zip(inputs, want):
         m.state[call]["angle"] = runs.W(a)
         m.run(label)
-        saturated += s["result"] != s["answer"]
+        saturated += s["result"] != wk["answer"]
         bad = [f"{what} simh {x:06o} runs {r:06o}" for what, x, r in
                [("AC", w.ac, s["result"].v), ("observed AC", observed[a], s["result"].v),
-                ("sin", w.watched[0], s["x"].v), ("cos", w.watched[1], s["answer"].v),
+                ("sin", w.watched[0], wk["x"].v), ("cos", w.watched[1], wk["answer"].v),
                 ("mpy", w.watched[2], mc["entry"].v), ("mp2", w.watched[3], mc["partial"].v),
                 ("returned past", w.returned_past, 0)] if x != r]
         if bad:
