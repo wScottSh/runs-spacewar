@@ -1,0 +1,5 @@
+# The integer multiply subroutine's own words (imp): what a caller hands it and gets back.
+game record integer_multiply_call
+  entry: word = 0           # imp: jda leaves the first factor here
+  factor: word = 0          # the second factor
+  product: word = 0         # AC at return: the product's low 17 bits and its sign

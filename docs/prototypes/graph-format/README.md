@@ -183,6 +183,16 @@ What each format needs for it:
   folds) is new syntax and belongs to the loop ticket. A loop with a data-dependent
   exit (square root) cannot be unrolled this way.
 
+## Two levels
+
+`two-level/` writes multiply as a bundle with its own network file, and a parent,
+integer multiply (`imp`), that uses `multiply` as one transition in the arcs format.
+The parent's use of `multiply` is the same line form as its use of a Processor. The
+bundle file adds two line forms: `in` and `out` lines, as a Processor file has, and
+an arc end that names one of those by itself. The Evaluator agrees with SIMH on
+21453 of 21453 calls for both routines. The image is identical to the original. See
+`two-level/README.md`.
+
 ## Run it
 
 ```

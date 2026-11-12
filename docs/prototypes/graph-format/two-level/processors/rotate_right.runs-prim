@@ -1,0 +1,4 @@
+processor rotate_right                                      # rir 1s
+  in value: word
+  out rotated: word
+  set rotated = rar(value, 1)

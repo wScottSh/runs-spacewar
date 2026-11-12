@@ -1,0 +1,23 @@
+# integer multiply (imp). multiply is one transition, wired as a Processor is.
+# imp keeps the low half: it drops the high half and rotates the low half's sign to bit 0.
+
+network integer_multiply
+
+places
+  integer_multiply_call.entry
+  integer_multiply_call.factor
+  integer_multiply_call.product
+  integer_multiply_work.high
+  integer_multiply_work.low
+
+transitions
+  multiply: multiply
+  sign_to_bit_0: rotate_right
+
+arcs
+  integer_multiply_call.factor -> multiply.entry
+  integer_multiply_call.entry -> multiply.factor
+  multiply.partial -> integer_multiply_work.high
+  multiply.low -> integer_multiply_work.low
+  integer_multiply_work.low -> sign_to_bit_0.value
+  sign_to_bit_0.rotated -> integer_multiply_call.product
