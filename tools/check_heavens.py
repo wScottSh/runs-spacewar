@@ -86,6 +86,21 @@ def points(outcome) -> list:
     return [pdp1.point(p) for p in outcome.plotted]
 
 
+
+def ran_as(m: runs.Machine, template: str, first: int | None = None) -> tuple:
+    """The key m.left keeps a routine's locals under. A Processor with inputs
+    and outputs runs as the copy its wiring made: draw_star as its one copy,
+    show_magnitude as the copy wired to magnitude `first`."""
+    for name, (t, wires) in m.prog.copies.items():
+        if t != template:
+            continue
+        if first is None or dict(wires)["first"] == ("index", ("field", ("name", "magnitudes"), "first"), ("num", first)):
+            return (name, ())
+    if template in m.prog.routines:
+        return (template, () if first is None else (runs.word_of(first),))
+    raise KeyError(f"no routine runs {template}" + ("" if first is None else f" for magnitude {first}"))
+
+
 def central_star(m: runs.Machine, sym: dict, display: dict, n: int, rng: random.Random) -> tuple[int, int]:
     cases = []
     for k in range(n):
@@ -104,7 +119,7 @@ def central_star(m: runs.Machine, sym: dict, display: dict, n: int, rng: random.
             m.state["random"]["number"] = runs.W(seed)
         console(m, sense)
         m.state["display"] = []
-        m.left.pop(("draw_star", ()), None)
+        m.left.pop(ran_as(m, "draw_star"), None)
         m.run("central_star")
         ran, bx, by, bjm, pf = w.watched
         bad = []
@@ -113,7 +128,7 @@ def central_star(m: runs.Machine, sym: dict, display: dict, n: int, rng: random.
         for name, got in (("slope_x", bx), ("slope_y", by)):
             if got != m.state["central_star"][name].v:
                 bad.append(f"{name} simh {got:06o} runs {m.state['central_star'][name].v:06o}")
-        left = m.left.get(("draw_star", ()))
+        left = m.left.get(ran_as(m, "draw_star"))
         if left is not None:
             drawn += 1
             if bjm != JMP | sym["bds"] + 8 * left["skipped"].v:
@@ -171,8 +186,8 @@ def planetarium(m: runs.Machine, b: pdp1.Binding, sym: dict, display: dict, word
             m.state["magnitudes"]["cursor"] = [runs.W(c) for c in frame["cursors"]]
         console(m, sense)
         m.state["display"] = []
-        for key in [key for key in m.left if key[0] == "show_magnitude"]:
-            del m.left[key]
+        for n in range(len(words)):
+            m.left.pop(ran_as(m, "show_magnitude", n), None)
         m.run("expensive_planetarium")
         got = dict(zip(watch, w.watched))
         bad = []
@@ -184,7 +199,7 @@ def planetarium(m: runs.Machine, b: pdp1.Binding, sym: dict, display: dict, word
             cursor = m.state["magnitudes"]["cursor"][n]
             if got[wd["cursor"]] != b.encode("magnitudes", "cursor", cursor):
                 bad.append(f"cursor {n} simh {got[wd['cursor']]:06o} runs {cursor.v:o}")
-            left = m.left.get(("show_magnitude", (runs.word_of(n),)))
+            left = m.left.get(ran_as(m, "show_magnitude", n))
             if left is None:
                 continue
             last = left
