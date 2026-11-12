@@ -169,14 +169,14 @@ arcs
   scale.high -> spaceship_work.distance_high
   scale.low -> spaceship_work.distance_low
 
-  spaceship_work.distance_high -> far_x when != 0
+  spaceship_work.distance_high -> far_x when else
   spaceship_work.no_pull_x -> far_x.source
   far_x.target -> spaceship.gravity_x
-  spaceship_work.distance_high -> far_y when != 0
+  spaceship_work.distance_high -> far_y when else
   spaceship_work.no_pull_y -> far_y.source
   far_y.target -> spaceship.gravity_y
 
-  spaceship_work.distance_high -> aim_x when else
+  spaceship_work.distance_high -> aim_x when == 0
   spaceship_work.distance_low -> aim_x.low
   table[slot].x -> aim_x.coordinate
   aim_x.divisor -> spaceship_work.divisor
@@ -188,7 +188,7 @@ arcs
   pull_x.quotient -> spaceship_work.quotient_x
   pull_x.remainder -> spaceship_work.remainder_x
   pull_x.outcome -> spaceship_work.outcome_x
-  spaceship_work.distance_high -> aim_y when else
+  spaceship_work.distance_high -> aim_y when == 0
   table[slot].y -> aim_y.coordinate
   aim_y.dividend -> spaceship_work.minus_y
   spaceship_work.minus_y -> pull_y.dividend
