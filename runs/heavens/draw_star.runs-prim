@@ -7,7 +7,7 @@ processor draw_star
   in number: word
   in slope_x: word
   in slope_y: word
-  out points: display
+  inout points: display
   let skipped = number >> 14                         # sar 9s; sar 5s: -7..7
   if skipped < 0:
     set skipped = -skipped

@@ -680,8 +680,9 @@ def expand_ports(prog: Program) -> None:
             if p.name in prog.records:
                 raise RunsError(f"{r.name}: its {p.direction} {p.name} has a Record's name")
             stream = p.type in prog.records and prog.records[p.type].stream
-            if stream and (p.direction == "in" or p.count is not None):
-                raise RunsError(f"{r.name}: {p.name}: a stream output is `out` or `inout`, one stream, not {p.direction}")
+            if stream and (p.direction != "inout" or p.count is not None):
+                raise RunsError(f"{r.name}: {p.name}: a stream is `inout {p.name}: {p.type}`: it takes the "
+                                f"stream so far and gives it with its points after")
             if p.type not in ("word", "int", "insn") and p.type not in prog.enums and not stream:
                 raise RunsError(f"{r.name}: {p.name}: no kind {p.type}")
             if p.direction == "owns" and p.count is not None:
@@ -833,9 +834,13 @@ def lower_graphs(prog: Program, lower) -> None:
     sigs = signatures(prog)
     fields = {n: {f: typ for f, (typ, _) in r.fields.items()} for n, r in prog.records.items()}
     copier = {"word": COPIER, **{e: f"{COPIER}_{e}" for e in prog.enums}}
+    counts = {n: r.count for n, r in prog.records.items()}
+    for g in prog.graphs.values():
+        g.wholes = set(prog.records)
+        g.streams = {n for n, r in prog.records.items() if r.stream}
     for g in prog.graphs.values():
         try:
-            graph.check(g, sigs, fields)
+            graph.check(g, sigs, fields, counts, prog.enums)
         except graph.GraphError as e:
             raise RunsError(str(e)) from e
         if want := {n: typ for n, (_, typ) in g.ports.items() if n not in g.records}:

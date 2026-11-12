@@ -4885,11 +4885,13 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
     3. the one that reads the value the call hands over earliest: the jda
        entry word, then IO, then the word after the call; one that reads
        none goes after (the routine's declaration);
-    4. not one that hands a value on to a transition of this level that
-       cannot go right after it: a value is made just before it is used,
-       which takes it from AC (breakout's random step before
+    4. not one that hands a value on to a transition or a test of this
+       level that cannot go right after it: a value is made just before it
+       is used, which takes it from AC (breakout's random step before
        weigh_breakout, `random; ior`; in_hyperspace's before draw_jump,
-       `random; scr 9s`);
+       `random; scr 9s`), or is stepped just before the skip that tests it
+       (the planetarium's `isp bkc` after its drawing, before the window
+       moves; a count and its test, `count i ma1`);
     5. one that hands nothing on to a transition of this level: work no
        other uses goes first, the made-and-used pairs after it (breakout's
        end before the recharge time; in_hyperspace's begin before the
@@ -4921,7 +4923,7 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
             rank, name = min(key(t) for t in inside[u])
             return (True, False, rank, False, False, name)
         takers = [t for t in ms if t not in placed and t != u and t not in sides and t not in moves
-                  and reads[t] & writes[u]]
+                  and reads[t] & writes[u]] + [x for x in ms if x in sides and x not in placed and x in writes[u]]
         waits = bool(takers) and not any(before[t] <= placed | {u} for t in takers)
         return (False, u in tail, key(u)[0], waits, bool(takers), u)
 
@@ -4993,7 +4995,7 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
         if wired:                            # laid out inline: its run wires each input and output
             named = {at[p]: p for p in g.ports}
             at = {p: named.get(w, w) for p, w in at.items()}
-        owns = sorted({w for w in at.values() if "." not in w and not (wired and w in g.ports)})
+        owns = sorted({w for w in at.values() if "." not in w and w not in prog.records and not (wired and w in g.ports)})
         skip = {decl["skips"][0]} if "skips" in decl else set()
         return graph.lower(g, sigs, order, graph.Lowering(at, word, copier, owns, skip, inlined, wired))
     raise BindError(tried[0] if tried else f"{g.where}: {g.name}: no word for a value")

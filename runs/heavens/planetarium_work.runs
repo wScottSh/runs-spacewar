@@ -1,0 +1,4 @@
+# What the Expensive Planetarium leaves along the way, each written once.
+presentation record planetarium_work
+  counted: word = 0         # bcc, one frame on: at 0 the planetarium draws
+  stepped: word = 0         # bkc, one drawing on: at 0 the window moves

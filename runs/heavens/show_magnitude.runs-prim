@@ -16,7 +16,7 @@ processor show_magnitude
   in past: word
   in intensity: int
   inout cursor: word
-  out points: display
+  inout points: display
   let scan = looking                                        # clf 5
   let scan_start = cursor                     # lac flo; dap fpo
   let star_x = cursor                         # dap fin

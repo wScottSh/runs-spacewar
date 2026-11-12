@@ -93,6 +93,10 @@ class Graph:
     params: list[str] = field(default_factory=list)       # which slot, as `network torpedo(slot)`
     args: dict[str, str] = field(default_factory=dict)    # transition -> the slot it passes, "(slot)"
     requires: str = ""                                    # `requires: slot < 2`, on the lowered Network
+    assumes: list[tuple[str, str]] = field(default_factory=list)   # `assumes: place != member`: a precondition
+    locals: dict[str, str] = field(default_factory=dict)  # a place the network holds itself -> its Record or stream
+    wholes: set[str] = field(default_factory=set)         # the Records and streams a place may hold whole
+    streams: set[str] = field(default_factory=set)        # of those, the streams
 
     @property
     def call(self) -> str:
@@ -126,18 +130,32 @@ class Graph:
         root = re.match(r"\w+", place)[0]
         return root if root in self.ports else None
 
+    def whole(self, place: str) -> str | None:
+        """The Record or stream a place holds whole, or holds an entry of:
+        an input or output of a Record's or a stream's kind, or a place
+        the network holds itself (`shown: display`)."""
+        root = re.match(r"\w+", place)[0]
+        if root in self.locals:
+            return self.locals[root]
+        if root in self.ports and (root in self.records):
+            return self.ports[root][1]
+        return None
+
     def field(self, place: str) -> str:
         """A place as a Record field: an input or output is its call Record's;
-        an entry of a Record input or output is that Record's."""
-        if (n := self.port(place)) and n != place:
-            index, fld = re.fullmatch(r"\w+(?:\[(\w+)\])?\.(\w+)", place).groups()
-            return f"{self.ports[n][1]}.{fld}" + (f"[{index}]" if index else "")
+        an entry of a Record input or output is that Record's. A whole
+        Record or stream lives in its own words: the place is the Record."""
+        if kind := self.whole(place):
+            index, fld = re.fullmatch(r"\w+(?:\[(\w+)\])?(?:\.(\w+))?", place).groups()
+            return kind if fld is None else f"{kind}.{fld}" + (f"[{index}]" if index else "")
         return place if "." in place else f"{self.call}.{place}"
 
     @property
     def records(self) -> set[str]:
-        """The inputs and outputs that are a whole Record, named by entry."""
-        return {n for n in self.ports if any(a.place != n and self.port(a.place) == n for a in self.arcs)}
+        """The inputs and outputs that are a whole Record: named by entry, or
+        of a Record's or a stream's kind."""
+        return {n for n, (_, typ) in self.ports.items()
+                if typ in self.wholes or any(a.place != n and self.port(a.place) == n for a in self.arcs)}
 
 
 NAME = r"\w+(?:\[\w+\])?(?:\.\w+(?:\[\w+\])?)?"
@@ -162,6 +180,11 @@ def parse(path: Path) -> Graph:
                 raise GraphError(f"{where}: unknown section {section!r}")
         elif section is None and line.strip().startswith("requires:"):
             g.requires = line.strip()
+        elif section is None and line.strip().startswith("assumes:"):
+            m = re.fullmatch(rf"\s+assumes: ({NAME}) != (\w+)", line)
+            if not m:
+                raise GraphError(f"{where}: a precondition is `assumes: place != member`")
+            g.assumes.append((m[1], m[2]))
         elif section is None:
             m = re.fullmatch(r"\s+(in|out|inout|counter) (\w+): (\w+)", line)
             if not m:
@@ -172,7 +195,9 @@ def parse(path: Path) -> Graph:
                 raise GraphError(f"{where}: a loop bundle has one counter, not {g.counter} and {m[2]}")
             g.ports[m[2]] = (m[1], m[3])
         elif section == "places":
-            g.places.append(line.strip())
+            if m := re.fullmatch(r"\s+(\w+): (\w+)", line):
+                g.locals[m[1]] = m[2]
+            g.places.append(line.strip().split(":")[0])
         elif section == "transitions":
             t, _, p = line.partition(":")
             if t.strip() in g.transitions:
@@ -202,7 +227,8 @@ def parse(path: Path) -> Graph:
     if clash := sorted(set(g.transitions) & {p.split(".")[0] for p in g.places}):
         raise GraphError(f"{path}: {clash[0]} names a transition and a Record")
     g.places += [n for n in g.ports if n not in g.places]
-    g.places += list(dict.fromkeys(a.place for a in g.arcs if g.port(a.place) and a.place not in g.places))
+    g.places += list(dict.fromkeys(a.place for a in g.arcs if (g.port(a.place) or re.match(r"\w+", a.place)[0]
+                                                                in g.locals) and a.place not in g.places))
     return g
 
 
@@ -279,18 +305,27 @@ def levels(g: Graph):
     return members, sides, holder
 
 
-def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]]) -> None:
+def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]],
+          counts: dict[str, int | None] | None = None, enums: dict[str, list[str]] | None = None) -> None:
     """Every input and output wired once, to a place of its type; every place
     a Record field or one of the network's own inputs and outputs; each place
-    written once, or once on each branch of one test; each test with its else."""
+    written once, or once on each branch of one test; each test a partition."""
+    counts, enums = counts or {}, enums or {}
+
     def fail(msg: str, where: str = g.where):
         raise GraphError(f"{where}: {g.name}: {msg}")
 
     def type_of(place: str) -> str | None:
         if place in g.ports:
             return g.ports[place][1]
-        rec, _, fld = re.sub(r"\[\w+\]", "", g.field(place) if g.port(place) else place).partition(".")
-        return fields.get(rec, {}).get(fld)
+        if place in g.locals:
+            return g.locals[place]
+        f = g.field(place) if g.port(place) or g.whole(place) else place
+        rec, _, fld = re.sub(r"\[\w+\]", "", f).partition(".")
+        typ = fields.get(rec, {}).get(fld)
+        if typ and counts.get(rec) is not None and "[" not in f:
+            return f"{typ}[{counts[rec]:o}]"            # a whole field of a collection
+        return typ
 
     for p in g.places:
         if type_of(p) is None:
@@ -340,8 +375,46 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
         if a.guard:
             tests.setdefault(a.place, set()).add(a.guard)
     for place, gs in tests.items():
-        if "else" not in gs or len(gs) != 2:
-            fail(f"the guards on {place}, {sorted(gs)}, are not one test and its else")
+        partition(g, place, gs, type_of(place), enums, fail)
+    streams(g, fail)
+
+
+def partition(g: Graph, place: str, gs: set[str], typ: str | None, enums: dict[str, list[str]], fail) -> None:
+    """The guards on one place: exactly one true, always (CONTEXT.md
+    351-358). One test and its else; or an n-way dispatch, `== m` for
+    distinct members or numbers and else last. On an enum the else may go
+    when the `==` sides name every member the network does not assume
+    away (`assumes: place != member`)."""
+    if len(gs) == 2 and "else" in gs:
+        return
+    eq = sorted(x[3:] for x in gs if x.startswith("== "))
+    if len(eq) + ("else" in gs) != len(gs) or len(eq) < 2:
+        fail(f"the guards on {place}, {sorted(gs)}, are neither one test and its else nor an n-way dispatch")
+    members = enums.get(typ or "")
+    if members and (bad := sorted(set(eq) - set(members))):
+        fail(f"the guards on {place} name {bad[0]}, no member of {typ}")
+    if "else" in gs:
+        return
+    assumed = {m for p, m in g.assumes if p == place}
+    if not members or (left := sorted(set(members) - set(eq) - assumed)):
+        fail(f"the guards on {place} leave {left[0] if members else 'other values'} with no side: "
+             f"add `when else`, or `assumes: {place} != m`")
+
+
+def streams(g: Graph, fail) -> None:
+    """A stream's values run in one chain: each is taken by one transition on
+    each path, which gives the next (an emitter takes the stream so far and
+    gives it with its points after), so the lowering appends to the stream
+    in the chain's order."""
+    chain = chains(g)
+    for p in g.places:
+        if g.whole(p) not in g.streams:
+            continue
+        takers = [a.transition for a in g.arcs if a.place == p and a.into and a.io]
+        for i, a in enumerate(takers):
+            for b in takers[i + 1:]:
+                if not any(x[0] == y[0] and x[1] != y[1] for x, y in zip(chain[a], chain[b])):
+                    fail(f"the stream value {p} is taken by {a} and {b}: a stream runs in one chain")
 
 
 COUNT_DOWN = "count_down"    # one token taken: the counter one nearer 0 (`count i`, `isp`)
@@ -521,7 +594,9 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
             k += 1
         for depth in range(k, len(gd)):
             test = gd[depth]
-            out.append("  " * (depth + 1) + ("else:" if test[1] == "else" else f"if {low.at[test[0]]} {test[1]}:"))
+            side = depth == k and depth < len(opened) and opened[depth][0] == test[0]   # the next side of one test
+            out.append("  " * (depth + 1) + ("else:" if test[1] == "else" else
+                                             f"{'elif' if side else 'if'} {low.at[test[0]]} {test[1]}:"))
         opened = gd
         out += ["  " * (len(gd) + 1) + line for line in lines]
     head = 1 + bool(g.requires) + len(low.owns) + (len(g.ports) if low.wired else 0)

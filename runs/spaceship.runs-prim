@@ -209,7 +209,7 @@ processor draw_outline                                      # sp5, jmp .
   inout side: side
   inout point_x: word
   inout point_y: word
-  out points: display
+  inout points: display
   let at = start
   let drawing = going
   for stroke_count in 1 .. 0304:

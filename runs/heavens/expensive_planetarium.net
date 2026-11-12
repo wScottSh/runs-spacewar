@@ -1,0 +1,95 @@
+# The Expensive Planetarium (bck), the `background` macro, a bundle: the
+# stars of the catalog, in four magnitudes, through a window one screen wide
+# that moves slowly right to left across the sky. It draws every other
+# frame, and moves the window one step every 16 of those. Sense switch 4
+# turns it off. Each magnitude's points follow the brighter one's.
+
+network expensive_planetarium
+  in switches: console
+  inout sky: planetarium
+  inout stars: magnitudes
+  inout points: display
+
+places
+  planetarium_work.counted
+  planetarium_work.stepped
+  star_catalog.words
+  shown_bright: display
+  shown_second: display
+  shown_third: display
+
+transitions
+  count: count_frames                                       # isp bcc
+  skip: skip_a_frame                                        # law i 2
+  show_bright: show_magnitude                                 # dislis 1j, 1q, 3
+  show_second: show_magnitude                                 # dislis 2j, 2q, 2
+  show_third: show_magnitude                                 # dislis 3j, 3q, 1
+  show_faint: show_magnitude                                 # dislis 4j, 4q, 0
+  count_window: count_steps                                 # isp bkc
+  move: move_window
+  give_frames: copy
+  give_steps: copy
+  not_shown: copy
+
+arcs
+  switches.no_planetarium -> count when == off               # szs 40
+  switches.no_planetarium -> not_shown when else
+  sky.alternate_frames -> not_shown.source
+  not_shown.target -> sky.alternate_frames
+  sky.alternate_frames -> count.frames
+  count.frames -> planetarium_work.counted
+  planetarium_work.counted -> skip when >= 0
+  skip.frames -> sky.alternate_frames
+  planetarium_work.counted -> give_frames when else
+  planetarium_work.counted -> give_frames.source
+  give_frames.target -> sky.alternate_frames
+  planetarium_work.counted -> show_bright when >= 0
+  star_catalog.words -> show_bright.catalog
+  sky.right_margin -> show_bright.right_margin
+  stars[0].first -> show_bright.first
+  stars[0].past -> show_bright.past
+  stars[0].intensity -> show_bright.intensity
+  stars[0].cursor -> show_bright.cursor
+  show_bright.cursor -> stars[0].cursor
+  points -> show_bright.points
+  show_bright.points -> shown_bright
+  planetarium_work.counted -> show_second when >= 0
+  star_catalog.words -> show_second.catalog
+  sky.right_margin -> show_second.right_margin
+  stars[1].first -> show_second.first
+  stars[1].past -> show_second.past
+  stars[1].intensity -> show_second.intensity
+  stars[1].cursor -> show_second.cursor
+  show_second.cursor -> stars[1].cursor
+  shown_bright -> show_second.points
+  show_second.points -> shown_second
+  planetarium_work.counted -> show_third when >= 0
+  star_catalog.words -> show_third.catalog
+  sky.right_margin -> show_third.right_margin
+  stars[2].first -> show_third.first
+  stars[2].past -> show_third.past
+  stars[2].intensity -> show_third.intensity
+  stars[2].cursor -> show_third.cursor
+  show_third.cursor -> stars[2].cursor
+  shown_second -> show_third.points
+  show_third.points -> shown_third
+  planetarium_work.counted -> show_faint when >= 0
+  star_catalog.words -> show_faint.catalog
+  sky.right_margin -> show_faint.right_margin
+  stars[3].first -> show_faint.first
+  stars[3].past -> show_faint.past
+  stars[3].intensity -> show_faint.intensity
+  stars[3].cursor -> show_faint.cursor
+  show_faint.cursor -> stars[3].cursor
+  shown_third -> show_faint.points
+  show_faint.points -> points
+  planetarium_work.counted -> count_window when >= 0
+  sky.window_steps -> count_window.steps
+  count_window.steps -> planetarium_work.stepped
+  planetarium_work.stepped -> move when >= 0
+  move.steps -> sky.window_steps
+  sky.right_margin -> move.right_margin
+  move.right_margin -> sky.right_margin
+  planetarium_work.stepped -> give_steps when else
+  planetarium_work.stepped -> give_steps.source
+  give_steps.target -> sky.window_steps
