@@ -53,7 +53,10 @@ HEADER = """\
 #
 # A network file is wiring with guards, so it counts nothing under control_flow, mid_exit
 # and open_guards; tools/graph.py refuses one whose guards on a place are not one test and
-# its else.
+# its else. A loop bundle's cycle (CONTEXT.md 196-206) is legal and counts nothing: tools/graph.py
+# refuses any cycle that does not run through one counter a count_down takes a token from
+# each pass. A `for` or `loop` in a Network written as structured code counts under
+# control_flow.
 """
 
 COUNTS = ("in_place", "names_records", "control_flow", "mid_exit", "open_guards", "extra_processors")
