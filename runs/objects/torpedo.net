@@ -4,16 +4,17 @@
 
 network torpedo(slot)
   inout table: objects
+  inout points: display
 
 places
   torpedo_work.counted
   torpedo_work.coordinate_x
   torpedo_work.pull_y
-  torpedo_work.moved_y
+  torpedo_place.y
   torpedo_work.position_y
   torpedo_work.coordinate_y
   torpedo_work.pull_x
-  torpedo_work.moved_x
+  torpedo_place.x
   torpedo_work.position_x
 
 transitions
@@ -25,7 +26,7 @@ transitions
   warp_y: warp_from_y
   warpage_x: torpedo_space_warpage
   move_x: inertia
-  show: plot_torpedo(slot)
+  show: plot_torpedo
   give_counter: copy
   give_x: copy
   give_y: copy
@@ -45,7 +46,7 @@ arcs
   table[slot].dy -> move_y.velocity
   table[slot].y -> move_y.place
   move_y.velocity -> table[slot].dy
-  move_y.place -> torpedo_work.moved_y
+  move_y.place -> torpedo_place.y
   move_y.position -> torpedo_work.position_y
   torpedo_work.position_y -> warp_y.position
   warp_y.coordinate -> torpedo_work.coordinate_y
@@ -55,14 +56,16 @@ arcs
   table[slot].dx -> move_x.velocity
   table[slot].x -> move_x.place
   move_x.velocity -> table[slot].dx
-  move_x.place -> torpedo_work.moved_x
+  move_x.place -> torpedo_place.x
   move_x.position -> torpedo_work.position_x
-  torpedo_work.moved_x -> show
-  torpedo_work.moved_y -> show
+  torpedo_place.x -> show.x
+  torpedo_place.y -> show.y
+  points -> show.points
+  show.points -> points
   torpedo_work.counted -> give_counter when else
   torpedo_work.counted -> give_counter.source
   give_counter.target -> table[slot].counter
-  torpedo_work.moved_x -> give_x.source
+  torpedo_place.x -> give_x.source
   give_x.target -> table[slot].x
-  torpedo_work.moved_y -> give_y.source
+  torpedo_place.y -> give_y.source
   give_y.target -> table[slot].y

@@ -53,8 +53,8 @@ arcs
   table[slot].routine -> flying when == torpedo
   table -> flying.table
   flying.table -> table
-  points -> flying
-  flying -> points
+  points -> flying.points
+  flying.points -> points
   table[slot].routine -> exploding when == explosion
   table -> exploding.table
   exploding.table -> table
@@ -72,8 +72,8 @@ arcs
   table[slot].routine -> back when == breakout
   table -> back.table
   back.table -> table
-  points -> back
-  back -> points
+  points -> back.points
+  back.points -> points
   fleet -> back.fleet
   back.fleet -> fleet
   seed -> back.seed

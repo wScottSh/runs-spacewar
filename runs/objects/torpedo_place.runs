@@ -1,0 +1,5 @@
+# Where a torpedo flies to this frame: the game moves it, and the drawing
+# plots it there.
+interface record torpedo_place
+  x: word = 0
+  y: word = 0

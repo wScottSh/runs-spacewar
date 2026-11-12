@@ -9,6 +9,7 @@ network breakout(slot)
   inout table: objects
   inout fleet: ships
   inout seed: random
+  inout points: display
 
 places
   breakout_work.counted
@@ -22,7 +23,7 @@ places
 
 transitions
   count: count_down                                         # count i ma1, hp6
-  show_waiting: show_breakout(slot)                         # hp6
+  show_waiting: show_breakout                         # hp6
   wait: copy
   end: end_breakout
   recharge_time: hyperfield_recharge_time                   # xct hd3
@@ -30,7 +31,7 @@ transitions
   step: random_step
   weigh: weigh_breakout
   lost: lost_in_hyperspace
-  show_lost: show_breakout(slot)
+  show_lost: show_breakout
   keep_routine: copy_calc_routine
   keep_cycles: copy
   keep_counter: copy
@@ -41,8 +42,10 @@ arcs
   table[slot].counter -> count.counter
   count.counter -> breakout_work.counted
   breakout_work.counted -> show_waiting when < 0
-  table[slot].x -> show_waiting
-  table[slot].y -> show_waiting
+  table[slot].x -> show_waiting.x
+  table[slot].y -> show_waiting.y
+  points -> show_waiting.points
+  show_waiting.points -> points
   breakout_work.counted -> wait when < 0
   breakout_work.counted -> wait.source
   wait.target -> table[slot].counter
@@ -70,8 +73,10 @@ arcs
   lost.counter -> table[slot].counter
   lost.cycles -> table[slot].cycles
   breakout_work.margin -> show_lost when >= 0
-  table[slot].x -> show_lost
-  table[slot].y -> show_lost
+  table[slot].x -> show_lost.x
+  table[slot].y -> show_lost.y
+  points -> show_lost.points
+  show_lost.points -> points
   breakout_work.margin -> keep_routine when else
   breakout_work.routine -> keep_routine.source
   keep_routine.target -> table[slot].routine

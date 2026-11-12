@@ -1,4 +1,5 @@
-processor show_breakout(slot)                               # dispt i, i my1, 2
-  reads: objects
-  writes: display
-  emit display: objects.x[slot], objects.y[slot], 2
+processor show_breakout                                     # dispt i, i my1, 2
+  in x: word
+  in y: word
+  inout points: display
+  emit points: x, y, 2
