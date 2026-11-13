@@ -1,5 +1,7 @@
-# The explosion's dots: the count they start from, and where their cloud is.
+# The explosion's dots: the count they start from, where their cloud is,
+# and the low half the first starts from.
 interface record particle_burst_call
   particles: word = 0
   x: word = 0
   y: word = 0
+  low: word = 0

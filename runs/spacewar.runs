@@ -226,9 +226,6 @@ game record launch
 # place only because a register carried it: into or out of a tunable the
 # original executes with xct, or into the diff macro.
 game record handoff
-  acceleration: word = 0    # AC into diff: 0 (cla)
-  position: word = 0        # AC out of diff: the new position
-  explosion_low: word = 0   # IO: cleared with the count's cma (cli); the dots shift it out unread
   jump_low: word = 0        # IO: what the main loop left there when hyperspace begins (hp1);
                             #   the first draw pushes it out
   torpedo_supply: word = 0  # AC out of tno

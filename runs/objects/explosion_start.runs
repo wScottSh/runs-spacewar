@@ -1,0 +1,5 @@
+# Where the explosion's dots start: the low half of the first dot, in IO,
+# which the count's cma clears as it goes (cli). The game leaves it as it
+# sizes the explosion; the dots take it up.
+interface record explosion_start
+  first_low: word = 0

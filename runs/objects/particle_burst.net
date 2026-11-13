@@ -1,5 +1,6 @@
 # The explosion's dots (mz1 .. count \mxc, mz1), a bundle: the first dot,
-# then one more a token of the count the first leaves.
+# then one more a token of the count the first leaves. The first starts
+# from the low half the game left (low), copied into a fresh dot.
 
 network particle_burst
   in particles: word
@@ -7,16 +8,19 @@ network particle_burst
   in cloud: explosion_cloud
   in x: word
   in y: word
-  inout dot: explosion_dot
+  in low: word
   inout points: display
 
 places
   explosion_count.counted
   drawn: random
+  start: explosion_dot
   first_dot: explosion_dot
+  last_dot: explosion_dot
   shown: display
 
 transitions
+  begin: copy
   first: particle
   count: count_down                                         # count \mxc, mz1
   more: particle_dots
@@ -27,7 +31,9 @@ arcs
   cloud -> first.cloud
   x -> first.x
   y -> first.y
-  dot -> first.dot
+  low -> begin.source
+  begin.target -> start.low
+  start -> first.dot
   first.dot -> first_dot
   points -> first.points
   first.points -> shown
@@ -40,6 +46,6 @@ arcs
   x -> more.x
   y -> more.y
   first_dot -> more.dot
-  more.dot -> dot
+  more.dot -> last_dot
   shown -> more.points
   more.points -> points

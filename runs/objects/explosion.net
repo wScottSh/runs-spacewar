@@ -1,9 +1,7 @@
 # The explosion's calc routine (mex), a bundle. An exploding object keeps
 # drifting and is drawn as a cloud of dots, one per 8 instructions of its
 # size, for as many frames as its counter has left; then its slot is
-# freed. The dots start from a fresh explosion_dot, its value the
-# Record's own (the count's cma clears IO, cli); what the last dot leaves
-# there nothing reads.
+# freed.
 
 network explosion(slot)
   inout table: objects
@@ -20,9 +18,7 @@ places
   cloud: explosion_cloud
   widened: explosion_cloud
   explosion_count.particles
-  left: handoff
-  dot: explosion_dot
-  drawn: explosion_dot
+  start: explosion_start
   explosion_work.counted
 
 transitions
@@ -63,7 +59,7 @@ arcs
   spread.spread -> cloud.spread
   table[slot].cycles -> size.cycles
   size.particles -> explosion_count.particles
-  size.low -> left.explosion_low
+  size.low -> start.first_low
   explosion_count.particles -> widen.particles
   cloud.spread -> widen.spread
   widen.spread -> widened.spread
@@ -73,8 +69,7 @@ arcs
   widened -> dots.cloud
   explosion_work.moved_x -> dots.x
   explosion_work.moved_y -> dots.y
-  dot -> dots.dot
-  dots.dot -> drawn
+  start.first_low -> dots.low
   points -> dots.points
   dots.points -> points
   table[slot].counter -> count_frame.counter
