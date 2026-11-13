@@ -891,17 +891,17 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
     dropped = {t for t, _ in facts.values()}
     order = [t for t in order if t not in dropped]
     body = steps(g, sigs, [t for t in order if t != take] + ([take] if take and not g.over and not nested else []), low)
+    def free(lines):
+        """A copy within one word, which the PDP-1 lays out as no code."""
+        return len(lines) == 3 and lines[0][4:] in low.copier.values() \
+            and (lines[1].split(": ")[1], lines[2].split(": ")[1]) in low.in_place
+
     for within, place in sorted({(gd[:-1], gd[-1][0]) for gd, _, _ in body if gd}):
         then = [i for i, (gd, _, _) in enumerate(body) if gd[:-1] == within and gd and gd[-1][0] == place
                 and gd[-1][1] != "else"]
         other = [i for i, (gd, _, _) in enumerate(body) if gd[:-1] == within and gd and gd[-1][0] == place
                  and gd[-1][1] == "else"]
         written = set().union(*(body[i][2] for i in then))
-
-        def free(lines):
-            """A copy within one word, which the PDP-1 lays out as no code."""
-            return len(lines) == 3 and lines[0][4:] in low.copier.values() \
-                and (lines[1].split(": ")[1], lines[2].split(": ")[1]) in low.in_place
         if then and other and all(body[i][2] and body[i][2] <= written & (low.before_test | (
                 body[i][2] if free(body[i][1]) else set())) for i in other):
             moved = [(within, body[i][1], body[i][2]) for i in other]
@@ -914,6 +914,15 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
                         line.split(": ")[1] for line in body[at - 1][1][1:] if ": " in line}:
                     at -= 1
             body[at:at] = moved
+    for i in range(len(body)):          # a copy within one word: just after its value is given, as the PDP-1 has it
+        if not free(body[i][1]):
+            continue
+        source = body[i][1][1].split(": ")[1]
+        k = i
+        while k and body[k - 1][0] == body[i][0] and not free(body[k - 1][1]) \
+                and not any(source == w or source.startswith(w + ".") for w in body[k - 1][2]):
+            k -= 1
+        body.insert(k, body.pop(i))
     if nested:                          # the bound keeps no count: the take is only where the loop goes on
         body = stop_side_first(g, body + [(chains(g)[take], [], set())])[:-1]
     elif take and not g.over and body[-1][0]:

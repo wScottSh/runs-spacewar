@@ -749,7 +749,6 @@ class Bindings:
         REGISTER_WORDS.clear()
         REGISTER_LOCALS.clear()
         REGISTER_WORDS.update(prog.__dict__.get("register_fields", {}))
-        REGISTER_LOCALS.update({f: local(w) if "." in w else w for f, w in REGISTER_WORDS.items()})
         self.specs = {p: tomllib.loads(p.read_text()) for p in paths if p.name != DEVICES}
         self.starts: list[dict] = []           # the start vectors: address, top Network, the tape's own
         self.bound: Routines = Routines("the routine", prog)
@@ -780,6 +779,7 @@ class Bindings:
         self.pieces: dict[str, list] = {}       # collection field -> (first slot, last slot, C name) laid out
         self.bases: dict[str, Path] = {}        # collection field -> the unit laying out a word of its address
         self.shared: dict[str, str] = {}        # field -> the field whose word it lives in
+        self.memory: dict[str, str] = {}        # of those, a field the lowering keeps in another's word
         self.compiled: list[tuple] = []         # (Function, its statements as run) of every routine compiled
         self.inverse_skips: dict[str, str] = {} # sign-tested field -> the block its failure jumps to
         self.inverse_skipped: dict[str, set] = {}  # such a field -> where the test it names stands
@@ -872,8 +872,15 @@ class Bindings:
             self.table["records"] = [r for r in self.prog.records if r in walked]
         self.registers |= {name for name, r in self.prog.records.items() if r.count is None and not r.stream
                            and not any(self.has_word(f"{name}.{f}") for f in r.fields)}
+        for f, w in REGISTER_WORDS.items():
+            if "." not in w or w in self.io_fields or self.in_register(w):
+                REGISTER_LOCALS[f] = local(w) if "." in w else w
+            elif self.shared.get(f, f) != self.shared.get(w, w):
+                self.shared[f] = self.memory[f] = self.shared.get(w, w)    # in the memory word another field names
+        for w in self.walks.values():
+            w.arms = {m: self.in_words(st) for m, st in w.arms.items()}
         self.register_passing()
-        self.io_fields |= {f for f, w in prog.__dict__.get("register_fields", {}).items() if w in self.io_fields}
+        self.io_fields |= {f for f, w in REGISTER_WORDS.items() if w in self.io_fields}
         for p in self.jsp_slots.values():
             # the slot returns what it jumps to returns (return jump();), in the register that returns it
             if p["jump"] not in self.bound:
@@ -896,9 +903,9 @@ class Bindings:
             return [p]
         copies = [c for c, (t, _) in self.prog.copies.items() if t == name]
         if section in ("place", "code"):
-            words = {c: tuple((port, local(d) if (d := dotted_of(e)) in REGISTER_LOCALS else runs.text_of(e))
+            words = {c: tuple((port, REGISTER_WORDS.get(dotted_of(e), runs.text_of(e)))
                               for port, e in self.prog.copies[c][1]) for c in copies}
-            if len(set(words.values())) == 1:      # its runs keep what they wire in the same registers
+            if len(set(words.values())) == 1:      # its runs keep what they wire in the same words
                 self.bound.same |= {c: copies[0] for c in copies[1:]}
                 copies = copies[:1]
         if section in ("place", "code") and len(copies) != 1:
@@ -963,6 +970,29 @@ class Bindings:
             if b.io_param:
                 self.io_fields.add(b.io_param)
 
+    def in_words(self, tree):
+        """The statements as the PDP-1 runs them: a field the lowering keeps
+        in another field's memory word named by that one, and a copy within
+        that word gone. SharedWords follows them as written (as_run)."""
+        if isinstance(tree, list):
+            out = [self.in_words(x) for x in tree]
+            return [x for x in out if not (isinstance(x, tuple) and x[:1] == ("set",) and x[1] == x[2])]
+        if isinstance(tree, tuple):
+            if (d := dotted_of(tree) if tree[:1] == ("field",) else None) in self.memory:
+                return as_field(self.memory[d])
+            return tuple(self.in_words(x) for x in tree)
+        if isinstance(tree, dict):
+            return {k: self.in_words(v) for k, v in tree.items()}
+        return tree
+
+    def in_place(self, s) -> bool:
+        """A run of a copy into the word its value is already in: no code."""
+        r = self.prog.routines.get(s[1]) if s[0] == "run" else None
+        if r is None or len(r.body) != 1 or r.body[0][0] != "set":
+            return False
+        t, e = dotted_of(r.body[0][1]), dotted_of(r.body[0][2])
+        return bool(t and e and t != e and REGISTER_WORDS.get(t, t) == REGISTER_WORDS.get(e, e))
+
     def block_by_default(self):
         """A bound routine that names no convention is a BLOCK when no code
         calls it: every run of it is the last thing a bound routine does,
@@ -975,7 +1005,7 @@ class Bindings:
 
         def go(body: list, tail: bool, stack: tuple):
             for i, s in enumerate(body):
-                last = tail and i == len(body) - 1
+                last = tail and all(self.in_place(x) for x in body[i + 1:])
                 if s[0] == "run" and s[1] in self.bound:
                     tails.setdefault(s[1], []).append(last)
                 elif s[0] == "run" and s[1] in self.prog.routines and s[1] not in stack:
@@ -1400,8 +1430,7 @@ class Bindings:
         into the call and out of it."""
         if dotted in self.cell_of and unit is not None and self.bound[self.cell_of[dotted]].unit != unit:
             return dotted.split(".")[0] in self.registers and dotted not in self.placed and dotted not in self.pool
-        return (dotted.split(".")[0] in self.registers or dotted in self.prog.__dict__.get("register_fields", ())) \
-            and not self.stored(dotted)
+        return (dotted.split(".")[0] in self.registers or dotted in REGISTER_LOCALS) and not self.stored(dotted)
 
 
 class Unit:
@@ -1909,6 +1938,7 @@ class Unit:
                     collect(s[-2])
         collect(stmts)
         self.as_run = stmts                     # each branch with its own copy of a shared tail
+        stmts = self.binds.in_words(stmts)
         seen: dict[str, int] = {}
 
         def passed(items):
@@ -1952,7 +1982,7 @@ class Unit:
         back = None
         for n, s in enumerate(items):
             op = s[0]
-            last = tail and n == len(items) - 1
+            last = tail and all(self.binds.in_place(x) for x in items[n + 1:])
             if back and op == "run" and s[1] == back:
                 back = None                 # the code jumps back into it
                 continue
@@ -2488,7 +2518,7 @@ class Function:
         """Scratch a Network owns, or a field it keeps in a register: a local
         of the routine that compiles it."""
         return self.binds.prog.records[dotted.split(".")[0]].owner is not None \
-            or "." not in self.binds.prog.__dict__.get("register_fields", {}).get(dotted, ".")
+            or "." not in REGISTER_WORDS.get(dotted, ".")
 
     def place(self, dotted: str) -> str:
         text = self.where_is(dotted)
@@ -3220,7 +3250,7 @@ class Function:
             self.scopes[-1].add(name)
             return 1
         if op == "emit":
-            return self.display(s, nxt, depth)
+            return self.display(s, next((x for x in stmts[k + 1:] if not in_place_set(x)), None), depth)
         if op == "goto":
             self.emit(depth, f"goto {s[1]};")
             return 1
@@ -4503,6 +4533,23 @@ class UnionFind:
 PASSED = "@passed"
 
 
+def in_place_set(s) -> bool:
+    """A copy of a field into another the PDP-1 keeps in the same word: no code."""
+    t, e = (dotted_of(s[1]), dotted_of(s[2])) if s[0] == "set" else (None, None)
+    return bool(t and e and t != e and REGISTER_WORDS.get(t, t) == REGISTER_WORDS.get(e, e))
+
+
+def field_writes(r: runs.Routine) -> set[str]:
+    """The fields a Processor's statements set."""
+    out = set()
+    for st in walk(r.body):
+        if st[0] in ("set", "let"):
+            for t in (st[1][1] if st[1][0] == "tuple" else [st[1]]):
+                if (d := held_field(t)) is not None:
+                    out.add(d)
+    return out
+
+
 class SharedWords:
     """Which RUNS names a shared word holds, through every bound routine.
     Names share a word when the binding puts them there (an entry word and
@@ -4592,6 +4639,10 @@ class Occupancy:
             if root != PASSED:
                 g = self.group[next(iter(self.words.shared[root]))]
                 state[g] = state.get(g, frozenset()) | holders
+        lent = set(self.fn.binds.memory.values())
+        for g, names in self.members.items():       # a field's word lent within a firing: the field, unless told
+            if names & lent and not state.get(g):
+                state[g] = frozenset(names & lent)
         passed = self.entry.get(PASSED, frozenset())
         for f in [b.entry, *(f for f in [b.ac_param, b.io_param, b.byname, b.inline, *self.fn.own] if f in passed)]:
             if f in self.group:
@@ -4609,8 +4660,9 @@ class Occupancy:
         the machine no longer has."""
         binds = self.fn.binds
         for g, names in self.members.items():
-            lasting = sorted(f for f in names if f in binds.cell_of or f in binds.shared
-                             or f in binds.shared.values() or "." in f and f.split(".")[0] in binds.registers)
+            declared = {f: w for f, w in binds.shared.items() if f not in binds.memory}   # a [share], not a loan
+            lasting = sorted(f for f in names if f in binds.cell_of or f in declared
+                             or f in declared.values() or "." in f and f.split(".")[0] in binds.registers and f not in binds.memory)
             holders = state.get(g, frozenset())
             if lasting and holders and not any("." in x for x in holders):
                 raise BindError(f"{where}: {self.fn.b.name} leaves the word of {lasting[0]} holding its local "
@@ -4636,9 +4688,18 @@ class Occupancy:
         written = set().union(set(), *(self.prog.routines[p].writes for r in routines if r in self.prog.routines
                                        for p in runs.fires(self.prog, r, set())
                                        if self.prog.routines[p].kind == "processor"))
+        fields = set().union(set(), *(field_writes(self.prog.routines[p]) for r in routines if r in self.prog.routines
+                                      for p in runs.fires(self.prog, r, set())
+                                      if self.prog.routines[p].kind == "processor"))
+        lent = set(self.fn.binds.memory.values())
         out = {}
         for g, names in state.items():
             own = {x for x in self.members[g] if "." in x and x.split(".")[0] in written}
+            if self.members[g] & lent:      # a field's word lent within a firing: followed field by field
+                own &= fields
+                if own and len(root := self.members[g] & lent & own) == 1:
+                    out[g] = frozenset(root)        # the field, which the word ends holding
+                    continue
             if not own:
                 out[g] = names
             elif keep_own and len(own) == 1 and own <= names:
@@ -5499,7 +5560,7 @@ def register_fields(g: graph.Graph, at: dict[str, str], prog: runs.Program, wire
     held = prog.__dict__.setdefault("register_fields", {})
     for p, w in at.items():
         f = g.field(p)
-        if g.port(p) or w == f or wired and w in g.ports or w in prog.records or "." in w and w not in io:
+        if g.port(p) or w == f or wired and w in g.ports or w in prog.records or "[" in w:
             continue
         out[p] = f
         if held.setdefault(f, w) != w:
