@@ -107,13 +107,14 @@ def walk(stmts: list):
 
 
 def walk_expr(e):
-    """Every node of an expression."""
+    """Every node of an expression, or of the statements under an if's
+    (guard, body) arms."""
     if isinstance(e, tuple) and e and isinstance(e[0], str):
         yield e
         for x in e[1:]:
             if isinstance(x, (tuple, list)):
                 yield from walk_expr(x)
-    elif isinstance(e, list):
+    elif isinstance(e, (list, tuple)):
         for x in e:
             yield from walk_expr(x)
 
@@ -4417,8 +4418,13 @@ class SharedWords:
         for f, other in binds.shared.items():
             self.words.union([f, other])
         self.shared = self.words.groups()       # root -> the fields that share its word
-        self.processor_at = {s[-1]: r for r in self.prog.routines.values() if r.kind == "processor"
-                             for s in walk(r.body)}
+        # a source line -> the Processors with a statement there: every copy of a Processor with
+        # Ports (copy_1, copy_2 ...) has its statements at the template's lines
+        self.processor_at: dict[str, list[runs.Routine]] = {}
+        for r in self.prog.routines.values():
+            if r.kind == "processor":
+                for at in dict.fromkeys(s[-1] for s in walk(r.body)):
+                    self.processor_at.setdefault(at, []).append(r)
 
     def check(self):
         fired = set().union(set(), *(runs.runs_of(r.body) for r in self.prog.routines.values()
@@ -4531,9 +4537,10 @@ class Occupancy:
 
     def read(self, name: str, state: dict, where: str):
         g = self.group.get(name)
-        processor = self.words.processor_at.get(where)
+        readers = [r for r in self.words.processor_at.get(where, [])
+                   if any(name in (dotted_of(e), e[1]) for s in walk(r.body) if s[-1] == where for e in walk_expr(s))]
         if g is not None and name not in state.get(g, frozenset()) \
-                and not (processor and ignores(processor, name, where)):
+                and not (readers and all(ignores(r, name, where) for r in readers)):
             holds = sorted(state.get(g, frozenset())) or "no name set before it on every path"
             raise BindError(f"{where}: {name} is read where its word, which the binding shares with "
                             f"{sorted(self.members[g] - {name})}, holds {holds}")
