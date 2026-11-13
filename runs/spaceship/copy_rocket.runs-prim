@@ -1,0 +1,4 @@
+processor copy_rocket
+  in source: rocket
+  out target: rocket
+  set target = source

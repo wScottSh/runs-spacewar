@@ -1,0 +1,26 @@
+# What a ship's turn computes along the way (sr0), each written once.
+game record spaceship_work
+  heading: word = 0             # the new heading, handed to sine
+  sine: word = 0                # sine's result
+  no_pull_x: word = 0           # the pull while none is computed: bx, by
+  no_pull_y: word = 0
+  x_scaled: word = 0            # x scaled down by 2^11, squared by imp
+  y_scaled: word = 0
+  y_squared: word = 0
+  margin: word = 0              # the distance squared less the capture radius
+  distance_squared: word = 0
+  root: word = 0                # the distance
+  root_scaled: word = 0
+  cube_high: word = 0           # the distance cubed
+  cube_low: word = 0
+  distance_high: word = 0       # the distance cubed, scaled down
+  distance_low: word = 0
+  divisor: word = 0             # the distance cubed's low half, kept: the word after each divide
+  minus_x: word = 0             # minus the position, divided by the distance cubed
+  minus_y: word = 0
+  quotient_x: word = 0
+  remainder_x: word = 0         # the first divide's remainder, which the second takes in IO
+  outcome_x: division = fits
+  quotient_y: word = 0
+  remainder_y: word = 0
+  outcome_y: division = fits

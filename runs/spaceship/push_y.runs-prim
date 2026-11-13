@@ -1,0 +1,10 @@
+# The acceleration on y: the thrust while the rocket fires, and the pull.
+processor push_y                                            # szf i 6; cla; add \by
+  in thrust: word
+  in rocket: rocket
+  in pull: word
+  out acceleration: word
+  let push = thrust
+  if rocket == off:
+    set push = 0
+  set acceleration = push + pull

@@ -1,0 +1,139 @@
+# The rocket and gravity change the velocity, and the velocity the
+# position (bsg), a bundle: on each axis the thrust, while the rocket
+# fires, and the star's pull are the acceleration, which inertia adds.
+# Then the ship is drawn from its nose back, by its compiled outline,
+# with a dot at its center first; then the flame, the tube and the
+# hyperfield generators (after_outline).
+
+network accelerate(slot)
+  in switches: console
+  inout seed: random
+  inout table: objects
+  inout fleet: ship_flight
+  inout crew: ships
+  inout brush: pen
+  inout points: display
+
+places
+  spaceship.rocket
+  spaceship.gravity_x
+  spaceship.gravity_y
+  heading.sine
+  heading.cosine
+  accelerate_work.burning
+  accelerate_work.cosine
+  accelerate_work.direction_y
+  accelerate_work.thrust_y
+  accelerate_work.acceleration_y
+  accelerate_work.position_y
+  accelerate_work.direction_x
+  accelerate_work.thrust_x
+  accelerate_work.acceleration_x
+  accelerate_work.position_x
+  moved: objects
+  spaceship.nose_step_x
+  spaceship.nose_step_y
+  spaceship.torpedo_x
+  spaceship.torpedo_y
+  ship_nose.x
+  ship_nose.y
+  aimed: pen
+  marked: display
+  walked: display
+
+transitions
+  fuel: check_fuel                                          # cla; sad i \mfu; clf 6
+  cosine: cosine                                            # lac i mth; jda cos
+  aim_y: aim_thrust_y
+  thrust_y: spaceship_acceleration                          # xct sac
+  push_y: push_y
+  move_y: inertia                                           # diff \mdy, my1, (sar 3s
+  aim_x: aim_thrust_x
+  thrust_x: spaceship_acceleration
+  push_x: push_x
+  move_x: inertia                                           # diff \mdx, mx1, (sar 3s
+  nose: aim_nose                                            # sp1, sp2
+  aim: aim_outline                                          # .. sp5
+  center: mark_center                                       # cla cli; dpy-4000
+  walk: outline(slot)                                       # sp5, jmp .
+  after: after_outline(slot)                                # the outline jumps back to sq6
+
+arcs
+  fleet[slot].fuel -> fuel.fuel
+  spaceship.rocket -> fuel.rocket
+  fuel.rocket -> accelerate_work.burning
+  fleet[slot].angle -> cosine.angle
+  cosine.result -> accelerate_work.cosine
+  accelerate_work.cosine -> aim_y.result
+  aim_y.cosine -> heading.cosine
+  aim_y.direction -> accelerate_work.direction_y
+  accelerate_work.direction_y -> thrust_y.direction
+  thrust_y.thrust -> accelerate_work.thrust_y
+  accelerate_work.thrust_y -> push_y.thrust
+  accelerate_work.burning -> push_y.rocket
+  spaceship.gravity_y -> push_y.pull
+  push_y.acceleration -> accelerate_work.acceleration_y
+  accelerate_work.acceleration_y -> move_y.acceleration
+  table[slot].dy -> move_y.velocity
+  move_y.velocity -> moved[slot].dy
+  table[slot].y -> move_y.place
+  move_y.place -> moved[slot].y
+  move_y.position -> accelerate_work.position_y
+  heading.sine -> aim_x.sine
+  aim_x.direction -> accelerate_work.direction_x
+  accelerate_work.direction_x -> thrust_x.direction
+  thrust_x.thrust -> accelerate_work.thrust_x
+  accelerate_work.thrust_x -> push_x.thrust
+  accelerate_work.burning -> push_x.rocket
+  spaceship.gravity_x -> push_x.pull
+  push_x.acceleration -> accelerate_work.acceleration_x
+  accelerate_work.acceleration_x -> move_x.acceleration
+  table[slot].dx -> move_x.velocity
+  move_x.velocity -> moved[slot].dx
+  table[slot].x -> move_x.place
+  move_x.place -> moved[slot].x
+  move_x.position -> accelerate_work.position_x
+  moved[slot].x -> nose.x
+  moved[slot].y -> nose.y
+  heading.sine -> nose.sine
+  heading.cosine -> nose.cosine
+  nose.step_x -> spaceship.nose_step_x
+  nose.step_y -> spaceship.nose_step_y
+  nose.nose_x -> ship_nose.x
+  nose.nose_y -> ship_nose.y
+  nose.torpedo_x -> spaceship.torpedo_x
+  nose.torpedo_y -> spaceship.torpedo_y
+  ship_nose.x -> aim.nose_x
+  ship_nose.y -> aim.nose_y
+  heading.sine -> aim.sine
+  heading.cosine -> aim.cosine
+  aim.x -> aimed.x
+  aim.y -> aimed.y
+  aim.down_x -> aimed.down_x
+  aim.down_y -> aimed.down_y
+  aim.out_x -> aimed.out_x
+  aim.out_y -> aimed.out_y
+  aim.out_down_x -> aimed.out_down_x
+  aim.out_down_y -> aimed.out_down_y
+  aim.in_down_x -> aimed.in_down_x
+  aim.in_down_y -> aimed.in_down_y
+  points -> center.points
+  center.points -> marked
+  ship_nose.x -> walk
+  ship_nose.y -> walk
+  aimed -> walk
+  marked -> walk.points
+  walk.points -> walked
+  switches -> after.switches
+  seed -> after.seed
+  after.seed -> seed
+  moved -> after.table
+  after.table -> table
+  fleet -> after.fleet
+  after.fleet -> fleet
+  crew -> after.crew
+  after.crew -> crew
+  aimed -> after.brush
+  after.brush -> brush
+  walked -> after.points
+  after.points -> points

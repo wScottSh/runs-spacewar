@@ -1,0 +1,9 @@
+# The heading's sine is kept; the star's pull starts at none.
+processor take_sine                                         # dac \sn; dzm \bx; dzm \by
+  in result: word
+  out sine: word
+  out pull_x: word
+  out pull_y: word
+  set sine = result
+  set pull_x = 0
+  set pull_y = 0

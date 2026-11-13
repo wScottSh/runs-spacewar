@@ -12,6 +12,8 @@ network restart_countdown                                   # mdn
   inout sky: planetarium
   inout stars: magnitudes
   inout points: display
+  inout flight: ship_flight
+  inout brush: pen
   inout tally: score
   inout shown: scoreboard
   out lamps: lights
@@ -46,6 +48,10 @@ arcs
   loop.sky -> sky
   stars -> loop.stars
   loop.stars -> stars
+  flight -> loop.flight
+  loop.flight -> flight
+  brush -> loop.brush
+  loop.brush -> brush
   points -> loop.points
   loop.points -> points
   counted.restart_delay -> survivors when else

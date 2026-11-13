@@ -1,0 +1,8 @@
+# How far outside the capture radius the ship is, squared: at 0 or below
+# it falls into the star.
+processor measure_capture                                   # add \t2; sub str
+  in y_squared: word
+  in x_squared: word
+  in radius: word
+  out margin: word
+  set margin = y_squared + x_squared - radius

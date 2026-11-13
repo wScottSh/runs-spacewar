@@ -1,0 +1,9 @@
+# The distance cubed, scaled down. Sense switch 2 makes the star light:
+# the distance is scaled down less.
+processor scale_distance                                    # scr 2s; szs i 20; scr 2s
+  inout high: word
+  inout low: word
+  in light: switch
+  set (high, low) = scr(high, low, 2)
+  if light == off:
+    set (high, low) = scr(high, low, 2)

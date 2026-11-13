@@ -1,0 +1,6 @@
+# The rocket stops when the tank is empty.
+processor check_fuel                                        # cla; sad i \mfu; clf 6
+  in fuel: word
+  inout rocket: rocket
+  if 0 == fuel:
+    set rocket = off

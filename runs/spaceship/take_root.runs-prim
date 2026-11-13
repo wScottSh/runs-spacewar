@@ -1,0 +1,6 @@
+# The distance squared, back from the margin.
+processor take_root                                         # add str; dac \t1; jda sqt
+  in margin: word
+  in radius: word
+  out square: word
+  set square = margin + radius

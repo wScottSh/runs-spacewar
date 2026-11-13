@@ -1,0 +1,219 @@
+# A ship's turn (sr0), a bundle: it turns and takes its heading's sine,
+# then falls toward the central star, unless sense switch 6 has removed
+# it. The pull is minus the position over the cube of the distance; when
+# the distance cubed is too large for gravity to tell, there is none. A
+# ship closer than the capture radius falls in, and is not accelerated.
+
+network spaceship(slot)
+  in switches: console
+  inout seed: random
+  inout table: objects
+  inout fleet: ship_flight
+  inout crew: ships
+  inout brush: pen
+  inout points: display
+
+places
+  spaceship.controls
+  spaceship.rocket
+  spaceship.x_squared
+  spaceship.gravity_x
+  spaceship.gravity_y
+  heading.sine
+  tunables.angular_acceleration
+  tunables.star_capture_radius
+  spaceship_work.heading
+  spaceship_work.sine
+  spaceship_work.no_pull_x
+  spaceship_work.no_pull_y
+  spaceship_work.x_scaled
+  spaceship_work.y_scaled
+  spaceship_work.y_squared
+  spaceship_work.margin
+  spaceship_work.distance_squared
+  spaceship_work.root
+  spaceship_work.root_scaled
+  spaceship_work.cube_high
+  spaceship_work.cube_low
+  spaceship_work.distance_high
+  spaceship_work.distance_low
+  spaceship_work.divisor
+  spaceship_work.minus_x
+  spaceship_work.minus_y
+  spaceship_work.quotient_x
+  spaceship_work.remainder_x
+  spaceship_work.outcome_x
+  spaceship_work.quotient_y
+  spaceship_work.remainder_y
+  spaceship_work.outcome_y
+  steered: ship_flight
+
+transitions
+  steer: steer                                              # sc1
+  sine: sine                                                # jda sin
+  take_sine: take_sine
+  free_x: copy
+  free_y: copy
+  coast: accelerate(slot)                                   # szs 60; jmp bsg
+  scale_x: scale_coordinate                                 # lac i mx1; sar 9s; sar 2s
+  square_x: integer_multiply                                # jda imp
+  scale_y: scale_coordinate
+  square_y: integer_multiply
+  measure: measure_capture
+  in_star: spaceship_in_star(slot)                          # sma i sza-skp; jmp pof
+  fallen_x: copy
+  fallen_y: copy
+  take_root: take_root
+  root: square_root                                         # jda sqt
+  cube: cube_distance
+  cube_root: multiply                                       # jda mpy
+  scale: scale_distance
+  far_x: copy                                               # sza; jmp bsg
+  far_y: copy
+  aim_x: aim_pull_x
+  pull_x: integer_divide                                    # jda idv
+  aim_y: aim_pull_y
+  pull_y: integer_divide
+  fall: accelerate(slot)
+  keep_fleet: copy
+
+arcs
+  spaceship.controls -> steer.word
+  tunables.angular_acceleration -> steer.turning
+  switches.angular_momentum -> steer.momentum_switch
+  fleet[slot].fuel -> steer.fuel
+  fleet[slot].angular_momentum -> steer.momentum
+  steer.momentum -> steered[slot].angular_momentum
+  fleet[slot].angle -> steer.angle
+  steer.angle -> steered[slot].angle
+  steer.rocket -> spaceship.rocket
+  steer.course -> spaceship_work.heading
+  spaceship_work.heading -> sine.angle
+  sine.result -> spaceship_work.sine
+  spaceship_work.sine -> take_sine.result
+  take_sine.sine -> heading.sine
+  take_sine.pull_x -> spaceship_work.no_pull_x
+  take_sine.pull_y -> spaceship_work.no_pull_y
+
+  switches.no_star -> free_x when == on
+  spaceship_work.no_pull_x -> free_x.source
+  free_x.target -> spaceship.gravity_x
+  switches.no_star -> free_y when == on
+  spaceship_work.no_pull_y -> free_y.source
+  free_y.target -> spaceship.gravity_y
+  switches.no_star -> coast when == on
+  switches -> coast.switches
+  seed -> coast.seed
+  coast.seed -> seed
+  table -> coast.table
+  coast.table -> table
+  steered -> coast.fleet
+  coast.fleet -> fleet
+  crew -> coast.crew
+  coast.crew -> crew
+  brush -> coast.brush
+  coast.brush -> brush
+  points -> coast.points
+  coast.points -> points
+  spaceship.gravity_x -> coast
+  spaceship.gravity_y -> coast
+  spaceship.rocket -> coast
+  heading.sine -> coast
+
+  switches.no_star -> scale_x when else
+  table[slot].x -> scale_x.coordinate
+  scale_x.scaled -> spaceship_work.x_scaled
+  spaceship_work.x_scaled -> square_x.entry
+  spaceship_work.x_scaled -> square_x.factor
+  square_x.product -> spaceship.x_squared
+  switches.no_star -> scale_y when else
+  table[slot].y -> scale_y.coordinate
+  scale_y.scaled -> spaceship_work.y_scaled
+  spaceship_work.y_scaled -> square_y.entry
+  spaceship_work.y_scaled -> square_y.factor
+  square_y.product -> spaceship_work.y_squared
+  spaceship_work.y_squared -> measure.y_squared
+  spaceship.x_squared -> measure.x_squared
+  tunables.star_capture_radius -> measure.radius
+  measure.margin -> spaceship_work.margin
+
+  spaceship_work.margin -> in_star when <= 0
+  spaceship_work.margin -> fallen_x when <= 0
+  spaceship_work.no_pull_x -> fallen_x.source
+  fallen_x.target -> spaceship.gravity_x
+  spaceship_work.margin -> fallen_y when <= 0
+  spaceship_work.no_pull_y -> fallen_y.source
+  fallen_y.target -> spaceship.gravity_y
+  switches -> in_star.switches
+  table -> in_star.table
+  in_star.table -> table
+  spaceship_work.margin -> keep_fleet when <= 0
+  steered -> keep_fleet.source
+  keep_fleet.target -> fleet
+
+  spaceship_work.margin -> take_root when else
+  spaceship_work.margin -> take_root.margin
+  tunables.star_capture_radius -> take_root.radius
+  take_root.square -> spaceship_work.distance_squared
+  spaceship_work.distance_squared -> root.entry
+  root.root -> spaceship_work.root
+  spaceship_work.root -> cube.root
+  cube.scaled -> spaceship_work.root_scaled
+  spaceship_work.root_scaled -> cube_root.entry
+  spaceship_work.distance_squared -> cube_root.factor
+  cube_root.partial -> spaceship_work.cube_high
+  cube_root.low -> spaceship_work.cube_low
+  spaceship_work.cube_high -> scale.high
+  spaceship_work.cube_low -> scale.low
+  switches.light_star -> scale.light
+  scale.high -> spaceship_work.distance_high
+  scale.low -> spaceship_work.distance_low
+
+  spaceship_work.distance_high -> far_x when != 0
+  spaceship_work.no_pull_x -> far_x.source
+  far_x.target -> spaceship.gravity_x
+  spaceship_work.distance_high -> far_y when != 0
+  spaceship_work.no_pull_y -> far_y.source
+  far_y.target -> spaceship.gravity_y
+
+  spaceship_work.distance_high -> aim_x when else
+  spaceship_work.distance_low -> aim_x.low
+  table[slot].x -> aim_x.coordinate
+  aim_x.divisor -> spaceship_work.divisor
+  aim_x.dividend -> spaceship_work.minus_x
+  spaceship_work.minus_x -> pull_x.dividend
+  spaceship_work.distance_low -> pull_x.low
+  spaceship_work.divisor -> pull_x.divisor
+  pull_x.result -> spaceship.gravity_x
+  pull_x.quotient -> spaceship_work.quotient_x
+  pull_x.remainder -> spaceship_work.remainder_x
+  pull_x.outcome -> spaceship_work.outcome_x
+  spaceship_work.distance_high -> aim_y when else
+  table[slot].y -> aim_y.coordinate
+  aim_y.dividend -> spaceship_work.minus_y
+  spaceship_work.minus_y -> pull_y.dividend
+  spaceship_work.remainder_x -> pull_y.low
+  spaceship_work.divisor -> pull_y.divisor
+  pull_y.result -> spaceship.gravity_y
+  pull_y.quotient -> spaceship_work.quotient_y
+  pull_y.remainder -> spaceship_work.remainder_y
+  pull_y.outcome -> spaceship_work.outcome_y
+
+  spaceship_work.margin -> fall when else
+  switches -> fall.switches
+  seed -> fall.seed
+  fall.seed -> seed
+  table -> fall.table
+  fall.table -> table
+  steered -> fall.fleet
+  fall.fleet -> fleet
+  crew -> fall.crew
+  fall.crew -> crew
+  brush -> fall.brush
+  fall.brush -> brush
+  points -> fall.points
+  fall.points -> points
+  spaceship.gravity_x -> fall
+  spaceship.gravity_y -> fall
+  spaceship.rocket -> fall
+  heading.sine -> fall

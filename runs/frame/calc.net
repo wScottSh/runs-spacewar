@@ -10,6 +10,9 @@ network calc(slot)
   inout seed: random
   inout fleet: ships
   inout points: display
+  in switches: console
+  inout flight: ship_flight
+  inout brush: pen
 
 transitions
   first: first_spaceship(slot)                              # ss1
@@ -21,23 +24,33 @@ transitions
 
 arcs
   table[slot].routine -> first when == first_spaceship
-  table -> first
-  first -> table
-  points -> first
-  first -> points
-  seed -> first
-  first -> seed
-  fleet -> first
-  first -> fleet
+  switches -> first.switches
+  table -> first.table
+  first.table -> table
+  points -> first.points
+  first.points -> points
+  seed -> first.seed
+  first.seed -> seed
+  fleet -> first.crew
+  first.crew -> fleet
+  flight -> first.fleet
+  first.fleet -> flight
+  brush -> first.brush
+  first.brush -> brush
   table[slot].routine -> second when == second_spaceship
-  table -> second
-  second -> table
-  points -> second
-  second -> points
-  seed -> second
-  second -> seed
-  fleet -> second
-  second -> fleet
+  switches -> second.switches
+  table -> second.table
+  second.table -> table
+  points -> second.points
+  second.points -> points
+  seed -> second.seed
+  second.seed -> seed
+  fleet -> second.crew
+  second.crew -> fleet
+  flight -> second.fleet
+  second.fleet -> flight
+  brush -> second.brush
+  second.brush -> brush
   table[slot].routine -> flying when == torpedo
   table -> flying.table
   flying.table -> table

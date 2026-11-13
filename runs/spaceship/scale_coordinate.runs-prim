@@ -1,0 +1,5 @@
+# Gravity: a coordinate scaled down by 2^11, to be squared.
+processor scale_coordinate                                  # lac i mx1; sar 9s; sar 2s
+  in coordinate: word
+  out scaled: word
+  set scaled = coordinate >> 11

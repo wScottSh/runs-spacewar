@@ -1,0 +1,5 @@
+# The first ship's control bits are the control word's high four.
+processor take_first_controls                               # dio \scw
+  in word: word
+  out bits: word
+  set bits = word

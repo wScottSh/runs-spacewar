@@ -1,0 +1,5 @@
+# The pull on y is minus the position over the distance cubed.
+processor aim_pull_y                                        # lac i my1; cma; jda idv
+  in coordinate: word
+  out dividend: word
+  set dividend = -coordinate

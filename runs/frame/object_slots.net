@@ -11,6 +11,9 @@ network object_slots
   inout seed: random
   inout fleet: ships
   inout points: display
+  in switches: console
+  inout flight: ship_flight
+  inout brush: pen
 
 transitions
   take: count_down                                          # index ml1, (lac mtb nob-1, ml1
@@ -31,6 +34,11 @@ arcs
   active.seed -> seed
   fleet -> active.fleet
   active.fleet -> fleet
+  switches -> active.switches
+  flight -> active.flight
+  active.flight -> flight
+  brush -> active.brush
+  active.brush -> brush
   points -> active.points
   active.points -> points
   table[slot].routine -> idle when else

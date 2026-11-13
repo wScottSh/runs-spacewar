@@ -1,0 +1,8 @@
+# The thrust: the heading's cosine is kept, and scaled down to aim the
+# thrust on y.
+processor aim_thrust_y                                      # dac \cs; sar 9s
+  in result: word
+  out cosine: word
+  out direction: word
+  set cosine = result
+  set direction = cosine >> 9

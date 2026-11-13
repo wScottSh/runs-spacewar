@@ -11,6 +11,9 @@ network active_object(slot)
   inout seed: random
   inout fleet: ships
   inout points: display
+  in switches: console
+  inout flight: ship_flight
+  inout brush: pen
 
 places
   collided: objects
@@ -43,6 +46,11 @@ arcs
   calc.seed -> seed
   fleet -> calc.fleet
   calc.fleet -> fleet
+  switches -> calc.switches
+  flight -> calc.flight
+  calc.flight -> flight
+  brush -> calc.brush
+  calc.brush -> brush
   points -> calc.points
   calc.points -> points
   calculated[slot].cycles -> charge.cycles

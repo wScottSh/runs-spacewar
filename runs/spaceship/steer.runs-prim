@@ -1,0 +1,38 @@
+# Rotation. With sense switch 1 on, the rotate buttons work through angular
+# momentum, which builds up; otherwise they turn the ship directly, faster.
+# The rocket fires while its button is held and fuel is left. The new
+# heading is kept, and handed on, as its course, to take its sine.
+processor steer                                             # sc1
+  in word: word
+  in turning: word
+  in momentum_switch: switch
+  in fuel: word
+  inout momentum: word
+  inout angle: word
+  out rocket: rocket
+  out course: word
+  let buttons = word
+  set rocket = off
+  let turn = 0
+  if buttons < 0:                                          # rotate counterclockwise
+    set turn = turn + turning
+  set buttons = ral(buttons, 1)
+  if buttons < 0:                                          # rotate clockwise
+    set turn = turn - turning
+  set turn = turn + momentum
+  set momentum = turn
+  if momentum_switch == off:                                # szs 10
+    set momentum = 0
+    set turn = ral(turn, 7)
+  set buttons = ral(buttons, 1)
+  if buttons < 0:                                          # the rocket button
+    set rocket = firing
+  if fuel >= 0:                                             # out of fuel
+    set rocket = off
+  let turned = turn + angle
+  if turned >= 0:                                           # keep the heading within a turn
+    set turned = turned - 0311040
+  if turned < 0:
+    set turned = turned + 0311040
+  set angle = turned
+  set course = turned

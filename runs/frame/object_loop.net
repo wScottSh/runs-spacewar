@@ -13,6 +13,8 @@ network object_loop                                         # ml1
   inout sky: planetarium
   inout stars: magnitudes
   inout points: display
+  inout flight: ship_flight
+  inout brush: pen
 
 places
   charged: pacing
@@ -39,6 +41,11 @@ arcs
   walk.seed -> stepped
   fleet -> walk.fleet
   walk.fleet -> fleet
+  switches -> walk.switches
+  flight -> walk.flight
+  walk.flight -> flight
+  brush -> walk.brush
+  walk.brush -> brush
   points -> walk.points
   walk.points -> drawn
   switches -> heavens.switches

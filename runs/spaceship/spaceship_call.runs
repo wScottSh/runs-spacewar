@@ -1,0 +1,6 @@
+# The spaceship routine's own word: the word after a call (jda imp / lac
+# \t1), which holds each value a routine it calls takes by name, one
+# after another (a scaled coordinate, the squared distance, the distance
+# cubed's low half).
+game record spaceship_call
+  operand: word = 0         # t1

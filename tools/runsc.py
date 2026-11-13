@@ -4891,14 +4891,16 @@ class Storage:
             instructions that index by it hold (pdp1/README.md); any other
             place, the one the declarations give. Two places of this network that a [share] declares one word
             are named by the one a transition writes (outline.net: ship_nose.x
-            in, pen.x out, one word, sx1)."""
+            in, pen.x out, one word, sx1); two values a transition each writes keep
+            their own names (accelerate.net: aim_nose gives ship_nose.x and
+            spaceship.nose_step_x, aim_outline pen.x and pen.down_x)."""
             f = g.field(p)
             if g.port(p) and (g.name, g.port(p)) in given and g.port(p) == p:
                 return given[g.name, p]
             if p in slots and "." in p and not g.port(p):
                 return f
             pair = ({f, shared[f]} if f in shared else {f}) | {a for a, b in shared.items() if b == f}
-            if len(pair & fields) == 2:
+            if len(pair & fields) == 2 and not pair & fields <= written:
                 return min(pair & fields, key=lambda x: (x not in written, x))
             return f if g.port(p) in g.records or g.whole(p) or p in named \
                 or re.sub(r"\[\w+\]", "", f) in declared else None
@@ -5146,7 +5148,14 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
        a skip tests is made just before it (the flame's dots: the fuel's
        `count i \\mfu, st2` after the flame's aim, isp and its skip one
        pair);
-    7. names, for the ties left, which decide nothing in the image
+    7. the one that starts the longest chain of work still to do at this
+       level, and of two that start equal chains, the one with the longer
+       chain done before it: the original carries a line of work through
+       before it turns to a shorter one (bsg: the cosine's call and the
+       thrust on y before the thrust on x, and the outline's aim before
+       the dot at the center, which the walk takes next; st1: the slot's
+       search and the placing before the velocity's look along x);
+    8. names, for the ties left, which decide nothing in the image
        (tools/check_names.py renames them).
 
     Before all of these, a transition that runs a block (a declared
@@ -5197,15 +5206,15 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
         d = declaration(g.transitions[t])
         return bool(d) and "convention" not in d
 
-    def unit_key(u, ms, before, placed):
+    def unit_key(u, ms, before, placed, lengths):
         if u in sides:
             rank, name = min(key(t) for t in inside[u])
-            return (False, True, False, rank, False, False, False, False, name)
+            return (False, True, False, rank, False, False, False, lengths[u], name)
         takers = [t for t in ms if t not in placed and t != u and t not in sides and t not in moves
                   and reads[t] & writes[u]] + [x for x in ms if x in sides and x not in placed and x in writes[u]]
         waits = bool(takers) and not any(before[t] <= placed | {u} for t in takers)
         tested = any(p in sides and p in ms and p not in placed for p in writes[u])
-        return (jumps(u), False, u in tail, key(u)[0], waits, bool(takers), tested, u not in calls, u)
+        return (jumps(u), False, u in tail, key(u)[0], waits, bool(takers), tested, lengths[u], u)
 
     def reached(before, v):
         """The units v comes after, directly or not."""
@@ -5232,13 +5241,26 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
             if t in sides and len(makers) == 1:
                 u = makers[0]
                 before[u] |= {v for v in before[t] - {u} if u not in reached(before, v)}
+        ahead: dict[str, int] = {}
+        behind: dict[str, int] = {}
+
+        def deep(u):
+            if u not in ahead:
+                ahead[u] = 1 + max((deep(v) for v in ms if u in before[v]), default=0)
+            return ahead[u]
+
+        def done(u):
+            if u not in behind:
+                behind[u] = 1 + max((done(v) for v in before[u] if v in ms), default=0)
+            return behind[u]
+        lengths = {u: (-deep(u), -done(u)) for u in ms}
 
         def go(placed, prefix):
             if len(placed) == len(ms):
                 yield prefix
                 return
             ready = [u for u in ms if u not in placed and before[u] <= placed]
-            for u in sorted(ready, key=lambda u: unit_key(u, ms, before, placed)):
+            for u in sorted(ready, key=lambda u: unit_key(u, ms, before, placed, lengths)):
                 if u in sides:
                     for nxt in test(u, sides[u], prefix):
                         yield from go(placed | {u}, nxt)

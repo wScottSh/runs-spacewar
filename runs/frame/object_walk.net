@@ -10,6 +10,9 @@ network object_walk
   inout seed: random
   inout fleet: ships
   inout points: display
+  in switches: console
+  inout flight: ship_flight
+  inout brush: pen
 
 places
   walked: objects
@@ -17,6 +20,8 @@ places
   stepped: random
   moved: ships
   drawn: display
+  flown: ship_flight
+  brushed: pen
   calculated: objects
 
 transitions
@@ -29,6 +34,8 @@ transitions
   idle_seed: copy
   idle_fleet: copy
   idle_points: copy
+  idle_flight: copy
+  idle_brush: copy
 
 arcs
   table -> slots.table
@@ -41,6 +48,11 @@ arcs
   slots.seed -> stepped
   fleet -> slots.fleet
   slots.fleet -> moved
+  switches -> slots.switches
+  flight -> slots.flight
+  slots.flight -> flown
+  brush -> slots.brush
+  slots.brush -> brushed
   points -> slots.points
   slots.points -> drawn
   walked[027].routine -> last when != none
@@ -50,6 +62,11 @@ arcs
   last.seed -> seed
   moved -> last.fleet
   last.fleet -> fleet
+  switches -> last.switches
+  flown -> last.flight
+  last.flight -> flight
+  brushed -> last.brush
+  last.brush -> brush
   drawn -> last.points
   last.points -> points
   walked[027].routine -> charge when != none
@@ -73,3 +90,9 @@ arcs
   walked[027].routine -> idle_points when else
   drawn -> idle_points.source
   idle_points.target -> points
+  walked[027].routine -> idle_flight when else
+  flown -> idle_flight.source
+  idle_flight.target -> flight
+  walked[027].routine -> idle_brush when else
+  brushed -> idle_brush.source
+  idle_brush.target -> brush

@@ -8,7 +8,8 @@
 
 network frame                                               # ml0
   in switches: console
-  in flight: ship_flight
+  inout flight: ship_flight
+  inout brush: pen
   inout table: objects
   inout clock: frame
   out time: pacing
@@ -69,6 +70,10 @@ arcs
   hold_first.sky -> sky
   stars -> hold_first.stars
   hold_first.stars -> stars
+  flight -> hold_first.flight
+  hold_first.flight -> flight
+  brush -> hold_first.brush
+  hold_first.brush -> brush
   points -> hold_first.points
   hold_first.points -> points
   switches -> hold_second.switches
@@ -86,6 +91,10 @@ arcs
   hold_second.sky -> sky
   stars -> hold_second.stars
   hold_second.stars -> stars
+  flight -> hold_second.flight
+  hold_second.flight -> flight
+  brush -> hold_second.brush
+  hold_second.brush -> brush
   points -> hold_second.points
   hold_second.points -> points
   switches -> count_first.switches
@@ -103,6 +112,10 @@ arcs
   count_first.sky -> sky
   stars -> count_first.stars
   count_first.stars -> stars
+  flight -> count_first.flight
+  count_first.flight -> flight
+  brush -> count_first.brush
+  count_first.brush -> brush
   points -> count_first.points
   count_first.points -> points
   tally -> count_first.tally
@@ -125,6 +138,10 @@ arcs
   count_second.sky -> sky
   stars -> count_second.stars
   count_second.stars -> stars
+  flight -> count_second.flight
+  count_second.flight -> flight
+  brush -> count_second.brush
+  count_second.brush -> brush
   points -> count_second.points
   count_second.points -> points
   tally -> count_second.tally
@@ -147,6 +164,10 @@ arcs
   count_third.sky -> sky
   stars -> count_third.stars
   count_third.stars -> stars
+  flight -> count_third.flight
+  count_third.flight -> flight
+  brush -> count_third.brush
+  count_third.brush -> brush
   points -> count_third.points
   count_third.points -> points
   tally -> count_third.tally

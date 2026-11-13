@@ -190,8 +190,6 @@ game record spaceship
   rocket: rocket = off      # program flag 6: the rocket fires this frame
   gravity_x: word = 0       # bx: the star's pull this frame
   gravity_y: word = 0       # by
-  operand: word = 0         # t1: a scaled coordinate, then the squared distance, then the
-                            #   distance cubed: the word after a call (jda imp / lac \t1)
   x_squared: word = 0       # t2
   nose_step_x: word = 0     # ssn: a 32nd of the heading, from the center to the nose
   nose_step_y: word = 0     # scn

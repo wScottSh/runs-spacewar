@@ -1,0 +1,13 @@
+# What a ship's thrust and inertia compute along the way (bsg), each
+# written once.
+game record accelerate_work
+  burning: rocket = off         # the rocket, stopped when the tank is empty
+  cosine: word = 0              # cosine's result
+  direction_y: word = 0         # the heading scaled down, for the thrust
+  thrust_y: word = 0
+  acceleration_y: word = 0
+  position_y: word = 0
+  direction_x: word = 0
+  thrust_x: word = 0
+  acceleration_x: word = 0
+  position_x: word = 0

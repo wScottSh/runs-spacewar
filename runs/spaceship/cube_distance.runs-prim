@@ -1,0 +1,5 @@
+# The distance, scaled to be multiplied by its square.
+processor cube_distance                                     # sar 9s; jda mpy
+  in root: word
+  out scaled: word
+  set scaled = root >> 9

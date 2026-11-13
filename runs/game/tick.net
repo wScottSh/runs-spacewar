@@ -7,7 +7,8 @@ network tick
   requires: console, score, controls, outline_code, pause
   produces: display, scoreboard, lights, pause
   in switches: console
-  in flight: ship_flight
+  inout flight: ship_flight
+  inout brush: pen
   inout table: objects
   inout clock: frame
   out time: pacing
@@ -32,6 +33,9 @@ arcs
   pause.phase -> answer when == scores_shown
   switches -> play.switches
   flight -> play.flight
+  play.flight -> flight
+  brush -> play.brush
+  play.brush -> brush
   table -> play.table
   play.table -> table
   clock -> play.clock

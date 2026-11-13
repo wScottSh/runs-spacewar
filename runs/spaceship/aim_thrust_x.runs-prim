@@ -1,0 +1,5 @@
+# The heading's sine, scaled down to aim the thrust on x.
+processor aim_thrust_x                                      # lac \sn; sar 9s
+  in sine: word
+  out direction: word
+  set direction = sine >> 9

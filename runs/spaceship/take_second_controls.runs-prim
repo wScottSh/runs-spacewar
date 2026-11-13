@@ -1,0 +1,6 @@
+# The second ship's bits are the low four; rotating them up makes them
+# read as the first ship's.
+processor take_second_controls                              # rir 4s; dio \scw
+  in word: word
+  out bits: word
+  set bits = rar(word, 4)

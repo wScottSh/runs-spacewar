@@ -11,6 +11,8 @@ network hold_restart_for_torpedoes                          # md1
   inout sky: planetarium
   inout stars: magnitudes
   inout points: display
+  inout flight: ship_flight
+  inout brush: pen
 
 places
   restart_work.life
@@ -40,5 +42,9 @@ arcs
   loop.sky -> sky
   stars -> loop.stars
   loop.stars -> stars
+  flight -> loop.flight
+  loop.flight -> flight
+  brush -> loop.brush
+  loop.brush -> brush
   points -> loop.points
   loop.points -> points

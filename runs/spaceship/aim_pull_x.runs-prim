@@ -1,0 +1,10 @@
+# The pull on x is minus the position over the distance cubed. The
+# distance cubed's low half is kept as the divisor, the word after each
+# divide.
+processor aim_pull_x                                        # dio \t1; lac i mx1; cma; jda idv
+  in low: word
+  in coordinate: word
+  out divisor: word
+  out dividend: word
+  set divisor = low
+  set dividend = -coordinate

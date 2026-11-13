@@ -3,7 +3,7 @@
 # the blocks they jump through. Every block that runs off its end leaves
 # through the shared exit, srt, which returns to the main loop.
 pool = ["spaceship.controls", "heading.sine", "heading.cosine", "spaceship.gravity_x",
-        "spaceship.gravity_y", "spaceship.operand", "spaceship.x_squared", "spaceship.torpedo_x",
+        "spaceship.gravity_y", "spaceship_call.operand", "spaceship.x_squared", "spaceship.torpedo_x",
         "spaceship.torpedo_y", "spaceship.flame",
         "spaceship.nose_step_x", "spaceship.nose_step_y", "ship_nose.x", "ship_nose.y",
         "spaceship.star_wait",
@@ -39,7 +39,7 @@ convention = "JSP"
 # The fuel is tested in IO: AC holds the turn (lio i \mfu).
 [[place]]
 routine = "spaceship"
-io = ["controls"]
+io = ["buttons"]
 io_reads = ["ship_flight.fuel"]
 
 # The block the compiled outline jumps back to.

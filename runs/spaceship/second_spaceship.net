@@ -1,0 +1,43 @@
+# The second spaceship's calc routine, a bundle: the control word holds four
+# bits a ship (rotate counterclockwise, rotate clockwise, both for
+# hyperspace, the rocket and the torpedo button). The second ship's are
+# its low four, rotated up. Then the ship takes its turn.
+
+network second_spaceship(slot)
+  requires: slot < 2
+  in switches: console
+  inout seed: random
+  inout table: objects
+  inout fleet: ship_flight
+  inout crew: ships
+  inout brush: pen
+  inout points: display
+
+places
+  handoff.control_word
+  spaceship.controls
+
+transitions
+  read: control_word                                        # ss2: jsp i \cwg; rir 4s; dio \scw
+  take: take_second_controls
+  turn: spaceship(slot)
+
+arcs
+  switches -> read.switches
+  read -> handoff.control_word
+  handoff.control_word -> take.word
+  take.bits -> spaceship.controls
+  spaceship.controls -> turn
+  switches -> turn.switches
+  fleet -> turn.fleet
+  turn.fleet -> fleet
+  table -> turn.table
+  turn.table -> table
+  seed -> turn.seed
+  turn.seed -> seed
+  crew -> turn.crew
+  turn.crew -> crew
+  brush -> turn.brush
+  turn.brush -> brush
+  points -> turn.points
+  turn.points -> points

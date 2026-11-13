@@ -1,0 +1,11 @@
+# The acceleration on x: minus the thrust while the rocket fires, and the
+# pull.
+processor push_x                                            # cma; szf i 6; cla; add \bx
+  in thrust: word
+  in rocket: rocket
+  in pull: word
+  out acceleration: word
+  let push = -thrust
+  if rocket == off:
+    set push = 0
+  set acceleration = push + pull
