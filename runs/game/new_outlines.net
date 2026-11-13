@@ -1,0 +1,53 @@
+# The ships' outlines for a new game, a bundle: compiled into the free core
+# after the table, from its first word. When separate_outlines is +0 both
+# ships share one outline, the wedge, which leaves room for ddt (a3).
+
+network new_outlines
+
+places
+  begin: outline_call
+  called: outline_call
+  ended: outline_call
+  finished: outline_call
+  strokes: outline_code
+  first_strokes: outline_code
+  second_strokes: outline_code
+  outline_setting.separate_outlines
+  ship_outlines.outline[0]
+  ship_outlines.outline[1]
+
+transitions
+  free: outlines_from_free_core                             # law nnn; dac not
+  needle: choose_needle                                     # ot1
+  first: compile_outline                                    # jda oc
+  skip: copy                                                # lio ddd; spi i; jmp a3
+  keep: copy
+  second: second_outline                                    # a3, dac not 1; ot2
+  code: copy
+  again: compile_outline                                    # jda oc
+
+arcs
+  free.code -> begin.code
+  free.outline -> ship_outlines.outline[0]
+  outline_setting.separate_outlines -> needle when < 0
+  needle.table -> begin.table
+  outline_setting.separate_outlines -> first when < 0
+  begin -> first.call
+  first.call -> called
+  strokes -> first.strokes
+  first.strokes -> first_strokes
+  outline_setting.separate_outlines -> skip when else
+  begin -> skip.source
+  skip.target -> called
+  outline_setting.separate_outlines -> keep when else
+  strokes -> keep.source
+  keep.target -> first_strokes
+  called.code -> second.code
+  second.outline -> ship_outlines.outline[1]
+  second.table -> ended.table
+  called.code -> code.source
+  code.target -> ended.code
+  ended -> again.call
+  again.call -> finished
+  first_strokes -> again.strokes
+  again.strokes -> second_strokes

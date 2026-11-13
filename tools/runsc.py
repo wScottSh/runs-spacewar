@@ -4934,9 +4934,9 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
             w = at[place]
             if g.port(place) and w not in holds and g.field(place) == w:
                 return None
-            if holds.get(w, place) != place:
-                return f"{t} reads {place}, but {w} holds {holds[w]}"
             root = re.match(r"\w+", place)[0]
+            if holds.get(w, place) not in (place, f"{root}.*"):
+                return f"{t} reads {place}, but {w} holds {holds[w]}"
             for k, held in holds.items() if w in g.wholes else ():
                 if k.startswith(w + ".") and re.match(r"\w+", str(held))[0] != root:
                     return f"{t} reads {place}, all of {w}, but {k} holds {held}"
@@ -4970,6 +4970,11 @@ def path_hazards(g: graph.Graph, order: list[str], at: dict[str, str], word: dic
                 ac = None
             for a in outs:
                 holds[at[a.place]] = a.place
+                whole = at[a.place].split(".")[0]
+                if at[a.place] in g.wholes:      # a whole value: each word of its Record holds its entry
+                    holds.update({k: f"{a.place}.*" for k in holds if k.startswith(whole + ".")})
+                elif whole in g.wholes and whole in holds:   # an entry: the whole is that place's, entry by entry
+                    holds[whole] = f"{re.match(r'\w+', a.place)[0]}.*"
             written_ac = [a.place for a in outs if in_ac(at[a.place])]
             if written_ac:
                 ac = written_ac[0]

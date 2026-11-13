@@ -1,7 +1,6 @@
 # A new game (a2): clear the object table, put the ships in opposite
 # corners with the needle turned around, compile their outlines into the
-# free core after the table, and arm them. When separate_outlines is +0
-# both ships share one outline, the wedge, which leaves room for ddt (a3).
+# free core after the table (new_outlines), and arm them.
 network new_game                                            # a2
   run clear_tables                                          # clear mtb, nnn-1
     routine: objects.routine
@@ -25,18 +24,7 @@ network new_game                                            # a2
     x: objects.x
     y: objects.y
     angle: ship_flight.angle
-  run outlines_from_free_core                               # law nnn; dac not
-    code: outline_call.code
-    outline: ship_outlines.outline[0]
-  if outline_setting.separate_outlines < 0:                 # lio ddd; spi i
-    run choose_needle
-      table: outline_call.table
-    run compile_outline                                     # jda oc / ot1
-  run second_outline                                        # a3
-    code: outline_call.code
-    outline: ship_outlines.outline[1]
-    table: outline_call.table
-  run compile_outline                                       # jda oc / ot2
+  run new_outlines
   run torpedo_supply                                        # xct tno
   run arm_ships
     supply: handoff.torpedo_supply
