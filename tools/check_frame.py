@@ -218,8 +218,10 @@ def main() -> int:
             bad.append("flag 6 clear after the star's mirrored half")
         elif not star and any(name == "steer" for name, _ in m.fired) and rocket != m.state["spaceship"]["rocket"]:
             bad.append(f"spaceship.rocket simh {rocket.name} runs {m.state['spaceship']['rocket'].name}")
-        if (values[sym["sr1"]] & 0o7777) - sym["mtb"] != m.state["launch"]["slot"].v:
-            bad.append("launch.slot differs")
+        # a halt on a full table stops the search at its end, before it gives a slot
+        slot = len(m.state["objects"]["routine"]) if halted else m.state["launch"]["slot"].v
+        if (values[sym["sr1"]] & 0o7777) - sym["mtb"] != slot:
+            bad.append(f"launch.slot differs: simh {(values[sym['sr1']] & 0o7777) - sym['mtb']:o} runs {slot:o}")
         if (w.returned_past == halt_full - (CALL + 1)) != halted:
             bad.append(f"halted: simh {w.returned_past == halt_full - (CALL + 1)}, runs {halted}")
         points = [pdp1.point(p) for p in w.plotted]
