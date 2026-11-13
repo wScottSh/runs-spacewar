@@ -33,7 +33,12 @@ a slot), which never reaches the image: it is renamed.
 
 Each RUNS mutant is classified. It changes the image; or the evaluator
 rejects the text before anything runs (runs.check); or runsc refuses it
-with a BindError naming the RUNS construct. A mutant that builds the
+with a BindError naming the RUNS construct. A refusal that names nothing
+the mutant touches (its routine, its template, the routines that run or
+compile it, a name its body mentions) refuses the build path, not the
+mutant: it is a crash. The unmutated program is built first by the same
+path every mutant takes (rebuilt), and the check stops if that is
+refused. A mutant that builds the
 original image is silent, and passes only when the evaluator shows it is
 the same game: the mutated routine, and failing that each bound routine
 that compiles it, fired before and after the mutation, must leave the same
@@ -359,13 +364,74 @@ def is_bound(prog: runs.Program, m: Mutant) -> bool:
     return False
 
 
+def rebuilt(prog: runs.Program, **parts) -> runs.Program:
+    """The program with parts replaced: the one path every mutant is built
+    by, and the unmutated program first (main)."""
+    return dataclasses.replace(prog, **parts)
+
+
+def names(tree) -> set[str]:
+    """The names a RUNS tree mentions: Records, fields, locals, routines run."""
+    out: set[str] = set()
+    if isinstance(tree, tuple) and tree:
+        if tree[0] == "name" and len(tree) == 2:
+            out.add(tree[1])
+        elif tree[0] == "field" and len(tree) == 3:
+            out.add(tree[2])
+        elif tree[0] == "run":
+            out.add(tree[1])
+    if isinstance(tree, (list, tuple)):
+        for x in tree:
+            out |= names(x)
+    elif isinstance(tree, dict):
+        out |= names(list(tree.values()))
+    return {n for n in out if isinstance(n, str)}
+
+
+CALLERS: dict[str, set[str]] = {}
+
+
+def touched(prog: runs.Program, mutated: runs.Program, m: Mutant) -> set[str]:
+    """What a mutant touches: the routine mutated, the routines that run it
+    or compile it, and those it fires before or after the mutation, each by
+    its name and every name its body mentions, and its template's (its
+    Ports too); or the Record and field whose initial value it changes."""
+    if m.kind == "initial":
+        return {m.path[0], m.path[1]}
+    if not CALLERS:
+        for n, r in prog.routines.items():
+            for inner in runs.runs_of(r.body):
+                CALLERS.setdefault(inner, set()).add(n)
+    out = {m.new} if isinstance(m.new, str) else names(m.new)
+    near = {m.routine, *CALLERS.get(m.routine, ()), *OWNERS.get(m.routine, ())}
+    for p in (prog, mutated):
+        near |= runs.fires(p, m.routine, set())
+    for p in (prog, mutated):
+        for n in near & set(p.routines):
+            r = p.routines[n]
+            t = p.templates.get(p.copies.get(n, (n,))[0])
+            out |= {n, *names(r.body), *names(r.requires), *r.reads, *r.writes}
+            out |= {t.name, *t.ports, *names(t.body)} if t else set()
+    return out
+
+
+OWNERS: dict[str, list[str]] = {}
+
+
+def names_touched(prog: runs.Program, mutated: runs.Program, m: Mutant, message: str) -> bool:
+    """A refusal is the mutant caught only when it names something the mutant
+    touches; one that names nothing of it refuses the build path itself."""
+    said = {t for w in re.findall(r"[\w$]+(?:\.[\w$]+)*", message) for t in [w, *w.split(".")]}
+    return bool(said & touched(prog, mutated, m))
+
+
 def mutate(prog: runs.Program, m: Mutant) -> runs.Program:
     if m.kind == "initial":
         rec, fld, path = m.path
         r = prog.records[rec]
         typ, init = r.fields[fld]
         fields = {**r.fields, fld: (typ, replaced(init, path, m.new))}
-        return dataclasses.replace(prog, records={**prog.records, rec: runs.Record(rec, r.count, fields, r.stream)})
+        return rebuilt(prog, records={**prog.records, rec: runs.Record(rec, r.count, fields, r.stream)})
     r = prog.routines[m.routine]
     body, reads, writes, requires = r.body, r.reads, r.writes, r.requires
     if m.kind == "local":
@@ -398,7 +464,7 @@ def mutate(prog: runs.Program, m: Mutant) -> runs.Program:
     else:
         body = replaced(r.body, m.path, m.new)
     new = runs.Routine(r.kind, r.name, r.params, body, reads, writes, requires)
-    return dataclasses.replace(prog, routines={**prog.routines, r.name: new})
+    return rebuilt(prog, routines={**prog.routines, r.name: new})
 
 
 # ---------------------------------------------------------------- evaluator
@@ -894,6 +960,8 @@ def verdict(m: Mutant) -> tuple[str, str]:
         try:
             code = runsc.build(mutated, Path(out))
         except runsc.BindError as e:
+            if not names_touched(prog, mutated, m, str(e)):
+                return "crash", f"refused for nothing the mutant touches: {e}"
             return "refused", str(e)
         except Exception as e:      # noqa: BLE001 - a crash is a finding of the gate
             return "crash", f"{type(e).__name__}: {e}"
@@ -965,7 +1033,13 @@ def leaves(x, path=()):
 def main() -> int:
     prog = program()
     with tempfile.TemporaryDirectory() as out:      # not build/runs: the other checks read it meanwhile
-        code = runsc.build(prog, Path(out))
+        try:                                        # built by the path every mutant takes
+            runs.check(same := rebuilt(prog))
+            code = runsc.build(same, Path(out))
+        except (runs.RunsError, runsc.BindError) as e:
+            print(f"check_compiled: the unmutated program, built as a mutant is built, is refused: {e}")
+            return 1
+    OWNERS.update(owners(prog))
     if code != 0:
         print(runsc.build.said)
         print("check_compiled: the unmutated image does not match")

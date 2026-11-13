@@ -748,7 +748,7 @@ class Bindings:
         self.prog = prog
         REGISTER_WORDS.clear()
         REGISTER_LOCALS.clear()
-        REGISTER_WORDS.update(prog.__dict__.get("register_fields", {}))
+        REGISTER_WORDS.update(prog.kept_in)
         self.specs = {p: tomllib.loads(p.read_text()) for p in paths if p.name != DEVICES}
         self.starts: list[dict] = []           # the start vectors: address, top Network, the tape's own
         self.bound: Routines = Routines("the routine", prog)
@@ -5557,7 +5557,7 @@ def register_fields(g: graph.Graph, at: dict[str, str], prog: runs.Program, wire
     name: the evaluator writes that field. Its class's register holds it:
     REGISTER_LOCALS gives the C local, which the back end compiles it to."""
     out = dict(at)
-    held = prog.__dict__.setdefault("register_fields", {})
+    held = prog.kept_in
     for p, w in at.items():
         f = g.field(p)
         if g.port(p) or w == f or wired and w in g.ports or w in prog.records or "[" in w:

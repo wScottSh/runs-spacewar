@@ -511,6 +511,7 @@ class Program:
     copies: dict[str, tuple[str, tuple]] = field(default_factory=dict)  # copy -> (template, its wiring)
     graphs: dict[str, "graph.Graph"] = field(default_factory=dict)     # the network files, each lowered to a Network
     lowering: str = "written_once"                          # the function that lowered them
+    kept_in: dict[str, str] = field(default_factory=dict)   # field -> the word its lowering keeps it in, when another
 
     def member(self, name: str) -> str | None:
         return next((e for e, ms in self.enums.items() if name in ms), None)
