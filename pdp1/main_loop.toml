@@ -77,6 +77,7 @@ routine = "new_match"
 [[place]]
 routine = "new_game"
 io_reads = ["outline_setting.separate_outlines"]
+follows = { new_outlines = "place_ships", hyperspace_shots = "arm_ships" }
 
 [[place]]
 routine = "read_control_boxes"

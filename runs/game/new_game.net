@@ -1,0 +1,65 @@
+# A new game (a2): clear the object table, put the ships in opposite
+# corners with the needle turned around, compile their outlines into the
+# free core after the table, and arm them. Each step takes only what the
+# clearing left.
+
+network new_game
+
+places
+  cleared: objects
+  cleared_flight: ship_flight
+  cleared_ships: ships
+  set: objects
+  set_flight: ship_flight
+  set_ships: ships
+  handoff.torpedo_supply
+  tunables.fuel_supply
+  handoff.hyperspace_shots
+
+transitions
+  clear: clear_tables                                       # clear mtb, nnn-1
+  place: place_ships
+  outlines: new_outlines
+  supply: torpedo_supply                                    # xct tno
+  arm: arm_ships
+  shots: hyperspace_shots                                   # xct mhs
+  give: give_jumps
+
+arcs
+  clear.routine -> cleared.routine
+  clear.x -> cleared.x
+  clear.y -> cleared.y
+  clear.counter -> cleared.counter
+  clear.cycles -> cleared.cycles
+  clear.dx -> cleared.dx
+  clear.dy -> cleared.dy
+  clear.angular_momentum -> cleared_flight.angular_momentum
+  clear.angle -> cleared_flight.angle
+  clear.fuel -> cleared_flight.fuel
+  clear.torpedoes -> cleared_flight.torpedoes
+  clear.previous_control -> cleared_ships.previous_control
+  clear.saved_routine -> cleared_ships.saved_routine
+  clear.jumps_left -> cleared_ships.jumps_left
+  clear.recharge -> cleared_ships.recharge
+  clear.uncertainty -> cleared_ships.uncertainty
+  cleared.routine -> place.routine
+  place.routine -> set.routine
+  cleared.x -> place.x
+  place.x -> set.x
+  cleared.y -> place.y
+  place.y -> set.y
+  cleared_flight.angle -> place.angle
+  place.angle -> set_flight.angle
+  supply -> handoff.torpedo_supply
+  handoff.torpedo_supply -> arm.supply
+  tunables.fuel_supply -> arm.fuel_supply
+  cleared_flight.torpedoes -> arm.torpedoes
+  arm.torpedoes -> set_flight.torpedoes
+  cleared_flight.fuel -> arm.fuel
+  arm.fuel -> set_flight.fuel
+  cleared.cycles -> arm.cycles
+  arm.cycles -> set.cycles
+  shots -> handoff.hyperspace_shots
+  handoff.hyperspace_shots -> give.shots
+  cleared_ships.jumps_left -> give.jumps
+  give.jumps -> set_ships.jumps_left

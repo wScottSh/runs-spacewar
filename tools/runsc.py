@@ -630,7 +630,7 @@ SCHEMA = {
                 "io_reads": _list(_field), "args_done": _name, "data": _list(_LOCAL),
                 "flags": _dict(_name, _int), "homes": _dict(_name, _one_of("pointer")),
                 "into": _dict(_name, _field), "arms": _one_of("apart"), "exit_after": _name, "pulse": _BOOL,
-                "tails": _one_of("shared")},
+                "tails": _one_of("shared"), "follows": _dict(_name, _name)},
     "inline": {"routine": _name, "shifts": _one_of("xct")},
     "code": {"routine": _name, "pulse": _BOOL, "io": _list(_LOCAL)},
     "store": {"store": _field, "loaded": _name},
@@ -5080,7 +5080,15 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
     Before all of these, a transition that runs a block (a declared
     routine that names no convention: a jump, from which nothing returns)
     goes after every other unit of its level, tests too: nothing on its
-    path can follow it (a6's count of games, then jmp a2)."""
+    path can follow it (a6's count of games, then jmp a2).
+
+    The declaration's `follows` states the rest of the 1962 order, where
+    no value passes: a transition running a routine it names as a key goes
+    after one running its value (a2's outlines after the ships are placed)."""
+    runs_here = set(g.transitions.values())
+    for k, v in decl.get("follows", {}).items():
+        if not {k, v} <= runs_here:
+            raise BindError(f"{g.where}: {g.name} follows: {k} = {v!r} names a routine it does not run")
     rank = {decl[k]: n for n, k in enumerate(ARRIVAL) if k in decl}
     reads = {t: {a.place for a in g.arcs if a.transition == t and a.into and a.io} for t in g.transitions}
     writes = {t: {a.place for a in g.arcs if a.transition == t and not a.into} for t in g.transitions}
@@ -5143,6 +5151,9 @@ def network_order(g: graph.Graph, sigs: dict, at: dict[str, str], word: dict, de
         """Each order of the units of a level, after prefix."""
         ms = members(within)
         before = graph.before_in(g, within, ms, holder)
+        for u in ms:
+            if u not in sides and (after := decl.get("follows", {}).get(g.transitions[u])):
+                before[u] |= {v for v in ms if v not in sides and g.transitions[v] == after}
         for t in ms:
             # the step a skip tests goes when the skip can: one instruction (isp), or a value made just before it
             makers = [u for u in ms if u not in sides and t in writes[u]]
