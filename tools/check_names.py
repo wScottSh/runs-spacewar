@@ -20,10 +20,16 @@ import runs
 import runsc
 
 
+def transitions(path: Path) -> list[str]:
+    """The transitions a network file names, the stop it halts at included."""
+    g = graph.parse(path)
+    return list(g.transitions) + ([g.halt] if g.halt else [])
+
+
 def renamed(path: Path, order: list[str]) -> str:
     """path's source with transition order[k] named t<k>_<old name>, so the
     names sort in order's order."""
-    names = list(graph.parse(path).transitions)
+    names = transitions(path)
     new = {t: f"t{k:02d}_{t}" for k, t in enumerate(order)}
     assert sorted(new) == sorted(names)
     out, section = [], None
@@ -56,7 +62,7 @@ def main() -> int:
     files = [Path(a).resolve() for a in sys.argv[1:]] or sorted(source.rglob("*.net"))
     failed = 0
     for path in files:
-        names = list(graph.parse(path).transitions)
+        names = transitions(path)
         for how, order in (("reversed", sorted(names, reverse=True)),
                            ("shuffled", random.Random(path.name).sample(names, len(names)))):
             with tempfile.TemporaryDirectory() as tmp:
