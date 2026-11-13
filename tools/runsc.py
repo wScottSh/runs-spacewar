@@ -18,6 +18,7 @@ RUNS: the C this writes stands alone, with no file of lift/."""
 from __future__ import annotations
 
 import contextlib
+import functools
 import io
 import itertools
 import re
@@ -144,13 +145,11 @@ def substitute(tree, names: dict):
     return tree
 
 
-def constant_slots(prog: runs.Program, tree):
+def constant_slots(prog: runs.Program, tables: set[tuple[str, str]], tree):
     """tree with each slot of a table of constants (runs.constant_tables)
     replaced by its value: each copy of the routine that names it holds the
     value itself, as each expansion of a macro holds its arguments
     (dislis J, Q, B for each magnitude; hc1d's copy H, I, N, `copy nt, kt, 44`)."""
-    tables = runs.constant_tables(prog)
-
     def go(x):
         if isinstance(x, list):
             return [go(y) for y in x]
@@ -709,6 +708,7 @@ class Bindings:
         self.specs = {p: tomllib.loads(p.read_text()) for p in paths if p.name != DEVICES}
         self.starts: list[dict] = []           # the start vectors: address, top Network, the tape's own
         self.bound: dict[str, Bound] = Section("the routine")
+        self.constants = runs.constant_tables(prog)
         self.placed: dict[str, Path] = {}       # field -> the unit that lays out its data word
         self.cell_of: dict[str, str] = {}       # field -> the JDA routine whose entry word holds it
         self.io_fields: set[str] = set()
@@ -1817,7 +1817,7 @@ class Unit:
         the slot the cursors point at, or a slot by number."""
         names = names or {}
         local_names = routine_locals(r)
-        body = typed(self.prog, constant_slots(self.prog, substitute(list(r.body), names)), local_names, r.name)
+        body = typed(self.prog, constant_slots(self.prog, self.binds.constants, substitute(list(r.body), names)), local_names, r.name)
         try:
             body = folds.lower(body, self.prog)
         except folds.FoldError as e:
@@ -4685,10 +4685,21 @@ ARRIVAL = ("inline", "entry", "io_param", "byname")   # the word after a jda, wh
 CALLED = "a call"                               # what an IO word holds, for all a hazard knows, after a call
 
 
+@functools.lru_cache(maxsize=64)
+def parsed_text(text: str) -> dict:
+    return tomllib.loads(text)
+
+
+def parsed(f: Path) -> dict:
+    """A declaration file, parsed once for each source it holds: lowering
+    reads the declarations thousands of times. Never changed by a reader."""
+    return parsed_text(f.read_text())
+
+
 def declaration(name: str) -> dict:
     """A routine's own entry of the declarations, or {}."""
     found = [p for f in sorted(BINDINGS.glob("*.toml")) if f.name != DEVICES
-             for p in tomllib.loads(f.read_text()).get("place", []) if p.get("routine") == name]
+             for p in parsed(f).get("place", []) if p.get("routine") == name]
     return found[0] if len(found) == 1 else {}
 
 
@@ -4708,7 +4719,7 @@ def declared_fields() -> set[str]:
                 walk(k)
                 walk(x)
     for f in sorted(BINDINGS.glob("*.toml")):
-        d = tomllib.loads(f.read_text())
+        d = parsed(f)
         walk(d)
         out |= set(d.get("flags", {})) | set(d.get("homes", {}))   # a flag, or a home in an instruction
     return out
@@ -4719,7 +4730,7 @@ def walked_records() -> set[str]:
     the fields a [walk] homes or ends on."""
     out: set[str] = set()
     for f in sorted(BINDINGS.glob("*.toml")):
-        walk = tomllib.loads(f.read_text()).get("walk", {})
+        walk = parsed(f).get("walk", {})
         out |= {x.split(".")[0] for x in walk.get("homes", []) + [walk.get("index", "")] if x}
     return out
 
@@ -4728,7 +4739,7 @@ def shared_fields() -> dict[str, str]:
     """Each field a [share] declares in another's word -> that field."""
     out: dict[str, str] = {}
     for f in sorted(BINDINGS.glob("*.toml")):
-        out |= tomllib.loads(f.read_text()).get("share", {})
+        out |= parsed(f).get("share", {})
     return out
 
 
@@ -4737,7 +4748,7 @@ def memory_words() -> set[str]:
     entry word, its cells, and the fields of a `fields` list."""
     out: set[str] = set()
     for f in sorted(BINDINGS.glob("*.toml")):
-        for p in tomllib.loads(f.read_text()).get("place", []):
+        for p in parsed(f).get("place", []):
             out |= {p["entry"]} if "entry" in p else set()
             out |= set(p.get("cells", [])) | set(p.get("fields", []))
     return out
@@ -5178,7 +5189,7 @@ def phase_dispatch(prog: runs.Program) -> tuple[str, str, dict[str, str]] | None
 
 def phase_dispatch_of(prog: runs.Program) -> tuple[str, str, dict[str, str]] | None:
     repeats = {u["repeat"] for f in sorted(BINDINGS.glob("*.toml")) if f.name != DEVICES
-               if "repeat" in (u := tomllib.loads(f.read_text()))}
+               if "repeat" in (u := parsed(f))}
     ran = {p for h in prog.graphs.values() for p in h.transitions.values()}
     for t in prog.graphs.values():
         if t.name in ran:

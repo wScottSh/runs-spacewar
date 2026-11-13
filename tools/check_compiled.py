@@ -36,9 +36,15 @@ rejects the text before anything runs (runs.check); or runsc refuses it
 with a BindError naming the RUNS construct. A mutant that builds the
 original image is silent, and passes only when the evaluator shows it is
 the same game: the mutated routine, and failing that each bound routine
-that compiles it, fired on seeded random Records before and after the
-mutation must leave the same Records, the same points and the same error,
-with at least a quarter of the firings running clean. A silent initial
+that compiles it, fired before and after the mutation, must leave the same
+Records, the same points and the same error. It is fired first on the
+Records play leaves before its firings (32 games of 300 frames, up to 60
+of each routine's firings), then on 200 seeded random Records for the edge
+cases. A firing may run 4 times the statements the routine's longest
+played firing ran (its nearest bound owner's when play never fires it,
+the longest of any when neither); a firing over that on either side is
+not compared and not clean. 50 firings must run clean through the mutated
+routine. A silent initial
 value passes when 60 games of 30 frames from power-on, played before and
 after, put out the same at every firing and end with the same Records but
 for the field itself. A requires: is a
@@ -51,9 +57,15 @@ stops the mutant at its bound. A guarded fold's count is such a bound
 (folds.py): the loop it stands for keeps going where the fold stops, so a
 firing whose fold ends its count with its guard still true ran past it.
 
-Usage: [--sample N] [--only TEXT] [--kinds a,b] (build N mutants drawn by
-a seeded shuffle, not all; only those whose label holds TEXT; only those
-kinds).
+Usage: [--changed] [--sample N] [--only TEXT] [--kinds a,b]
+  --changed: every mutant of what changed where the branch meets
+    origin/main: a changed routine, a routine that names what a changed
+    declaration names, a changed Record's initial values, a changed
+    declaration file's own;
+  --sample N: N mutants drawn by a seeded shuffle, of the rest with
+    --changed, of all without;
+  --only, --kinds: only those whose label holds TEXT; only those kinds.
+With no flag, every mutant.
 Run from the repository root:
   uv run python tools/check_compiled.py"""
 from __future__ import annotations
@@ -63,6 +75,7 @@ import multiprocessing
 import random
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import tomllib
@@ -72,6 +85,7 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import folds
+import gate_inputs
 import runs
 import runsc
 from runsc import dotted_of
@@ -83,6 +97,10 @@ STATEMENTS = {"let", "set", "if", "loop", "for", "break", "continue", "stop", "u
 TRIALS = 200                # seeded Record states a silent mutant is fired on
 CLEAN = TRIALS // 4         # firings that must run without error and reach the mutated routine
 PLAYS = 60                  # Records as play leaves them, kept before a routine's firings
+PLAY_GAMES = 32             # the games played for them, one a process
+PLAY_FRAMES = 300           # each game's frames: enough for torpedoes to hit and ships to explode
+BUDGET = 4                  # a firing may run this many times the statements its routine's played firings ran
+OVER = "over budget"
 EDGES = [0, runs.MASK, 1, runs.MASK ^ 1, 0o377777, 0o400000, 0o777, 0o400777]   # 0, -0, 1, -1, the extremes
 AT_BOUND = re.compile(r"ran past (its bound of )?\d+|the bound is no count")   # a firing a bound stops
 BOUNDED = ("number", "field", "field type", "field record", "operator", "member")   # kinds a loop's bound holds
@@ -433,7 +451,27 @@ def copied(state: dict) -> dict:
             for r, d in state.items()}
 
 
-class Bounded(runs.Machine):
+class OverBudget(Exception):
+    """A firing ran more statements than its budget."""
+
+
+class Counted(runs.Machine):
+    """The evaluator, counting the statements it runs, and stopping a firing
+    that runs more than its budget."""
+    budget: int | None = None
+
+    def __init__(self, prog: runs.Program):
+        super().__init__(prog)
+        self.steps = 0
+
+    def stmt(self, s, scope):
+        self.steps += 1
+        if self.budget is not None and self.steps > self.budget:
+            raise OverBudget
+        return super().stmt(s, scope)
+
+
+class Bounded(Counted):
     """The evaluator, stopping a guarded fold that ends its count with its
     guard still true: it ran past its bound, as `loop at most` does."""
     tests: dict[int, tuple] = {}            # id of a for -> (the for, its fold's test or None)
@@ -452,58 +490,100 @@ class Bounded(runs.Machine):
         return out
 
 
-def fire(prog: runs.Program, name: str, args: list, state: dict):
+def fire(prog: runs.Program, name: str, args: list, state: dict, budget: int | None = None):
     """What one firing leaves: the Records and the routine code jumped to,
-    or the error it stopped with; and the routines it ran."""
+    or the error it stopped with, or OVER past its budget of statements;
+    and the routines it ran."""
     m = Bounded(prog)
     m.state = copied(state)
+    m.budget = budget
     try:
         m.run(name, args)
     except runs.Stop:
         return ("stop", m.state), {n for n, _ in m.fired}
+    except OverBudget:
+        return (OVER, None), {n for n, _ in m.fired}
     except (runs.RunsError, runs.Return, runs.Break, runs.Continue) as e:
         return (f"error {type(e).__name__}: {e}", None), {n for n, _ in m.fired}
     return (m.jumped_to, m.state), {n for n, _ in m.fired}
 
 
-PLAYED: dict[str, list] = {}
+PLAYED: dict[str, list] = {}    # routine -> (arguments, Records) just before some of its played firings
+MOST: dict[str, int] = {}       # routine -> the most statements any of its played firings ran
 
 
 def played(prog: runs.Program) -> dict[str, list]:
-    """Records as play leaves them: each routine -> (arguments, Records)
-    just before some of its firings, from games the evaluator plays from
-    the tape's words with random power-on words and console settings, the
-    control boxes drawn anew each frame. Random Records seldom take a long routine
-    (the outline compiler, the spaceship) clean to its end; these do."""
+    """Records as play leaves them: each routine and copy -> (arguments,
+    Records) just before up to PLAYS of its firings, drawn from all of them,
+    from PLAY_GAMES games of PLAY_FRAMES frames the evaluator plays from the
+    tape's words with random power-on words and console settings, the
+    control boxes drawn anew each frame; and MOST, the most statements any
+    of its firings ran. Random Records seldom take a long routine (the
+    outline compiler, the spaceship) clean to its end; these do. The games
+    are played at once, one a process."""
     if PLAYED:
         return PLAYED
-    kept: dict[str, list] = {}
-
-    class Recorder(runs.Machine):
-        def run(self, name, args=()):
-            if len(kept.setdefault(name, [])) < PLAYS:
-                kept[name].append((list(args), copied(self.state)))
-            return super().run(name, args)
-    for _ in games(prog, Recorder, random.Random(1962)):
-        pass
-    PLAYED.update(kept)
+    with ProcessPoolExecutor(mp_context=multiprocessing.get_context("fork")) as pool:
+        each = list(pool.map(play, range(PLAY_GAMES)))
+    rng = random.Random(1962)
+    for name in sorted({n for kept, _ in each for n in kept}):
+        firings = [f for kept, _ in each for f in kept.get(name, [])]
+        PLAYED[name] = [firings[k] for k in sorted(rng.sample(range(len(firings)), min(PLAYS, len(firings))))]
+        MOST[name] = max(most.get(name, 0) for _, most in each)
     return PLAYED
 
 
-def games(prog: runs.Program, machine, rng: random.Random):
-    """60 games of 30 frames from power-on: the tape's words, random
+def play(game: int) -> tuple[dict, dict]:
+    """One game's firings: a few of each routine's, enough that all the
+    games hold twice PLAYS, drawn from all of them; and the most statements
+    each routine's firings ran."""
+    prog = program()
+    rng = random.Random(game)
+    keep = 2 * PLAYS // PLAY_GAMES + 1
+    kept: dict[str, list] = {}
+    seen: Counter = Counter()
+    most: dict[str, int] = {}
+
+    class Recorder(Counted):
+        def run(self, name, args=()):
+            seen[name] += 1
+            if len(kept.setdefault(name, [])) < keep:
+                kept[name].append((list(args), copied(self.state)))
+            elif (k := rng.randrange(seen[name])) < keep:
+                kept[name][k] = (list(args), copied(self.state))
+            start = self.steps
+            try:
+                return super().run(name, args)
+            finally:
+                most[name] = max(most.get(name, 0), self.steps - start)
+    for _ in games(prog, Recorder, random.Random(1962 + game), range(game, game + 1), PLAY_FRAMES):
+        pass
+    return kept, most
+
+
+def budget(prog: runs.Program, name: str) -> int:
+    """The most statements a firing of name may run: BUDGET times the most
+    its played firings ran, or failing those, its nearest bound owner's, or
+    failing those, the most any played firing ran."""
+    most = MOST.get(name) or min((MOST[o] for o in owners(prog).get(name, []) if o in MOST),
+                                 default=max(MOST.values()))
+    return BUDGET * most
+
+
+def games(prog: runs.Program, machine, rng: random.Random, numbers=range(60), frames: int = 30):
+    """Games from power-on (60 of 30 frames): the tape's words, random
     power-on words and console settings, the control boxes drawn anew each
     frame. Yields what leaves the game at each firing (the streams and the
     lights), and the Records at the game's end, or the error it stops with."""
     streams = [r.name for r in prog.records.values() if r.stream]
-    for game in range(60):
+    for game in numbers:
         m = machine(prog)
         world = random_state(prog, rng)
         for rec in ("console", "score"):            # what comes in: the switches, the power-on words
             m.state[rec] = world[rec]
         try:
             m.run(["start_with_control_boxes", "start_with_test_word"][game % 2])
-            for _ in range(30):
+            for _ in range(frames):
                 yield {r: m.state[r] for r in streams + ["lights"]}
                 m.state["console"]["control_boxes"] = runs.W(rng.randrange(1 << 18))
                 for stream in streams:
@@ -531,25 +611,38 @@ def from_power_on(prog: runs.Program, mutated: runs.Program, rec: str, fld: str)
     return True, f"{k + 1} firings from power-on, all the same"
 
 
-def same_game(prog: runs.Program, mutated: runs.Program, name: str, seed: str,
-              mutated_routine: str | None = None) -> tuple[bool, str]:
-    """Fire name before and after the mutation on the same seeded Records,
-    and on Records as play leaves them before its firings: the same
-    Records, points and error every time, with enough firings that run
-    clean through the mutated routine."""
+def trials(prog: runs.Program, name: str, seed: str):
+    """The (arguments, Records) to fire name on: as play leaves them before
+    its firings, then TRIALS seeded random ones for the edge cases."""
+    yield from played(prog).get(name, [])
     rng = random.Random(zlib.crc32(seed.encode()))
     calls = call_arguments(prog)
-    clean = 0
-    trials = [(arguments(prog, name, calls, rng), random_state(prog, rng)) for _ in range(TRIALS)] \
-        + played(prog).get(name, [])
-    for k, (args, state) in enumerate(trials):
-        (a, ran), (b, _) = fire(prog, name, args, state), fire(mutated, name, args, state)
-        if a != b:
+    for _ in range(TRIALS):
+        yield arguments(prog, name, calls, rng), random_state(prog, rng)
+
+
+def same_game(prog: runs.Program, mutated: runs.Program, name: str, seed: str,
+              mutated_routine: str | None = None) -> tuple[bool, str]:
+    """Fire name before and after the mutation on Records as play leaves
+    them before its firings, and on seeded random Records: the same
+    Records, points and error every time, with enough firings that run
+    clean through the mutated routine. A firing over its budget on either
+    side is not compared, and is not clean."""
+    limit = budget(prog, name)
+    clean = over = k = 0
+    for k, (args, state) in enumerate(trials(prog, name, seed)):
+        a, ran = fire(prog, name, args, state, limit)
+        b = a if a[0] == OVER else fire(mutated, name, args, state, limit)[0]
+        if OVER in (a[0], b[0]):
+            over += 1
+        elif a != b:
             return False, f"{name}{tuple(args)} trial {k}: {str(a[0])[:80]} / {str(b[0])[:80]}"
-        clean += not str(a[0]).startswith("error") and (mutated_routine or name) in ran
+        else:
+            clean += not str(a[0]).startswith("error") and (mutated_routine or name) in ran
     if clean < CLEAN:
-        return False, f"{name}: only {clean} of {len(trials)} firings ran clean through {mutated_routine or name}"
-    return True, f"{name}: {len(trials)} firings, {clean} clean through {mutated_routine or name}"
+        return False, f"{name}: only {clean} of {k + 1} firings ran clean through {mutated_routine or name}" \
+            f" ({over} over a budget of {limit} statements)"
+    return True, f"{name}: {k + 1} firings, {clean} clean through {mutated_routine or name}, {over} over budget"
 
 
 def equivalent(prog: runs.Program, mutated: runs.Program, m: Mutant) -> tuple[bool, str]:
@@ -575,13 +668,16 @@ def precondition(prog: runs.Program, mutated: runs.Program, m: Mutant) -> tuple[
     Records, and it must stop some firing, or it says nothing."""
     rng = random.Random(zlib.crc32(m.label.encode()))
     calls = call_arguments(prog)
+    limit = budget(prog, m.routine)
     stopped = clean = 0
     for k in range(4 * TRIALS):
         if k >= TRIALS and stopped and clean >= CLEAN:
             break
         state = random_state(prog, rng)
         args = arguments(prog, m.routine, calls, rng)
-        (a, _), (b, _) = fire(prog, m.routine, args, state), fire(mutated, m.routine, args, state)
+        (a, _), (b, _) = fire(prog, m.routine, args, state, limit), fire(mutated, m.routine, args, state, limit)
+        if OVER in (a[0], b[0]):
+            continue
         if str(a[0]).endswith("precondition fails"):
             stopped += 1
         elif a != b:
@@ -599,11 +695,14 @@ def bounded(prog: runs.Program, mutated: runs.Program, m: Mutant) -> tuple[bool,
     the bound it states."""
     rng = random.Random(zlib.crc32(m.label.encode()))
     calls = call_arguments(prog)
+    limit = budget(prog, m.routine)
     stopped = 0
     for k in range(TRIALS):
         state = random_state(prog, rng)
         args = arguments(prog, m.routine, calls, rng)
-        (a, _), (b, _) = fire(prog, m.routine, args, state), fire(mutated, m.routine, args, state)
+        (a, _), (b, _) = fire(prog, m.routine, args, state, limit), fire(mutated, m.routine, args, state, limit)
+        if OVER in (a[0], b[0]):
+            continue
         if a != b and not any(AT_BOUND.search(str(x[0])) for x in (a, b)):
             return False, f"{m.routine}{tuple(args)} trial {k}: {str(a[0])[:80]} / {str(b[0])[:80]}"
         stopped += a != b
@@ -746,7 +845,9 @@ def binding_edits(binds: runsc.Bindings) -> list[Edit]:
 
 def edited(e: Edit) -> tuple[str, str]:
     """A binding mutant must build another image or be refused: one that
-    builds the image is dead, unless it only renames a C word."""
+    builds the image is dead, unless it only renames a C word. The RUNS
+    is lowered again under the mutant, as lowering reads the declarations;
+    a lowering that fails refuses it."""
     home = runsc.BINDINGS
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
@@ -755,10 +856,10 @@ def edited(e: Edit) -> tuple[str, str]:
         (tmp / "pdp1" / e.file).write_text(text[:e.start] + e.new + text[e.end:])
         runsc.BINDINGS = tmp / "pdp1"
         try:
-            if runsc.build(program(), tmp / "out"):
+            if runsc.build(runsc.pdp1_program(), tmp / "out"):
                 return "changed", ""
             return ("renamed" if e.renames else "dead"), ""
-        except (runsc.BindError, tomllib.TOMLDecodeError) as x:
+        except (runsc.BindError, runs.RunsError, tomllib.TOMLDecodeError) as x:
             return "refused", str(x)
         except Exception as x:      # noqa: BLE001 - a crash is a finding of the gate
             return "crash", f"{type(x).__name__}: {x}"
@@ -810,6 +911,57 @@ OUTCOMES = ("changed", "refused", "rejected", "equivalent", "precondition", "bou
 FAILURES = ("silent", "dead", "crash")
 
 
+def changed(prog: runs.Program) -> tuple[set[str], set[str], set[str]]:
+    """What changed where this branch meets origin/main (gate_inputs.py):
+    the routines whose RUNS changed, and those that name a routine or a
+    Record a changed entry of a declaration file names; the Records whose
+    RUNS changed; the declaration files changed. New counts as changed;
+    source lines do not."""
+    root = runsc.ROOT
+    base = gate_inputs.git(root, "merge-base", "HEAD", "origin/main")[0]
+    with tempfile.TemporaryDirectory() as old:
+        tree = subprocess.run(["git", "-C", str(root), "archive", base, "runs"], capture_output=True, check=True)
+        subprocess.run(["tar", "-x", "-C", old], input=tree.stdout, check=True)
+        try:
+            was = runsc.pdp1_program(Path(old) / "runs")
+        except (runs.RunsError, runsc.BindError) as e:      # every routine counts as changed
+            print(f"check_compiled: origin/main's RUNS does not load with these declarations: {e}")
+            was = runs.Program()
+
+    def code(r: runs.Routine):
+        return r.kind, r.params, unplaced(r.body), r.reads, r.writes, unplaced(r.requires), r.ports, r.owns
+    routines = {n for n, r in prog.routines.items() if n not in was.routines or code(r) != code(was.routines[n])}
+    records = {n for n, r in prog.records.items() if n not in was.records or r != was.records[n]
+               or any(t in prog.enums and prog.enums[t] != was.enums.get(t) for t, _ in r.fields.values())}
+    declared = {f.removeprefix("pdp1/") for f in gate_inputs.changed(root)
+                if f.startswith("pdp1/") and f.endswith(".toml")}
+    plain = runs.program(runs.source())     # as written: the PDP-1 lowering reads the declarations
+    for name in sorted(declared):
+        shown = subprocess.run(["git", "-C", str(root), "show", f"{base}:pdp1/{name}"], capture_output=True, text=True)
+        now = runsc.BINDINGS / name
+        names = set(leaves(tomllib.loads(now.read_text()) if now.exists() else {})) ^ \
+            set(leaves(tomllib.loads(shown.stdout) if shown.returncode == 0 else {}))
+        named = {n for p, v in names for n in re.findall(r"[\w$]+(?:\.[\w$]+)?", " ".join(p + (v,)))}
+        routines |= {n for n in prog.routines if n in named or prog.copies.get(n, ("",))[0] in named}
+        held = {x.split(".")[0] for x in named} & set(prog.records)
+        routines |= {n for p in (prog, plain) for n, r in p.routines.items() if n in prog.routines
+                     and held & set(re.findall(r"[\w$]+", repr((r.body, r.reads, r.writes, r.ports, r.owns))))}
+    return routines, records, declared
+
+
+def leaves(x, path=()):
+    """A parsed declaration file's values, each with the keys to it; an
+    element of a list stands for itself, whatever its index."""
+    if isinstance(x, dict):
+        for k, v in x.items():
+            yield from leaves(v, path + (k,))
+    elif isinstance(x, list):
+        for v in x:
+            yield path, repr(sorted(v.items()) if isinstance(v, dict) else v)
+    else:
+        yield path, repr(x)
+
+
 def main() -> int:
     prog = program()
     with tempfile.TemporaryDirectory() as out:      # not build/runs: the other checks read it meanwhile
@@ -826,10 +978,20 @@ def main() -> int:
         built = [m for m in built if m.kind in kinds]
     if "--only" in sys.argv:
         built = [m for m in built if sys.argv[sys.argv.index("--only") + 1] in m.label]
+    own = []
+    if "--changed" in sys.argv:
+        routines, records, declared = changed(prog)
+        own = [m for m in built if (m.file in declared if isinstance(m, Edit) else
+                                    m.path[0] in records if m.kind == "initial" else m.routine in routines)]
+        mine = set(map(id, own))
+        built = [m for m in built if id(m) not in mine]
     if "--sample" in sys.argv:
         n = int(sys.argv[sys.argv.index("--sample") + 1])
         random.Random(1962).shuffle(built)
         built = built[:n]
+    scope = f" ({len(own)} of what changed, {len(built)} sampled of the rest)" if "--changed" in sys.argv else \
+        " (sampled)" if "--sample" in sys.argv else ""
+    built = own + built
     with ProcessPoolExecutor(mp_context=multiprocessing.get_context("fork")) as pool:
         results = list(pool.map(judge, built, chunksize=4))
     by = Counter()
@@ -841,7 +1003,7 @@ def main() -> int:
         print(f"  {kind}: " + ", ".join(f"{by[(kind, w)]} {w}" for w in OUTCOMES if by[(kind, w)]))
     total = Counter(w for w, _ in results)
     failed = sum(total[w] for w in FAILURES)
-    print(f"check_compiled: image matches; {len(built)} mutants{' (sampled)' if '--sample' in sys.argv else ''}: "
+    print(f"check_compiled: image matches; {len(built)} mutants{scope}: "
           + ", ".join(f"{total[w]} {w}" for w in OUTCOMES))
     return 1 if failed else 0
 

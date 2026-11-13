@@ -84,37 +84,39 @@ def sub(a: W, b: W) -> W:
     return W(r ^ MASK)
 
 
+# A shift by more than a word's bits leaves every bit the sign, and a
+# rotation repeats with the word's length: the passes past those change nothing.
 def sal(a: W, n: int) -> W:
     v = a.v
-    for _ in range(n):
+    for _ in range(min(n, 18)):
         v = (v & SIGN) | ((v << 1) & (MASK >> 1)) | (1 if v & SIGN else 0)
     return W(v)
 
 
 def sar(a: W, n: int) -> W:
     v = a.v
-    for _ in range(n):
+    for _ in range(min(n, 18)):
         v = (v >> 1) | (v & SIGN)
     return W(v)
 
 
 def ral(a: W, n: int) -> W:
     v = a.v
-    for _ in range(n):
+    for _ in range(n % 18):
         v = ((v << 1) | (v >> 17)) & MASK
     return W(v)
 
 
 def rar(a: W, n: int) -> W:
     v = a.v
-    for _ in range(n):
+    for _ in range(n % 18):
         v = ((v >> 1) | ((v & 1) << 17)) & MASK
     return W(v)
 
 
 def rcl(h: W, l: W, n: int) -> tuple[W, W]:
     hv, lv = h.v, l.v
-    for _ in range(n):
+    for _ in range(n % 36):
         c = (hv >> 17) & 1
         hv = ((hv << 1) | ((lv >> 17) & 1)) & MASK
         lv = ((lv << 1) | c) & MASK
@@ -123,7 +125,7 @@ def rcl(h: W, l: W, n: int) -> tuple[W, W]:
 
 def rcr(h: W, l: W, n: int) -> tuple[W, W]:
     hv, lv = h.v, l.v
-    for _ in range(n):
+    for _ in range(n % 36):
         c = lv & 1
         lv = ((lv >> 1) | ((hv & 1) << 17)) & MASK
         hv = ((hv >> 1) | (c << 17)) & MASK
@@ -132,7 +134,7 @@ def rcr(h: W, l: W, n: int) -> tuple[W, W]:
 
 def scl(h: W, l: W, n: int) -> tuple[W, W]:
     hv, lv = h.v, l.v
-    for _ in range(n):
+    for _ in range(min(n, 36)):
         s = hv & SIGN
         hv = s | ((hv << 1) & (MASK >> 1)) | ((lv >> 17) & 1)
         lv = ((lv << 1) | (1 if s else 0)) & MASK
@@ -141,7 +143,7 @@ def scl(h: W, l: W, n: int) -> tuple[W, W]:
 
 def scr(h: W, l: W, n: int) -> tuple[W, W]:
     hv, lv = h.v, l.v
-    for _ in range(n):
+    for _ in range(min(n, 36)):
         lv = ((lv >> 1) | ((hv & 1) << 17)) & MASK
         hv = (hv & SIGN) | (hv >> 1)
     return W(hv), W(lv)

@@ -19,7 +19,8 @@ builds=(
   'RUNS_PROGRAM=programs/minskytron uv run -q python "$here/runsc.py" | tail -1'
 )
 checks=(
-  'uv run -q python "$here/check_compiled.py" --sample 8000 | tail -1'     # the full gate runs by hand
+  # Every mutant of what changed, and a seeded sample of the rest; with no flag it runs every mutant.
+  'uv run -q python "$here/check_compiled.py" --changed --sample 2000 | tail -1'
   'uv run -q python "$here/check_declarations.py"'
   # A network file states no order: its transitions renamed, the image is the same.
   'PYTHONPATH=tools uv run -q python "$here/check_names.py" | tail -1'
