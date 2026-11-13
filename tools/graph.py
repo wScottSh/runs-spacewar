@@ -801,6 +801,7 @@ class Lowering:
     inline: set[str] = field(default_factory=set)   # bundles whose run wires each input and output to its word
     wired: bool = False        # this Network's inputs and outputs are wired by the run that runs it
     resumes: dict[str, list[str]] = field(default_factory=dict)   # transition -> the statements laid in its stead
+    in_place: set[tuple[str, str]] = field(default_factory=set)   # (source, target) of a copy within one word: no code
 
 
 def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering) -> list:
@@ -811,7 +812,27 @@ def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
     def copy(typ: str, source: str, target: str) -> list[str]:
         return [f"run {low.copier[typ]}", f"  source: {source}", f"  target: {target}"]
 
+    # A bundle laid out inline takes and gives an inout in its out value's field: the in value is
+    # copied there just after the transition that gives it, when that runs under the same tests.
+    after: dict[str, list[str]] = {}
+    before: dict[str, list[str]] = {}
     for t in order:
+        proc = g.transitions[t]
+        if t in low.resumes or not (sigs[proc].bundle and proc in low.inline):
+            continue
+        for n in [n for n in sigs[proc].inputs if n in sigs[proc].inout and sigs[proc].types[n] not in g.wholes]:
+            src = next(a.place for a in g.arcs if a.transition == t and a.io == n and a.into)
+            dst = next(a.place for a in g.arcs if a.transition == t and a.io == n and not a.into)
+            if low.at[src] == low.at[dst]:
+                continue
+            gives = [w for w in order[:order.index(t)] if guard[w] == guard[t]
+                     and any(a.transition == w and a.place == src and not a.into for a in g.arcs)]
+            (after.setdefault(gives[-1], []) if gives else before.setdefault(t, [])).extend(
+                copy(sigs[proc].types[n], low.at[src], low.at[dst]))
+
+    for k, t in enumerate(order):
+        if k and order[k - 1] in after:               # the copies just after the transition before
+            out.append((guard[order[k - 1]], after[order[k - 1]], set()))
         if t in low.resumes:
             if low.resumes[t]:
                 out.append((guard[t], low.resumes[t], set()))
@@ -826,7 +847,7 @@ def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
         if s.bundle and proc in low.inline:          # a whole Record is in its own words: no wire
             args = [f"  {n}: {wire[n].get('out', wire[n].get('in'))}" for n in dict.fromkeys(s.inputs + s.outputs)
                     if s.types[n] not in g.wholes]
-            out.append((guard[t], [f"run {proc}{g.args.get(t, '')}"] + args, written))
+            out.append((guard[t], before.get(t, []) + [f"run {proc}{g.args.get(t, '')}"] + args, written))
             continue
         if s.bundle:
             for n, ends in wire.items():
@@ -851,6 +872,8 @@ def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
                 lines += copy(s.types[n], w["in"], w["out"])
             args.append(f"  {n}: {w.get('out', w.get('in'))}")
         out.append((guard[t], lines + [f"run {proc}{g.args.get(t, '')}"] + args, written))
+    if order and order[-1] in after:
+        out.append((guard[order[-1]], after[order[-1]], set()))
     return out
 
 
@@ -868,15 +891,29 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
     dropped = {t for t, _ in facts.values()}
     order = [t for t in order if t not in dropped]
     body = steps(g, sigs, [t for t in order if t != take] + ([take] if take and not g.over and not nested else []), low)
-    for place in sorted({gd[0][0] for gd, _, _ in body if len(gd) == 1}):
-        then = [i for i, (gd, _, _) in enumerate(body) if gd and gd[-1][0] == place and gd[-1][1] != "else"]
-        other = [i for i, (gd, _, _) in enumerate(body) if gd and gd[-1][0] == place and gd[-1][1] == "else"]
+    for within, place in sorted({(gd[:-1], gd[-1][0]) for gd, _, _ in body if gd}):
+        then = [i for i, (gd, _, _) in enumerate(body) if gd[:-1] == within and gd and gd[-1][0] == place
+                and gd[-1][1] != "else"]
+        other = [i for i, (gd, _, _) in enumerate(body) if gd[:-1] == within and gd and gd[-1][0] == place
+                 and gd[-1][1] == "else"]
         written = set().union(*(body[i][2] for i in then))
-        if then and other and all(body[i][2] and body[i][2] <= written & low.before_test for i in other):
-            moved = [((), body[i][1], body[i][2]) for i in other]
+
+        def free(lines):
+            """A copy within one word, which the PDP-1 lays out as no code."""
+            return len(lines) == 3 and lines[0][4:] in low.copier.values() \
+                and (lines[1].split(": ")[1], lines[2].split(": ")[1]) in low.in_place
+        if then and other and all(body[i][2] and body[i][2] <= written & (low.before_test | (
+                body[i][2] if free(body[i][1]) else set())) for i in other):
+            moved = [(within, body[i][1], body[i][2]) for i in other]
             for i in reversed(other):
                 del body[i]
-            body[then[0]:then[0]] = moved
+            at = then[0]
+            if all(free(lines) for _, lines, _ in moved):     # no code: as early as its values allow
+                names = {line.split(": ")[1] for _, lines, _ in moved for line in lines[1:]}
+                while at and body[at - 1][0] == within and not names & {
+                        line.split(": ")[1] for line in body[at - 1][1][1:] if ": " in line}:
+                    at -= 1
+            body[at:at] = moved
     if nested:                          # the bound keeps no count: the take is only where the loop goes on
         body = stop_side_first(g, body + [(chains(g)[take], [], set())])[:-1]
     elif take and not g.over and body[-1][0]:

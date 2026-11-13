@@ -69,12 +69,53 @@ class Section(dict):
         raise BindError(f"no binding gives {self.what} {key!r}")
 
 
+class Routines(Section):
+    """The bound routines. A copy of a called routine whose runs wire it to
+    the same words as another copy is that copy's routine (Bindings.copies_of)."""
+
+    def __init__(self, what: str, prog):
+        super().__init__(what)
+        self.prog = prog
+        self.same: dict[str, str] = {}      # a copy -> the copy bound in its stead
+
+    def __missing__(self, key):
+        """A copy run in another's stead: that copy's routine, entered and
+        left with this copy's fields (its runs keep both in the same words)."""
+        if key not in self.same:
+            return super().__missing__(key)
+        b = self[self.same[key]]
+        mine = dict(self.prog.copies[key][1])
+        to = {dotted_of(e): dotted_of(mine[port]) for port, e in self.prog.copies[b.name][1]}
+        tr = lambda f: to.get(f) or f      # noqa: E731
+        return replace(
+            b, entry=b.entry and tr(b.entry), ac_param=b.ac_param and tr(b.ac_param),
+            io_param=b.io_param and tr(b.io_param), byname=b.byname and tr(b.byname), result=[tr(f) for f in b.result],
+            io={tr(f) for f in b.io}, cells=[tr(f) for f in b.cells], inline=b.inline and tr(b.inline),
+            skips=b.skips and (tr(b.skips[0]), b.skips[1]))
+
+    def __contains__(self, key):
+        return super().__contains__(key) or key in self.same
+
+    def get(self, key, default=None):
+        return self[key] if key in self else default
+
+
 def octal(n: int) -> str:
     return f"0{n:o}" if n > 7 else str(n)
 
 
 def leaf(dotted: str) -> str:
     return dotted.split(".")[1]
+
+
+REGISTER_WORDS: dict[str, str] = {}     # a field the PDP-1 keeps in a register -> the local or field it is kept in
+REGISTER_LOCALS: dict[str, str] = {}    # such a field -> the C local that holds it
+
+
+def local(dotted: str) -> str:
+    """The C local of a field the PDP-1 keeps in a register: the one the
+    lowering gives its class (runsc.register_fields), else its own name."""
+    return REGISTER_LOCALS.get(dotted, leaf(dotted))
 
 
 def dotted_of(e) -> str | None:
@@ -538,9 +579,9 @@ class Bound:
         if self.entry and (not block or self.block_takes_entry):
             out.append((self.entry, self.typed(self.entry, leaf(self.entry))))
         if self.ac_param:
-            out.append((self.ac_param, f"word {leaf(self.ac_param)}"))
+            out.append((self.ac_param, f"word {local(self.ac_param)}"))
         if self.io_param:
-            out.append((self.io_param, f"register word {leaf(self.io_param)}"))
+            out.append((self.io_param, f"register word {local(self.io_param)}"))
         if self.byname:
             out.append((self.byname, f"BYNAME word {leaf(self.byname)}"))
         if self.inline:
@@ -705,9 +746,13 @@ class Bindings:
 
     def __init__(self, prog: runs.Program, paths: list[Path]):
         self.prog = prog
+        REGISTER_WORDS.clear()
+        REGISTER_LOCALS.clear()
+        REGISTER_WORDS.update(prog.__dict__.get("register_fields", {}))
+        REGISTER_LOCALS.update({f: local(w) if "." in w else w for f, w in REGISTER_WORDS.items()})
         self.specs = {p: tomllib.loads(p.read_text()) for p in paths if p.name != DEVICES}
         self.starts: list[dict] = []           # the start vectors: address, top Network, the tape's own
-        self.bound: dict[str, Bound] = Section("the routine")
+        self.bound: Routines = Routines("the routine", prog)
         self.constants = runs.constant_tables(prog)
         self.placed: dict[str, Path] = {}       # field -> the unit that lays out its data word
         self.cell_of: dict[str, str] = {}       # field -> the JDA routine whose entry word holds it
@@ -828,6 +873,7 @@ class Bindings:
         self.registers |= {name for name, r in self.prog.records.items() if r.count is None and not r.stream
                            and not any(self.has_word(f"{name}.{f}") for f in r.fields)}
         self.register_passing()
+        self.io_fields |= {f for f, w in prog.__dict__.get("register_fields", {}).items() if w in self.io_fields}
         for p in self.jsp_slots.values():
             # the slot returns what it jumps to returns (return jump();), in the register that returns it
             if p["jump"] not in self.bound:
@@ -849,6 +895,12 @@ class Bindings:
         if name not in self.prog.templates:
             return [p]
         copies = [c for c, (t, _) in self.prog.copies.items() if t == name]
+        if section in ("place", "code"):
+            words = {c: tuple((port, local(d) if (d := dotted_of(e)) in REGISTER_LOCALS else runs.text_of(e))
+                              for port, e in self.prog.copies[c][1]) for c in copies}
+            if len(set(words.values())) == 1:      # its runs keep what they wire in the same registers
+                self.bound.same |= {c: copies[0] for c in copies[1:]}
+                copies = copies[:1]
         if section in ("place", "code") and len(copies) != 1:
             wirings = [", ".join(f"{port}: {runs.text_of(e)}" for port, e in self.prog.copies[c][1]) for c in copies]
             raise BindError(f"{path.name}: {name} is one called routine, but its runs wire it "
@@ -1348,7 +1400,8 @@ class Bindings:
         into the call and out of it."""
         if dotted in self.cell_of and unit is not None and self.bound[self.cell_of[dotted]].unit != unit:
             return dotted.split(".")[0] in self.registers and dotted not in self.placed and dotted not in self.pool
-        return dotted.split(".")[0] in self.registers and not self.stored(dotted)
+        return (dotted.split(".")[0] in self.registers or dotted in self.prog.__dict__.get("register_fields", ())) \
+            and not self.stored(dotted)
 
 
 class Unit:
@@ -1550,8 +1603,8 @@ class Unit:
         ac, io = [g for g in regs if g not in io_set], [g for g in regs if g in io_set]
         if len(ac) > 1 or len(io) > 1:
             raise BindError(f"{w.where}: the walk keeps one value in AC and one in IO, not {ac + io}")
-        params = ", ".join([f"word {leaf(g)}" for g in ac] + [f"register word {leaf(g)}" for g in io]) or "void"
-        own = {g: leaf(g) for g in ac + io}
+        params = ", ".join([f"word {local(g)}" for g in ac] + [f"register word {local(g)}" for g in io]) or "void"
+        own = {g: local(g) for g in ac + io}
         out = []
         for member, stmts in w.arms.items():
             tb = Bound(w.routine, self.path, "TEMPLATE", io=set(wb.io), pulse=wb.pulse)
@@ -1737,17 +1790,17 @@ class Unit:
         r = self.prog.routines[b.name]
         self.pool_locals |= b.pool
         if b.block:
-            own = {f: leaf(f) for f, _ in b.params()}
+            own = {f: local(f) for f, _ in b.params()}
             wrapper = Function(self, b, own, [])
             if not b.block_takes_entry:
                 wrapper.emit(1, f"{wrapper.cell(b.entry)} = {leaf(b.entry)};")
-            args = ", ".join(leaf(f) for f, _ in b.params(block=True))
+            args = ", ".join(local(f) for f, _ in b.params(block=True))
             wrapper.emit(1, f"return {b.block}({args});")
             out += [b.declaration(), "{", *wrapper.out, "}"]
-            fn = Function(self, b, {f: leaf(f) for f, _ in b.params(block=True)}, self.arguments(self.flat_routine(r)))
+            fn = Function(self, b, {f: local(f) for f, _ in b.params(block=True)}, self.arguments(self.flat_routine(r)))
             out += [b.declaration(block=True), "{", *fn.compile(), "}"]
         else:
-            fn = Function(self, b, {f: leaf(f) for f, _ in b.params()}, self.arguments(self.flat_routine(r)))
+            fn = Function(self, b, {f: local(f) for f, _ in b.params()}, self.arguments(self.flat_routine(r)))
             out += [self.start_at(b) + b.declaration(definition=True), "{", *fn.compile(), "}"]
         self.binds.compiled.append((fn, self.arguments(self.as_run)))
         if b.skips:
@@ -2326,7 +2379,9 @@ STORAGE = re.compile(r"[A-Za-z_]\w*(\.(hi|lo))?")
 
 
 class Aliases(dict):
-    """Function.alias: a name's C storage, told to record as it is set."""
+    """Function.alias: a name's C storage, told to record as it is set. A
+    field the PDP-1 keeps in another's register (REGISTER_WORDS) has that
+    one's storage."""
 
     def __init__(self, record):
         super().__init__()
@@ -2334,7 +2389,22 @@ class Aliases(dict):
 
     def __setitem__(self, key, value):
         self.record(key, value)
-        super().__setitem__(key, value)
+        super().__setitem__(REGISTER_WORDS.get(key, key), value)
+
+    def __getitem__(self, key):
+        return super().__getitem__(REGISTER_WORDS.get(key, key))
+
+    def __contains__(self, key):
+        return super().__contains__(REGISTER_WORDS.get(key, key))
+
+    def __delitem__(self, key):
+        super().__delitem__(REGISTER_WORDS.get(key, key))
+
+    def get(self, key, default=None):
+        return self[key] if key in self else default
+
+    def pop(self, key, *default):
+        return super().pop(REGISTER_WORDS.get(key, key), *default)
 
     def setdefault(self, key, value):
         if key not in self:
@@ -2356,7 +2426,7 @@ class Function:
         self.scopes: list[set[str]] = [set(own.values())]
         self.storage: dict[str, set[str]] = {}  # a C name -> the RUNS names compiled to it (Occupancy)
         self.alias: dict[str, str] = Aliases(self.stored_as)   # field or local -> C expression
-        self.io_names = {leaf(f) if "." in f else f for f in bound.io | self.binds.io_fields}
+        self.io_names = {local(f) if "." in f else f for f in bound.io | self.binds.io_fields}
         self.rest: list[list] = []              # what runs after the statement being compiled
         self.loops: list[tuple[str, str] | None] = []   # (break, continue) labels; None: a C loop
         self.labels = 0
@@ -2415,8 +2485,10 @@ class Function:
         return dotted in self.b.result and not self.binds.stored(dotted) and dotted not in self.binds.io_fields
 
     def owned(self, dotted: str) -> bool:
-        """Scratch a Network owns: a local of the routine that compiles it."""
-        return self.binds.prog.records[dotted.split(".")[0]].owner is not None
+        """Scratch a Network owns, or a field it keeps in a register: a local
+        of the routine that compiles it."""
+        return self.binds.prog.records[dotted.split(".")[0]].owner is not None \
+            or "." not in self.binds.prog.__dict__.get("register_fields", {}).get(dotted, ".")
 
     def place(self, dotted: str) -> str:
         text = self.where_is(dotted)
@@ -2442,7 +2514,7 @@ class Function:
             return self.own[dotted]
         if dotted in self.binds.io_fields or self.own_result_local(dotted) \
                 or self.binds.in_register(dotted, self.unit.path):
-            return leaf(dotted)
+            return local(dotted)
         if dotted in self.binds.pool:
             self.unit.pools_used.add(dotted)
             return self.binds.c_name(dotted)
@@ -2581,9 +2653,9 @@ class Function:
             self.emit(depth, f"{word}->addr = {octal(e[3][1])};")
             return True
         if plain:
-            local = f"{leaf(d)}_io"
-            self.emit(depth, f"register word {local} = {self.expr(e)};")
-            self.emit(depth, f"{self.cursor(target)} = {local};")
+            moved = f"{leaf(d)}_io"
+            self.emit(depth, f"register word {moved} = {self.expr(e)};")
+            self.emit(depth, f"{self.cursor(target)} = {moved};")
             return True
         return False
 
@@ -3481,7 +3553,7 @@ class Function:
             (result,) = results
             call = f"{self.place(dotted_of(e))}()"
             if len(result) == 1 and result[0] in self.binds.io_fields:
-                self.emit(depth, f"register word {leaf(result[0])} = {call};")
+                self.emit(depth, f"register word {local(result[0])} = {call};")
             elif result:
                 raise BindError(f"{where}: a call through a pool word returns in IO")
             else:
@@ -3545,9 +3617,12 @@ class Function:
             self.block(other, depth)
             ends.append(self.known)
         elif other:
+            mark = len(self.out)
             self.emit(depth, "else")
             self.body(other, depth)
             ends.append(self.known)
+            if len(self.out) == mark + 3:       # its statements compiled to nothing: copies in place
+                del self.out[mark:]
         self.known = {f: v for f, v in before.items() if all(end.get(f) == v for end in ends)}
 
     def inverse_skip(self, s) -> str | None:
@@ -4030,7 +4105,9 @@ class Function:
             self.emit(depth, self.return_text(value))
             return 2 if nxt is not None else 1
         name = self.place(dotted) if dotted else self.alias.get(target[1], target[1])
-        if dotted and name == leaf(dotted) and name not in self.own.values() and not self.declared(name):
+        if dotted and name == value:
+            return 1        # a field the value's own register holds: a fresh value in the dead one's word
+        if dotted and name == local(dotted) and name not in self.own.values() and not self.declared(name):
             kind = "register word" if dotted in self.binds.io_fields or self.owned(dotted) and name in self.b.io else "word"
             kind = "word *" if dotted in self.binds.pointers else kind + " "
             if self.has_table or self.owned(dotted) or (self.nested and self.own_result_local(dotted)):
@@ -5413,6 +5490,23 @@ def resumed(prog: runs.Program, g: graph.Graph) -> dict[str, list[str]]:
     return out
 
 
+def register_fields(g: graph.Graph, at: dict[str, str], prog: runs.Program, wired: bool, io: set[str]) -> dict[str, str]:
+    """A place the PDP-1 keeps in a register (a local of the Network, or a
+    field the declarations put in IO) is named by the Record field its arcs
+    name: the evaluator writes that field. Its class's register holds it:
+    REGISTER_LOCALS gives the C local, which the back end compiles it to."""
+    out = dict(at)
+    held = prog.__dict__.setdefault("register_fields", {})
+    for p, w in at.items():
+        f = g.field(p)
+        if g.port(p) or w == f or wired and w in g.ports or w in prog.records or "." in w and w not in io:
+            continue
+        out[p] = f
+        if held.setdefault(f, w) != w:
+            raise BindError(f"{g.where}: {f} is kept in two registers, {held[f]} and {w}")
+    return out
+
+
 def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[str, str]) -> str:
     """runs.load's lowering for the PDP-1: each place in the word the
     original keeps it in, in the original's order."""
@@ -5445,7 +5539,8 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
                     if a.transition == t and a.io and sigs[b].types[a.io] not in g.wholes:
                         word[b, a.io] = at[a.place]     # a whole Record stays in its own words
         try:
-            order = network_order(g, sigs, at, word, decl, io, copier, prog,
+            kept = io | {at[p] for p in g.places if g.field(p) in io}   # a field declared in IO: the word it is in
+            order = network_order(g, sigs, at, word, decl, kept, copier, prog,
                                   {p: at[p] for p in g.ports if (g.name, p) in prog.__dict__.get("inlined_words", {})})
         except BindError as e:
             tried.append(str(e))
@@ -5460,10 +5555,15 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
         if wired:                            # laid out inline: its run wires each input and output
             named = {at[p]: p for p in g.ports if p not in g.records}   # a whole Record keeps its own name
             at = {p: named.get(w, w) for p, w in at.items()}
+        words, at = at, register_fields(g, at, prog, wired, io)
         owns = sorted({w for w in at.values() if "." not in w and w not in prog.records and not (wired and w in g.ports)})
         skip = {decl["skips"][0]} if "skips" in decl else set()
+# a copy into the word its value is already in is no code: on an else, it may go before the test
+        ends = {t: {a.io: a.place for a in g.arcs if a.transition == t and a.io} for t, proc in g.transitions.items()
+                if proc in copier.values()}
+        in_place = {(at[e["source"]], at[e["target"]]) for e in ends.values() if words[e["source"]] == words[e["target"]]}
         return graph.lower(whole, sigs, order + goes_on, graph.Lowering(at, word, copier, owns, skip, inlined, wired,
-                                                                        resumes))
+                                                                        resumes, in_place))
     raise BindError(tried[0] if tried else f"{g.where}: {g.name}: no word for a value")
 
 

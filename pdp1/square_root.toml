@@ -6,7 +6,7 @@ routine = "square_root"
 convention = "JDA"
 entry = "square_root_call.entry"
 result = ["square_root_call.root"]
-io = ["input_bits"]
+io = ["square_root_work.input_bits"]
 
 [[place]]
 fields = ["square_root_work.passes_left", "square_root_call.root"]
