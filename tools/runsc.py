@@ -1934,6 +1934,8 @@ class Unit:
                 inner = self.prog.routines.get(name)
                 if inner is None:
                     raise BindError(f"{s[-1]}: {name} is neither ported nor bound")
+                if inner.kind == "processor":
+                    self.goes_on_to(inner, items[n + 1] if n + 1 < len(items) else None, s[-1])
                 self.walk_back = None
                 body = self.flat(inner, dict(zip(inner.params, args)), last)
                 if self.walk_back:                 # it ends in a walk, which jumps back into the run after it
@@ -1966,6 +1968,22 @@ class Unit:
             else:
                 raise BindError(f"{s[-1]}: cannot compile {op} in a Network")
         return out
+
+    def goes_on_to(self, inner: runs.Routine, nxt, where: str) -> None:
+        """A Processor that sets the field the PDP-1 holds in its program
+        counter compiles to nothing (flat): the member it sets is where the
+        machine goes on, the run of that member's Network laid out next."""
+        found = phase_dispatch(self.prog)
+        if found is None:
+            return
+        pc, home, arms = found
+        for s in inner.body:
+            if s[0] == "set" and dotted_of(s[1]) == pc:
+                member = s[2][1] if s[2][0] == "name" else None
+                if member == home or member not in arms or nxt is None or nxt[:2] != ("run", arms[member]):
+                    raise BindError(f"{where}: {inner.name} sets {pc} to {member}, which the PDP-1 holds in "
+                                    f"its program counter, but the run after it is "
+                                    f"{nxt[1] if nxt and nxt[0] == 'run' else 'none'}, not that member's Network")
 
     def own_copy(self, body: list, where: str) -> list:
         """A Processor laid out at each run keeps its own words for the
