@@ -211,8 +211,9 @@ def main() -> int:
         if rocket != m.state["spaceship"]["rocket"]:
             bad.append(f"spaceship.rocket simh {rocket.name} runs {m.state['spaceship']['rocket'].name}")
         free = (values[sym["sr1"]] & 0o7777) - sym["mtb"]
-        if free != m.state["launch"]["slot"].v:
-            bad.append(f"launch.slot simh {free:o} runs {m.state['launch']['slot'].v:o}")
+        searched = ("find_slot_call", "slot") if halted else ("launch", "slot")   # a halted search gives no slot back
+        if free != m.state[searched[0]][searched[1]].v:
+            bad.append(f"{'.'.join(searched)} simh {free:o} runs {m.state[searched[0]][searched[1]].v:o}")
         if (w.returned_past == halt_to - (CALL + 1)) != halted:
             bad.append(f"halted simh {w.returned_past == halt_to - (CALL + 1)} runs {halted}")
         points = [pdp1.point(p) for p in w.plotted]

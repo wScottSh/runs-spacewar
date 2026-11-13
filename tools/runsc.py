@@ -1875,7 +1875,7 @@ class Unit:
                     out.append((*s[:-2], rebuild(s[-2]), s[-1]))
                 else:
                     out.append(s)
-            return folds.rotated(folds.decided_at_exits(folds.settled(out, self.prog), self.prog))   # a loop of a Network laid out inline
+            return folds.rotated(folds.settled(out, self.prog))   # a loop of a Network laid out inline
         return rebuild(stmts)
 
     def flat_body(self, items: list, r: runs.Routine, in_slots: bool = False, tail: bool = False) -> list:
@@ -3427,10 +3427,10 @@ class Function:
         self.loops.pop()
         c = cursors[first]
         kind = self.unit.home_kind.get(c)
-        if kind not in ("LAC", "laid out"):
+        if kind not in ("LAC",):
             raise BindError(f"{s[-1]}: the search's cursor {c} has no home in a guard of its loop")
         past = self.binds.table_offset(first) + end
-        self.emit(depth, f"if (I_LAC(++{c}) != I_LAC({self.binds.table['at']} + {octal(past)}))")
+        self.emit(depth, f"if (I_{kind}(++{c}) != I_{kind}({self.binds.table['at']} + {octal(past)}))")
         self.emit(depth + 1, f"goto {top};")
         self.block(body[-1][1][0][1], depth)
         self.emit(depth, f"{after}:")
@@ -4714,6 +4714,16 @@ def declared_fields() -> set[str]:
     return out
 
 
+def walked_records() -> set[str]:
+    """The table's Records, as the declarations name them: the Records of
+    the fields a [walk] homes or ends on."""
+    out: set[str] = set()
+    for f in sorted(BINDINGS.glob("*.toml")):
+        walk = tomllib.loads(f.read_text()).get("walk", {})
+        out |= {x.split(".")[0] for x in walk.get("homes", []) + [walk.get("index", "")] if x}
+    return out
+
+
 def shared_fields() -> dict[str, str]:
     """Each field a [share] declares in another's word -> that field."""
     out: dict[str, str] = {}
@@ -4789,24 +4799,32 @@ class Storage:
 
         given = getattr(prog, "inlined_words", {})
 
-        slots = {a.place for a in g.arcs if a.io and not a.into and sigs[g.transitions[a.transition]].bundle   # a search's slot
-                 and a.io in prog.graphs[g.transitions[a.transition]].ends}
+        table = walked_records()
+        slots = set()                     # a place a Processor indexes the table by: its cursors hold it
+        for t, proc in g.transitions.items():
+            if (r := prog.routines.get(proc)) is None:
+                continue
+            wired = {a.io: g.field(a.place) for a in g.arcs if a.transition == t and a.io}
+            for n in every_node(r.body):
+                if n[0] == "index" and n[1][0] == "name" and n[2][0] == "name" \
+                        and wired.get(n[1][1], "").split(".")[0] in table:
+                    slots |= {a.place for a in g.arcs if a.transition == t and a.into and a.io == n[2][1]}
         named = {a.place for a in g.arcs if not a.io and not a.guard
                  and (r := prog.routines.get(g.transitions[a.transition])) and a.place.split(".")[0] in r.reads | r.writes}
 
         def word(p):
             """A table entry is its own word; an input or output of a bundle
             laid out inline, its user's word; a field of a Record that a
-            routine naming its Records reads or writes, that field; the slot a
-            search gives back, its own field, whose cursors the instructions
-            that index by it hold; any other place, the one the declarations
-            give. Two places of this network that a [share] declares one word
+            routine naming its Records reads or writes, that field; a slot a
+            Processor indexes the table by, its own field, whose cursors the
+            instructions that index by it hold (pdp1/README.md); any other
+            place, the one the declarations give. Two places of this network that a [share] declares one word
             are named by the one a transition writes (outline.net: ship_nose.x
             in, pen.x out, one word, sx1)."""
             f = g.field(p)
             if g.port(p) and (g.name, g.port(p)) in given and g.port(p) == p:
                 return given[g.name, p]
-            if p in slots | named and "." in p and not g.port(p):
+            if p in slots and "." in p and not g.port(p):
                 return f
             pair = ({f, shared[f]} if f in shared else {f}) | {a for a, b in shared.items() if b == f}
             if len(pair & fields) == 2:
@@ -4826,8 +4844,6 @@ class Storage:
             if sigs[proc].bundle:
                 byname = declaration(proc).get("byname")
                 memory |= {p for n, ps in ends[t].items() if f"{proc}_call.{n}" == byname for p in ps}
-                continue
-            if proc == graph.STOP:
                 continue
             mem, ac, io = operands(prog.routines[proc].body)
             for names, into in ((mem, memory), (ac, in_ac), (io, in_io)):
@@ -5264,13 +5280,8 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
             at = {p: named.get(w, w) for p, w in at.items()}
         owns = sorted({w for w in at.values() if "." not in w and w not in prog.records and not (wired and w in g.ports)})
         skip = {decl["skips"][0]} if "skips" in decl else set()
-        kinds = {}
-        for pl, w in at.items():
-            rec, _, fld = re.sub(r"\[\w+\]", "", whole.field(pl)).partition(".")
-            if w in owns and rec in prog.records and fld in prog.records[rec].fields:
-                kinds[w] = prog.records[rec].fields[fld][0]
         return graph.lower(whole, sigs, order + goes_on, graph.Lowering(at, word, copier, owns, skip, inlined, wired,
-                                                                        resumes, {w: k for w, k in kinds.items() if k != "word"}))
+                                                                        resumes))
     raise BindError(tried[0] if tried else f"{g.where}: {g.name}: no word for a value")
 
 

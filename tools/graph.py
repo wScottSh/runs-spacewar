@@ -35,22 +35,22 @@ from it to the last. The passes may read it, to look at their slot, and
 the user sees where it stopped: the bundle gives it back, the slot a
 guard stopped it at, or the end when no guard did. A guard on the take
 alone stops the loop: its other side is the loop's end, where the user
-takes over.
+takes over. A `stop` in place of a Processor, whose one arc is a guard
+on the counter `== end`, halts the machine where the counter reaches
+its end, and halts it again each time it is continued (the original's
+`hlt; jmp .-1`): the bundle then gives back only a slot a guard stopped
+it at.
 
-  network free_slot
+  network find_slot
     counter slot: word to 030
+  transitions
+    take: count_down
+    full: stop
   arcs
-    objects.routine -> look.routines
-    slot -> look.at
-    look.routine -> free_slot_work.routine
-    free_slot_work.routine -> take when != none
+    objects.routine[slot] -> take when != none
     slot -> take.counter
     take.counter -> slot
-
-A transition may be `stop` in place of a Processor: the machine halts,
-and halts again each time it is continued. It takes and gives nothing,
-and runs only on the side of a test its guard arc names (the original's
-`hlt; jmp .-1`).
+    slot -> full when == 030
 
   network square_root_passes
     counter passes_left: word
@@ -184,6 +184,7 @@ class Graph:
     streams: set[str] = field(default_factory=set)        # of those, the streams
     over: tuple[str, str, str] | None = None              # a loop bundle over slots: (its counter, first, last)
     ends: dict[str, str] = field(default_factory=dict)    # a counter -> the end it counts up to, `to 030`
+    halt: str | None = None                               # a stop on the counter's end: the loop halts there
 
     @property
     def call(self) -> str:
@@ -341,6 +342,7 @@ def parse(path: Path) -> Graph:
     ends = [a.place for a in g.arcs] + [p for a in g.arcs if (p := operand(g, a.guard))]
     g.places += list(dict.fromkeys(p for p in ends if (g.port(p) or re.match(r"\w+", p)[0] in g.locals)
                                    and p not in g.places))
+    halt_at_end(g)
     return g
 
 
@@ -354,6 +356,24 @@ def operand(g: Graph, guard: str | None) -> str | None:
     if "." in rest or rest in g.ports or rest in g.locals or rest in g.places:
         return rest
     return None
+
+
+def halt_at_end(g: Graph) -> None:
+    """A loop bundle that counts up to an end may halt there: a stop whose
+    one arc is a guard on the counter `== end` (sr1: `index sr1, (lac mtb
+    nob, sr1` then `hlt`). The pass that brings the counter to its end
+    halts in place of leaving the loop, so the bundle never gives the end
+    back; the stop is the loop's counted exit, no transition of a pass."""
+    if not g.end:
+        return
+    for t, proc in list(g.transitions.items()):
+        arcs = [a for a in g.arcs if a.transition == t]
+        if proc == STOP and [(a.place, a.guard) for a in arcs] == [(g.counter, f"== {g.end}")]:
+            if g.halt:
+                raise GraphError(f"{g.where}: {g.name} halts at its end once, not at {g.halt} and {t}")
+            g.halt = t
+            del g.transitions[t]
+            g.arcs = [a for a in g.arcs if a.transition != t]
 
 
 def written_by(g: Graph) -> dict[str, set[str]]:
@@ -512,10 +532,6 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
     for t, p in g.transitions.items():
         if p not in sigs:
             fail(f"{t}: no Processor or bundle {p}")
-        if p == STOP:
-            if [a.guard is not None for a in g.arcs if a.transition == t] != [True]:
-                fail(f"{t}: a stop takes and gives nothing; one guard arc names the side it halts on")
-            continue
         s = sigs[p]
         for into, want in ((True, s.inputs), (False, s.outputs)):
             got = [a for a in g.arcs if a.transition == t and a.into == into and a.io]
@@ -782,7 +798,6 @@ class Lowering:
     inline: set[str] = field(default_factory=set)   # bundles whose run wires each input and output to its word
     wired: bool = False        # this Network's inputs and outputs are wired by the run that runs it
     resumes: dict[str, list[str]] = field(default_factory=dict)   # transition -> the statements laid in its stead
-    kinds: dict[str, str] = field(default_factory=dict)   # scratch of a type other than word -> that type
 
 
 def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering) -> list:
@@ -799,9 +814,6 @@ def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
                 out.append((guard[t], low.resumes[t], set()))
             continue
         proc, s = g.transitions[t], sigs[g.transitions[t]]
-        if proc == STOP:
-            out.append((guard[t], ["stop"], set()))
-            continue
         wire: dict[str, dict[str, str]] = {}
         for a in g.arcs:
             if a.transition == t and a.io:
@@ -867,7 +879,7 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
     requires = ([g.requires] if g.requires else []) + [f"requires: {low.at[p]} != {m}" for p, m in g.assumes]
     owns = [n for n in low.owns if n != g.stated and n not in {low.at[p] for p in facts}]
     contract = [f"  {'reads' if k == 'requires' else 'writes'}: {', '.join(rs)}" for k, rs in g.boundary.items()]
-    out = [head] + contract + [f"  {r}" for r in requires] + [f"  owns {n}: {low.kinds.get(n, 'word')}" for n in owns]
+    out = [head] + contract + [f"  {r}" for r in requires] + [f"  owns {n}: word" for n in owns]
     ports = {n: (d, typ) for n, (d, typ) in g.ports.items() if typ not in g.wholes and n != g.stated}
     if low.wired:
         out += [f"  {'out' if d == 'out' else 'inout'} {n}: {typ}" for n, (d, typ) in ports.items()]
@@ -914,7 +926,8 @@ def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
         c = low.at[g.counter]
         more, done = (f"!= {g.end}", f"== {g.end}") if g.end else ("< 0", ">= 0")
         out[head:] = [f"  if {c} {more}:", f"    loop at most {LOOP_BOUND:#o}:".replace("0o", "0"),
-                      *("    " + x for x in out[head:]), f"      if {c} {done}:", "        break"]
+                      *("    " + x for x in out[head:]), f"      if {c} {done}:",
+                      "        stop" if g.halt else "        break"]
     return "\n".join(out) + "\n"
 
 
@@ -1009,7 +1022,12 @@ def stop_side_first(g: Graph, body: list) -> list:
 
 def written_once(g: Graph, sigs: dict[str, Signature], copier: dict[str, str]) -> str:
     """runs.load's lowering: every place its own field, a bundle's inputs and
-    outputs its call Record's, in the wiring's order."""
+    outputs its call Record's, in the wiring's order. An entry indexed by
+    an input or output (`objects.routine[slot]`, slot the counter) is
+    indexed by that field."""
     bundles = {p for p in g.transitions.values() if sigs[p].bundle}
     word = {(b, n): f"{b}_call.{n}" for b in bundles for n in sigs[b].inputs + sigs[b].outputs}
-    return lower(g, sigs, data_order(g), Lowering({p: g.field(p) for p in g.places}, word, copier))
+
+    def at(p):
+        return re.sub(r"\[(\w+)\]", lambda m: f"[{g.field(m[1])}]" if m[1] in g.ports and m[1] != g.stated else m[0], g.field(p))
+    return lower(g, sigs, data_order(g), Lowering({p: at(p) for p in g.places}, word, copier))

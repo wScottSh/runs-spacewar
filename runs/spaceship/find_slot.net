@@ -1,23 +1,21 @@
 # The search for a free slot (sr1), a loop bundle over the object table's
 # slots: each pass looks at its slot's calc routine. A busy slot passes
 # the search to the next one; a free one stops it there. It gives back
-# the slot it stopped at, or 030 when every slot is busy.
+# the slot it stopped at. When every slot is busy, the machine halts, and
+# halts again each time it is continued.
 
 network find_slot
   counter slot: word to 030
 
 places
-  objects.routine
-  find_slot_work.routine
+  objects.routine[slot]
 
 transitions
-  look: routine_at                                          # sr1: lac .
   take: count_down                                          # index sr1, (lac mtb nob, sr1
+  full: stop                                                # hlt; jmp .-1
 
 arcs
-  objects.routine -> look.routines
-  slot -> look.at
-  look.routine -> find_slot_work.routine
-  find_slot_work.routine -> take when != none               # sza i; jmp sr2
+  objects.routine[slot] -> take when != none                # sr1: lac .; sza i; jmp sr2
   slot -> take.counter
   take.counter -> slot
+  slot -> full when == 030                                  # no slot is free
