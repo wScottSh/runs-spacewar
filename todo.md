@@ -211,3 +211,11 @@ Predicate: every Markdown doc of runs-spec, runs-spacewar, and the RUNS statemen
 - [x] Map re-charted: destination and notes to the vision, open designs as fog or tickets
 - [ ] Open (for the user): the designs the vision needs that nobody has decided, on map 45's Not yet specified: the Network as a literal graph and its file, threading the shared Records, loops inside a tick, guards as a partition, one file per Processor, the source's keywords against the vision's, a check that measures the vision
 - [ ] Open: `CLAUDE.md` says a `run` passes only which slot, the user's standing order; the input/output syntax (#52) passes wires instead. The user settles which stands.
+
+## Open with the user (raised 2026-11-14; none decided)
+
+The user found three rules applied without their explicit decision. Each stays as built until the user rules on it.
+
+1. **Write once.** The user's model: a Record is a writable number; a Processor pulls it out, changes it, and may drop it back in the same field. Built: that holds from tick to tick, but within one tick only one Processor may write a given field (CONTEXT.md 90-92), which is why scratch Records such as `accelerate_work` exist. Not decided: whether two steps in one tick may write the same field. Also open: what "within one tick" means to the user, who said a tick is the unit and nothing happens between ticks.
+2. **Loops only in bundles.** The user approved the amendment on 2026-11-12 ("looks good", CONTEXT.md fa5e7a5) but now says boundedness is a rule for the whole graph, not for bundles. The bundle part was the assistant's addition, made to simplify the tools; the counter is what bounds a loop. Proposed: "every loop within a tick runs through a counter that only counts down", with bundling optional.
+3. **Granularity was never presented.** The user asked on 2026-11-11 to decompose "as granular as possible" into shared primitives, with bundles as network files. Built: 152 Processor files (118 with 3 lines of logic or fewer; `copy` used 82 times) cut at the grain of a few PDP-1 instructions, and 58 network files; `draw_outline` is still 68 lines. Not discussed: what the smallest piece is, sharing across games, and naming for a package registry. Talk before splitting further.
