@@ -1,5 +1,5 @@
 # The pen as the outline's walk leaves it: the steps mirrored for the
-# other side, the position a 6 code stored, the side it drew last.
+# other side.
 presentation record walked_pen
   out_x: word = 0
   out_y: word = 0
@@ -7,6 +7,3 @@ presentation record walked_pen
   out_down_y: word = 0
   in_down_x: word = 0
   in_down_y: word = 0
-  saved_x: word = 0
-  saved_y: word = 0
-  side: side = other

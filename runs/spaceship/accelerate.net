@@ -38,6 +38,7 @@ places
   ship_nose.x
   ship_nose.y
   aimed: pen
+  drawn: pen
   marked: display
   walked: display
 
@@ -121,7 +122,8 @@ arcs
   center.points -> marked
   ship_nose.x -> walk
   ship_nose.y -> walk
-  aimed -> walk
+  aimed -> walk.brush
+  walk.brush -> drawn
   marked -> walk.points
   walk.points -> walked
   switches -> after.switches
@@ -133,7 +135,7 @@ arcs
   after.fleet -> fleet
   crew -> after.crew
   after.crew -> crew
-  aimed -> after.brush
+  drawn -> after.brush
   after.brush -> brush
   walked -> after.points
   after.points -> points

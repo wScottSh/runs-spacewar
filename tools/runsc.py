@@ -466,6 +466,7 @@ class Walk:
     jumps: list                 # held fields the walk goes on from (`set at = L.f[at]; continue`)
     holds: dict                 # member -> those fields its arm holds, in order
     where: str
+    written: dict = field(default_factory=dict)   # member -> its arm as written: a lent word's field by its name
 
     @staticmethod
     def of(prog: runs.Program, r: runs.Routine, held: set[str]) -> "Walk":
@@ -878,7 +879,7 @@ class Bindings:
             elif self.shared.get(f, f) != self.shared.get(w, w):
                 self.shared[f] = self.memory[f] = self.shared.get(w, w)    # in the memory word another field names
         for w in self.walks.values():
-            w.arms = {m: self.in_words(st) for m, st in w.arms.items()}
+            w.written, w.arms = w.arms, {m: self.in_words(st) for m, st in w.arms.items()}
         self.register_passing()
         self.io_fields |= {f for f, w in REGISTER_WORDS.items() if w in self.io_fields}
         for p in self.jsp_slots.values():
@@ -1641,6 +1642,8 @@ class Unit:
                                                w.routine))
             fn.pulsed = wb.pulse                # a walk that waits for a pulse is entered with one pending
             out += [f"static TEMPLATE void {self.template_name(f, member)}({params})", "{", *fn.compile(), "}"]
+            self.binds.compiled.append((fn, typed(self.prog, w.written[member],
+                                                  routine_locals(self.prog.routines[w.routine]), w.routine)))
         return out
 
     def shift_initial(self, f: str, e=False) -> str:
@@ -4562,7 +4565,14 @@ class SharedWords:
     The binding's words carry from a routine into the routines it runs: a
     routine starts with what every run of it leaves there. A top Network,
     which the host fires, starts with nothing known, so a [share] field is
-    set before it is read in every firing."""
+    set before it is read in every firing.
+
+    A word the lowering lends a field (Bindings.memory) is followed the
+    same way, and back out of a call: after a run, it holds what the routine
+    run leaves there on every path (exits); a routine that never returns
+    leaves nothing known. Between firings (at_rest) a lent word holds its
+    own field, the field the word is laid out for, only if it does at power
+    on and every top Network's firing ends with it holding that field."""
 
     def __init__(self, binds: "Bindings", compiled: list[tuple["Function", list]]):
         self.binds = binds
@@ -4575,6 +4585,12 @@ class SharedWords:
         for f, other in binds.shared.items():
             self.words.union([f, other])
         self.shared = self.words.groups()       # root -> the fields that share its word
+        self.exits: dict[str, dict] = {}        # a bound routine -> what each shared word holds where it ends
+        self.settled = False                    # every entry and exit followed to its fixed point
+        self.writes: dict[tuple, tuple] = {}    # routines run -> (the Records, the fields) what they fire writes
+        lent = set(binds.memory.values())
+        # a lent word between firings: its own field at power on, and what every firing leaves there
+        self.at_rest = {root: frozenset(names & lent) for root, names in self.shared.items() if names & lent}
         # a source line -> the Processors with a statement there: every copy of a Processor with
         # Ports (copy_1, copy_2 ...) has its statements at the template's lines
         self.processor_at: dict[str, list[runs.Routine]] = {}
@@ -4584,9 +4600,16 @@ class SharedWords:
                     self.processor_at.setdefault(at, []).append(r)
 
     def check(self):
+        """Every bound routine followed from its entries to a fixed point: a
+        routine's entry is what every run of it hands it, and what a run
+        leaves in a lent word is what the routine run leaves there (exits).
+        A walk's arms run one after another: each is entered with what the
+        others leave too."""
         fired = set().union(set(), *(runs.runs_of(r.body) for r in self.prog.routines.values()
                                      if r.name not in pc_dispatchers(self.prog)))     # the PC's: no code
+        walked = {w.routine for w in self.binds.walks.values()}
         entry: dict[str, dict] = {}
+        callers: dict[str, set[str]] = {}
         todo = []
         for fn, _ in self.compiled:
             if fn.b.name not in fired and fn.b.name not in entry:
@@ -4596,28 +4619,48 @@ class SharedWords:
             if not todo:
                 break
             name = todo.pop()
+            ends = []
             for fn, stmts in self.compiled:
                 if fn.b.name != name:
                     continue
-                for callee, state in Occupancy(self, fn, entry[name]).run(stmts):
+                occupancy = Occupancy(self, fn, entry[name], top=name not in fired)
+                calls = occupancy.run(stmts)
+                ends += occupancy.ends
+                for callee, state in calls + [(name, end) for end in occupancy.ends if name in walked]:
+                    callers.setdefault(callee, set()).add(name)
                     old = entry.get(callee)
                     new = state if old is None else {g: old.get(g, frozenset()) & state.get(g, frozenset())
                                                       for g in [*self.shared, PASSED]}
                     if new != old:
                         entry[callee] = new
                         todo.append(callee)
+            if name in walked and ends:         # the arms may all be passed over
+                ends.append(entry[name])
+            done = {g: frozenset.intersection(*(e.get(g, frozenset()) for e in ends)) for g in self.shared} \
+                if ends else None
+            if done is not None and self.exits.get(name) != done:
+                self.exits[name] = done
+                todo += sorted(callers.get(name, ()))
+            if name not in fired and done is not None:
+                rest = {root: held & done.get(root, frozenset()) for root, held in self.at_rest.items()}
+                if rest != self.at_rest:        # every firing starts from what this one leaves
+                    self.at_rest = rest
+                    todo += sorted({fn.b.name for fn, _ in self.compiled if fn.b.name not in fired} - {name}) + [name]
+        else:
+            raise BindError("the shared words' contents do not settle through the bound routines")
+        self.settled = True                     # once more, a routine that never returns leaving nothing known
         for fn, stmts in self.compiled:
-            if fn.b.name not in entry:          # entered only from outside the RUNS (none today)
-                Occupancy(self, fn, {}).run(stmts)
+            Occupancy(self, fn, entry.get(fn.b.name, {}), top=fn.b.name not in fired).run(stmts)
 
 
 class Occupancy:
     """SharedWords through one bound routine's statements, as the RUNS runs
     them (each branch with its own copy of a shared tail)."""
 
-    def __init__(self, words: SharedWords, fn: Function, entry: dict):
+    def __init__(self, words: SharedWords, fn: Function, entry: dict, top: bool = False):
         self.words = words
         self.fn = fn
+        self.top = top                              # fired by the host, not by a routine
         self.prog = fn.unit.prog
         self.names = UnionFind()
         for names in words.shared.values():
@@ -4628,6 +4671,8 @@ class Occupancy:
         self.group = {x: root for root, names in self.members.items() for x in names}
         self.entry = entry
         self.calls: list[tuple[str, dict]] = []    # (routine run, the binding's words as it starts)
+        self.ends: list[dict] = []                  # the binding's words where the routine ends
+        self.lent = set(fn.binds.memory.values())   # a word lent within a firing: the field it is laid out for
         self.loops: list[tuple[list, list]] = []   # (states at its breaks, states at its continues)
         self.labels: dict[str, list] = {}
         self.seen_labels: set[str] = set()
@@ -4639,10 +4684,10 @@ class Occupancy:
             if root != PASSED:
                 g = self.group[next(iter(self.words.shared[root]))]
                 state[g] = state.get(g, frozenset()) | holders
-        lent = set(self.fn.binds.memory.values())
-        for g, names in self.members.items():       # a field's word lent within a firing: the field, unless told
-            if names & lent and not state.get(g):
-                state[g] = frozenset(names & lent)
+        if self.top:                                # between firings: what every firing leaves there
+            for root, holders in self.words.at_rest.items():
+                g = self.group[next(iter(self.words.shared[root]))]
+                state[g] = state.get(g, frozenset()) | holders
         passed = self.entry.get(PASSED, frozenset())
         for f in [b.entry, *(f for f in [b.ac_param, b.io_param, b.byname, b.inline, *self.fn.own] if f in passed)]:
             if f in self.group:
@@ -4659,6 +4704,7 @@ class Occupancy:
         holding only the routine's locals: the RUNS field would keep a value
         the machine no longer has."""
         binds = self.fn.binds
+        self.ends.append(self.export(state))
         for g, names in self.members.items():
             declared = {f: w for f, w in binds.shared.items() if f not in binds.memory}   # a [share], not a loan
             lasting = sorted(f for f in names if f in binds.cell_of or f in declared
@@ -4685,20 +4731,21 @@ class Occupancy:
         the game runs (`jump`) writes a word only through the name its
         operand gives, a field of a Record the jump declares: a word that
         held that field still holds it, whether the code wrote it or not."""
-        written = set().union(set(), *(self.prog.routines[p].writes for r in routines if r in self.prog.routines
-                                       for p in runs.fires(self.prog, r, set())
-                                       if self.prog.routines[p].kind == "processor"))
-        fields = set().union(set(), *(field_writes(self.prog.routines[p]) for r in routines if r in self.prog.routines
-                                      for p in runs.fires(self.prog, r, set())
-                                      if self.prog.routines[p].kind == "processor"))
-        lent = set(self.fn.binds.memory.values())
+        key = tuple(routines)
+        if key not in self.words.writes:
+            fired = [self.prog.routines[p] for r in routines if r in self.prog.routines
+                     for p in runs.fires(self.prog, r, set()) if self.prog.routines[p].kind == "processor"]
+            self.words.writes[key] = (set().union(set(), *(p.writes for p in fired)),
+                                      set().union(set(), *(field_writes(p) for p in fired)))
+        written, fields = self.words.writes[key]
         out = {}
-        for g, names in state.items():
+        for g in set(state) | {g for g, names in self.members.items() if names & self.lent}:
+            names = state.get(g, frozenset())
             own = {x for x in self.members[g] if "." in x and x.split(".")[0] in written}
-            if self.members[g] & lent:      # a field's word lent within a firing: followed field by field
+            if self.members[g] & self.lent:     # a lent word: followed field by field
                 own &= fields
-                if own and len(root := self.members[g] & lent & own) == 1:
-                    out[g] = frozenset(root)        # the field, which the word ends holding
+                if own:                         # what the routines run leave there
+                    out[g] = self.left(g, routines)
                     continue
             if not own:
                 out[g] = names
@@ -4706,12 +4753,27 @@ class Occupancy:
                 out[g] = frozenset(own)
         return out
 
+    def left(self, g: str, routines) -> frozenset:
+        """What word g holds after the routines run, on every path: what
+        each leaves there (SharedWords.exits). A routine not yet followed
+        leaves anything: a later pass follows it and starts this one again;
+        once settled, one that never returns leaves nothing known."""
+        roots = [root for root, names in self.words.shared.items() if self.group.get(next(iter(names))) == g]
+        out = frozenset(self.members[g])
+        for r in routines:
+            if (ends := self.words.exits.get(r)) is not None:
+                out &= frozenset().union(*(ends.get(root, frozenset()) for root in roots))
+            elif self.words.settled:
+                return frozenset()
+        return out
+
     def read(self, name: str, state: dict, where: str):
         g = self.group.get(name)
+        if g is None or name in state.get(g, frozenset()):
+            return
         readers = [r for r in self.words.processor_at.get(where, [])
                    if any(name in (dotted_of(e), e[1]) for s in walk(r.body) if s[-1] == where for e in walk_expr(s))]
-        if g is not None and name not in state.get(g, frozenset()) \
-                and not (readers and all(ignores(r, name, where) for r in readers)):
+        if not (readers and all(ignores(r, name, where) for r in readers)):
             holds = sorted(state.get(g, frozenset())) or "no name set before it on every path"
             raise BindError(f"{where}: {name} is read where its word, which the binding shares with "
                             f"{sorted(self.members[g] - {name})}, holds {holds}")
@@ -4817,6 +4879,9 @@ class Occupancy:
         if op in ("return", "stop", "unreachable"):
             if op == "return":
                 self.leave(state, where)
+            return None
+        if op in ("leave", "held_jump"):        # out of a walk's arm: to the next arm, or out of the walk
+            self.ends.append(self.export(state))
             return None
         if op == "emit":
             for a in s[2]:

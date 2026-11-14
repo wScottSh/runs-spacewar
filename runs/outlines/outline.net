@@ -1,9 +1,11 @@
 # A ship's outline (sp5), a bundle: the walk over its compiled strokes,
 # from the slot ship_outlines.outline holds for it. The pen starts at the
-# nose and is left at the tail, where the flame starts; the mirror and the
-# stored position the walk leaves are its own.
+# nose and is left at the tail, where the flame starts; the mirror the walk
+# leaves is its own. The position a 6 code stores and the side drawn last
+# stay in the pen for the next outline's walk.
 
 network outline(slot)
+  inout brush: pen
   inout points: display
 
 places
@@ -22,9 +24,6 @@ places
   pen.out_down_y
   pen.in_down_x
   pen.in_down_y
-  pen.saved_x
-  pen.saved_y
-  pen.side
   outline_point.x
   outline_point.y
   walked_pen.out_x
@@ -33,9 +32,6 @@ places
   walked_pen.out_down_y
   walked_pen.in_down_x
   walked_pen.in_down_y
-  walked_pen.saved_x
-  walked_pen.saved_y
-  walked_pen.side
 
 transitions
   walk: draw_outline                                        # sp5, jmp .
@@ -62,12 +58,12 @@ arcs
   walk.in_down_x -> walked_pen.in_down_x
   pen.in_down_y -> walk.in_down_y
   walk.in_down_y -> walked_pen.in_down_y
-  pen.saved_x -> walk.saved_x
-  walk.saved_x -> walked_pen.saved_x
-  pen.saved_y -> walk.saved_y
-  walk.saved_y -> walked_pen.saved_y
-  pen.side -> walk.side
-  walk.side -> walked_pen.side
+  brush.saved_x -> walk.saved_x
+  walk.saved_x -> brush.saved_x
+  brush.saved_y -> walk.saved_y
+  walk.saved_y -> brush.saved_y
+  brush.side -> walk.side
+  walk.side -> brush.side
   walk.point_x -> outline_point.x
   walk.point_y -> outline_point.y
   points -> walk.points
