@@ -42,7 +42,9 @@ refused. A mutant that builds the
 original image is silent, and passes only when the evaluator shows it is
 the same game: the mutated routine, and failing that each bound routine
 that compiles it, fired before and after the mutation, must leave the same
-Records, the same points and the same error. It is fired first on the
+Records (but a field the lowering lends another's word, which no later
+firing can read: lasting), the same points, and an error where the other
+does. It is fired first on the
 Records play leaves before its firings (32 games of 300 frames, up to 60
 of each routine's firings), then on 200 seeded random Records for the edge
 cases. A firing may run 4 times the statements the routine's longest
@@ -421,7 +423,8 @@ OWNERS: dict[str, list[str]] = {}
 def names_touched(prog: runs.Program, mutated: runs.Program, m: Mutant, message: str) -> bool:
     """A refusal is the mutant caught only when it names something the mutant
     touches; one that names nothing of it refuses the build path itself."""
-    said = {t for w in re.findall(r"[\w$]+(?:\.[\w$]+)*", message) for t in [w, *w.split(".")]}
+    said = {t for w in re.findall(r"[\w$]+(?:\.[\w$]+)*", message)
+            for t in [w, *w.split("."), re.sub(r"_\d+$", "", w)]}
     return bool(said & touched(prog, mutated, m))
 
 
@@ -687,6 +690,31 @@ def trials(prog: runs.Program, name: str, seed: str):
         yield arguments(prog, name, calls, rng), random_state(prog, rng)
 
 
+RESTLESS: set[str] = set()     # runsc: lent words' fields no firing starts holding
+
+
+def lasting(prog: runs.Program, result):
+    """What a firing leaves that a later firing can read: its Records but
+    the fields the lowering lends another field's word. runsc's SharedWords
+    refuses a read of one before the firing that lends it writes it, so its
+    value where a firing ends reaches nothing (runs.Program.kept_in). A
+    halt can strike while a word is lent: then the field the word is laid
+    out for is not on the machine either; nor is it when no firing starts
+    with its word holding it (RESTLESS), for SharedWords then refuses a
+    read of it before a write."""
+    end, state = result
+    if not isinstance(state, dict):
+        return result
+    lent = {}
+    for f, w in prog.kept_in.items():
+        if "." in w:
+            for x in [f] + ([w] if (end == "stop" or w in RESTLESS) and "[" not in w else []):
+                rec, fld = x.split(".")
+                lent.setdefault(rec, set()).add(fld)
+    return end, {r: {k: v for k, v in x.items() if k not in lent[r]} if r in lent and isinstance(x, dict) else x
+                 for r, x in state.items()}
+
+
 def same_game(prog: runs.Program, mutated: runs.Program, name: str, seed: str,
               mutated_routine: str | None = None) -> tuple[bool, str]:
     """Fire name before and after the mutation on Records as play leaves
@@ -701,7 +729,7 @@ def same_game(prog: runs.Program, mutated: runs.Program, name: str, seed: str,
         b = a if a[0] == OVER else fire(mutated, name, args, state, limit)[0]
         if OVER in (a[0], b[0]):
             over += 1
-        elif a != b:
+        elif lasting(prog, a) != lasting(prog, b) and not all(str(x[0]).startswith("error") for x in (a, b)):
             return False, f"{name}{tuple(args)} trial {k}: {str(a[0])[:80]} / {str(b[0])[:80]}"
         else:
             clean += not str(a[0]).startswith("error") and (mutated_routine or name) in ran
@@ -970,6 +998,8 @@ def verdict(m: Mutant) -> tuple[str, str]:
     if m.kind == "requires":
         ok, how = precondition(prog, mutated, m)
         return ("precondition" if ok else "silent"), how
+    RESTLESS.clear()
+    RESTLESS.update(runsc.write_tree.restless)
     ok, how = equivalent(prog, mutated, m)
     return ("equivalent" if ok else "silent"), how
 
@@ -991,7 +1021,8 @@ def changed(prog: runs.Program) -> tuple[set[str], set[str], set[str]]:
         tree = subprocess.run(["git", "-C", str(root), "archive", base, "runs"], capture_output=True, check=True)
         subprocess.run(["tar", "-x", "-C", old], input=tree.stdout, check=True)
         try:
-            was = runsc.pdp1_program(Path(old) / "runs")
+            # lowered as the PDP-1 lowers it now, unchecked: what changed is read off the routines alone
+            was = runs.load(runs.source_files(Path(old) / "runs"), runsc.lower_for_pdp1)
         except (runs.RunsError, runsc.BindError) as e:      # every routine counts as changed
             print(f"check_compiled: origin/main's RUNS does not load with these declarations: {e}")
             was = runs.Program()

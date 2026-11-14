@@ -881,6 +881,7 @@ class Bindings:
                 REGISTER_LOCALS[f] = local(w) if "." in w else w
             elif self.shared.get(f, f) != self.shared.get(w, w):
                 self.shared[f] = self.memory[f] = self.shared.get(w, w)    # in the memory word another field names
+        self.check_loans()
         for w in self.walks.values():
             w.written, w.arms = w.arms, {m: self.in_words(st) for m, st in w.arms.items()}
         self.register_passing()
@@ -909,7 +910,8 @@ class Bindings:
         if section in ("place", "code"):
             words = {c: tuple((port, REGISTER_WORDS.get(dotted_of(e), runs.text_of(e)))
                               for port, e in self.prog.copies[c][1]) for c in copies}
-            if len(set(words.values())) == 1:      # its runs keep what they wire in the same words
+            same = {repr(in_kept_words(self.prog.routines[c].body)) for c in copies}
+            if len(set(words.values())) == 1 and len(same) == 1:   # the same statements in the same words
                 self.bound.same |= {c: copies[0] for c in copies[1:]}
                 copies = copies[:1]
         if section in ("place", "code") and len(copies) != 1:
@@ -990,6 +992,31 @@ class Bindings:
         if isinstance(tree, dict):
             return {k: self.in_words(v) for k, v in tree.items()}
         return tree
+
+    def check_loans(self):
+        """A field the lowering lends another's word is that network file's
+        place: only a Network lowered from a file that names it runs a
+        Processor that writes it. The loan holds within that file's firing."""
+        lent = set(self.memory) | set(self.slots)
+        for name, r in self.prog.routines.items():
+            g = self.prog.graphs.get(self.prog.copies.get(name, (name,))[0])
+            if r.kind != "network" or g is None:
+                continue
+            named = {g.field(p) for p in g.places} | {   # and the call Record of each bundle it runs
+                f"{c}.{fld}" for b in g.transitions.values() if (c := f"{b}_call") in self.prog.records
+                for fld in self.prog.records[c].fields}
+            named |= {dotted_of(e) for _, e in self.prog.copies.get(name, (name, ()))[1]}   # its run wires to it
+            for run in sorted(runs.runs_of(r.body)):
+                inner = self.prog.routines.get(run)
+                if inner is not None and inner.kind == "processor":
+                    for f in sorted(field_writes(inner) & lent - named):
+                        word = self.memory.get(f) or runs.text_of(self.slots[f])
+                        raise BindError(f"{name}: run {run} writes {f}, a place of another network file: "
+                                        f"the lowering lends it {word} only within that file's firing")
+                    if len(inner.body) == 1 and in_place_set(inner.body[0]) and \
+                            not (ends := {dotted_of(x) or runs.text_of(x) for x in inner.body[0][1:3]}) & named:
+                        raise BindError(f"{name}: run {run} copies within one word, {' and '.join(sorted(ends))}, "
+                                        f"neither of which {name}'s network file names")
 
     def lent(self) -> set[str]:
         """The words the lowering lends another field: each named by the
@@ -4546,6 +4573,20 @@ class UnionFind:
 PASSED = "@passed"
 
 
+def in_kept_words(tree):
+    """The tree with each field the lowering keeps in another word named by
+    that word (REGISTER_WORDS)."""
+    if isinstance(tree, tuple):
+        if tree[:1] == ("field",) and (d := dotted_of(tree)) in REGISTER_WORDS and "[" not in REGISTER_WORDS[d]:
+            return ("word", REGISTER_WORDS[d])
+        return tuple(in_kept_words(x) for x in tree)
+    if isinstance(tree, list):
+        return [in_kept_words(x) for x in tree]
+    if isinstance(tree, dict):
+        return {k: in_kept_words(v) for k, v in tree.items()}
+    return tree
+
+
 def word_named(e) -> str | None:
     """The word a field or a slot's field is kept in: its own, or the one
     the lowering lends it (REGISTER_WORDS)."""
@@ -4921,6 +4962,9 @@ class Occupancy:
             state = self.kill(state, [s[1]], keep_own=callee.code)
             if callee.code and callee.back:
                 self.calls.append((callee.back, self.export(state)))
+                for g, names in self.members.items():   # the code jumps back there: a lent word holds what that leaves
+                    if names & self.lent:
+                        state[g] = self.left(g, [callee.back])
             for f in callee.result:
                 self.write(as_field(f), state)
             return state
@@ -5769,7 +5813,10 @@ def write_tree(prog: runs.Program, out: Path) -> Path:
         raise BindError(f"inverse_skip {unused}: names no test the RUNS compiles")
     if many := sorted(f for f, tests in binds.inverse_skipped.items() if len(tests) > 1):
         raise BindError(f"inverse_skip {many}: names one test, not {sorted(binds.inverse_skipped[many[0]])}")
-    SharedWords(binds, binds.compiled).check()
+    shared = SharedWords(binds, binds.compiled)
+    shared.check()
+    # a field a word is laid out for, lent within a firing, that no firing starts holding: nothing reads its last value
+    write_tree.restless = {f for root, held in shared.at_rest.items() for f in shared.shared[root] & binds.lent() - held}
     toml = out / "lift.toml"
     head = "".join(f'{k} = "{ROOT / v if k in ("macro1", "macro1_src", "oracle_listing") else v}"\n'
                    for k, v in lift.items() if k != "unit")
