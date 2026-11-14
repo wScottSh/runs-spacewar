@@ -13,6 +13,7 @@ network expensive_planetarium
 places
   planetarium_work.counted
   planetarium_work.stepped
+  planetarium_work.margin
   star_catalog.words
   shown_bright: display
   shown_second: display
@@ -29,6 +30,7 @@ transitions
   move: move_window
   give_frames: copy
   give_steps: copy
+  give_margin: copy
   not_shown: copy
 
 arcs
@@ -89,7 +91,10 @@ arcs
   planetarium_work.stepped -> move when >= 0
   move.steps -> sky.window_steps
   sky.right_margin -> move.right_margin
-  move.right_margin -> sky.right_margin
+  move.right_margin -> planetarium_work.margin
+  planetarium_work.stepped -> give_margin when >= 0
+  planetarium_work.margin -> give_margin.source
+  give_margin.target -> sky.right_margin
   planetarium_work.stepped -> give_steps when else
   planetarium_work.stepped -> give_steps.source
   give_steps.target -> sky.window_steps

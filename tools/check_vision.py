@@ -3,7 +3,7 @@
 always exits 0 once the source loads, and check_all.sh does not run it.
 
 It reads the loaded Program (runs.load, then runs.check without sides, as
-check_purity.py does) and counts six distances, each defined in HEADER.
+check_purity.py does) and counts five distances, each defined in HEADER.
 Every finding prints as one line, then a table of the counts per file and
 the totals.
 
@@ -19,17 +19,6 @@ import runs
 HEADER = """\
 # The distances from the vision, counted per file (CONTEXT.md is ../.github/CONTEXT.md).
 #
-# in_place          Records written in place (CONTEXT.md 90-92: write once, never overwrite).
-#                   A Record counts once when any of its Fields is set at two or more `set`
-#                   statements across the Processors, or a Processor sets it after reading the
-#                   value it held (read before the set, or read in a loop that sets it).
-#                   Counted in the file that declares the Record. A stream is not counted:
-#                   `emit` adds a fresh entry. The Networks runs.load lowers network files to,
-#                   and the copies they run, are not counted: tools/graph.py refuses a network
-#                   file whose place two transitions write other than on the two sides of one
-#                   test, or whose transition reads a place it writes (a cycle). A bundle's call
-#                   Record holds its inputs and outputs, which the bundle writes once each, so
-#                   the sets of the routines that run the bundle count in their own files.
 # names_records     Processors that name Records (CONTEXT.md 166-169: a Processor knows nothing
 #                   of the Records it is wired to). A Processor counts when it names any Record:
 #                   in `reads:`, `writes:`, `requires:`, or its body.
@@ -51,6 +40,10 @@ HEADER = """\
 # extra_processors  Files holding more than one Processor: each file's Processors beyond its
 #                   first. A file holds more than one when its count is above 0.
 #
+# A Record a Processor changes in place is no distance: only a Processor changes a Record, and it
+# may put its result back in the same place (CONTEXT.md 88-93); tools/graph.py refuses two
+# transitions that write one place unless the wiring orders them.
+#
 # A network file is wiring with guards, so it counts nothing under control_flow, mid_exit
 # and open_guards; tools/graph.py refuses one whose guards on a place are not one test and
 # its else. A loop bundle's cycle (CONTEXT.md 196-206) is legal and counts nothing: tools/graph.py
@@ -59,7 +52,7 @@ HEADER = """\
 # control_flow.
 """
 
-COUNTS = ("in_place", "names_records", "control_flow", "mid_exit", "open_guards", "extra_processors")
+COUNTS = ("names_records", "control_flow", "mid_exit", "open_guards", "extra_processors")
 
 
 def program(root: Path) -> tuple[runs.Program, list[Path]]:
@@ -94,128 +87,6 @@ def as_written(prog: runs.Program) -> dict[str, runs.Routine]:
     makes and the Networks lowered from network files."""
     return {**{n: r for n, r in prog.routines.items() if n not in prog.copies and n not in prog.graphs},
             **prog.templates}
-
-
-def lowered(prog: runs.Program) -> set[str]:
-    """The Networks lowered from network files, and the copies they run."""
-    out = set(prog.graphs)
-    for g in prog.graphs:
-        out |= runs.runs_of(prog.routines[g].body) & set(prog.copies)
-    return out
-
-
-def field_of(e, records) -> tuple[str, str] | None:
-    base = e[1] if e[0] == "index" else e
-    if base[0] == "field" and base[1][0] == "name" and base[1][1] in records:
-        return base[1][1], base[2]
-    return None
-
-
-def fields_read(tree, records, out: set) -> None:
-    """The Record Fields an expression or statement tree reads. A `set` target
-    is written, not read (its slot expression is read). Building an
-    instruction reads only its operand's slot expression, as runs.mentions."""
-    if isinstance(tree, tuple) and tree:
-        op = tree[0]
-        if op in ("set", "let") and len(tree) == 4:
-            for t in tree[1][1] if tree[1][0] == "tuple" else [tree[1]]:
-                if t[0] == "index":
-                    fields_read(t[2], records, out)
-            fields_read(tree[2], records, out)
-            return
-        if op == "field" and (f := field_of(tree, records)):
-            out.add(f)
-            return
-        if op == "call" and runs.instruction_call(tree[1], tree[2]):
-            if tree[2] and tree[2][0][0] == "index":
-                fields_read(tree[2][0][2], records, out)
-            return
-    if isinstance(tree, (list, tuple)):
-        for t in tree:
-            fields_read(t, records, out)
-    elif isinstance(tree, dict):
-        fields_read(list(tree.values()), records, out)
-
-
-def fields_set(stmts: list, records) -> list[tuple[str, str]]:
-    """Each Record Field a `set` writes, once a statement that writes it."""
-    return [f for s in runs.walk_statements(stmts) if s[0] in ("set", "let")
-            for t in (s[1][1] if s[1][0] == "tuple" else [s[1]]) if (f := field_of(t, records))]
-
-
-def held_reads(stmts: list, records, done: set) -> tuple[set, set]:
-    """The Fields stmts read while they still hold the value from before the
-    Processor ran: read before any set of them on the way there, or read in
-    a loop that sets them (the next pass reads what this one set). Returns
-    those, and the Fields set on every way through stmts."""
-    found: set = set()
-
-    def read(e) -> None:
-        got: set = set()
-        fields_read(e, records, got)
-        found.update(got - done)
-
-    for s in stmts:
-        op = s[0]
-        if op in ("set", "let"):
-            read(s)
-            done = done | set(fields_set([s], records))
-        elif op in ("if", "match"):
-            read([c for c, _ in s[1]] if op == "if" else s[1])
-            arms = [b for _, b in s[1]] + [s[2]] if op == "if" else list(s[2].values())
-            after = []
-            for body in arms:
-                got, d = held_reads(body, records, done)
-                found |= got
-                after.append(d)
-            done = set.intersection(*after) if after else done
-        elif op in ("loop", "for"):
-            read(list(s[1:-2]))
-            looped: set = set()
-            fields_read(s[-2], records, looped)
-            found |= looped & set(fields_set(s[-2], records))
-            found |= held_reads(s[-2], records, done)[0]
-        elif op == "emit":
-            read(s[2])
-    return found, done
-
-
-def in_place(prog, routines, home) -> list[tuple[str, str]]:
-    records = {n for n, r in prog.records.items() if not r.stream}
-    sites: dict[tuple[str, str], list[str]] = {}
-    updates: dict[tuple[str, str], set[str]] = {}
-    # A Processor with Ports writes the Fields its runs wire to its out and
-    # inout Ports: each copy is its body with those Fields in place of them.
-    skip = lowered(prog)
-    for r in prog.routines.values():
-        if r.kind != "processor" or r.name in skip:
-            continue
-        name = prog.copies.get(r.name, (r.name,))[0]
-        read = held_reads(r.body, records, set())[0]
-        for f in fields_set(r.body, records):
-            sites.setdefault(f, []).append(name)
-            if f in read:
-                updates.setdefault(f, set()).add(name)
-    by_record: dict[str, list[str]] = {}
-    who_of: dict[str, set[str]] = {}
-    for f, who in sorted(sites.items()):
-        if len(who) > 1 or f in updates:
-            why = []
-            if len(who) > 1:
-                why.append(f"{len(who)} sets by {', '.join(sorted(set(who)))}")
-            if f in updates:
-                why.append(f"updated by {', '.join(sorted(updates[f]))}")
-            by_record.setdefault(f[0], []).append(f"{f[1]} ({'; '.join(why)})")
-            who_of.setdefault(f[0], set()).update(who)
-    calls = {g.call for g in prog.graphs.values() if g.ports}
-    out = []
-    for rec, fs in sorted(by_record.items()):
-        line = f"in_place {rec}: {', '.join(fs)}"
-        if rec in calls:
-            out += [(f, line) for f in sorted({home[w] for w in who_of[rec]})]
-        else:
-            out.append((home.records.get(rec) or home[prog.records[rec].owner], line))
-    return out
 
 
 def names_records(prog, routines, home) -> list[tuple[str, str]]:

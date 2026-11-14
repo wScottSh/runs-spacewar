@@ -2,3 +2,4 @@
 presentation record planetarium_work
   counted: word = 0         # bcc, one frame on: at 0 the planetarium draws
   stepped: word = 0         # bkc, one drawing on: at 0 the window moves
+  margin: word = 0          # the window's right margin, one step on, given once the stars are drawn

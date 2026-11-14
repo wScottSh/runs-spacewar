@@ -419,7 +419,7 @@ def guards(g: Graph) -> dict[str, tuple[str, str] | None]:
             if out[t] is None:
                 for a in g.arcs:
                     if a.transition == t and a.into and a.io is not None and not g.threaded(a.place):
-                        ws = {of(w) for w in sources(g, a.place, writers)}
+                        ws = {of(w) for w in sources(g, a.place, writers) - {t}}   # not its own write-back
                         if len(ws) == 1 and (w := ws.pop()):
                             out[t] = w
         return out[t]
@@ -501,8 +501,9 @@ def levels(g: Graph):
 def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]],
           counts: dict[str, int | None] | None = None, enums: dict[str, list[str]] | None = None) -> None:
     """Every input and output wired once, to a place of its type; every place
-    a Record field or one of the network's own inputs and outputs; each place
-    written once, or once on each branch of one test; each test a partition."""
+    a Record field or one of the network's own inputs and outputs; any two
+    transitions that write one place ordered by the wiring, or on two sides
+    of one test (depends); each test a partition."""
     counts, enums = counts or {}, enums or {}
 
     def fail(msg: str, where: str = g.where):
@@ -546,21 +547,15 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
                     fail(f"{t}.{a.io} is {s.types[a.io]}, wired to {a.place}, {type_of(a.place)}", a.where)
         for n in s.inout:
             ends = {a.place for a in g.arcs if a.transition == t and a.io == n}
-            threaded = len(ends) == 1 and g.threaded(next(iter(ends)))
-            if len(ends) != 2 and not threaded:   # a network inout's in value is read, its out value given
-                fail(f"{t}.{n} is inout: it takes one place and gives a fresh one, not {sorted(ends)}")
-    chain = chains(g)
-
-    def apart(a, b):
-        """Two transitions that never both run: on two sides of one test."""
-        return any(exclusive(g, x, y) for x, y in zip(chain[a], chain[b]))
+            if len(ends) > 2:   # it takes a value and gives its result, back in the same place or another
+                fail(f"{t}.{n} is inout: it takes one place and gives one, not {sorted(ends)}")
     for place in g.places:
         writers = [a.transition for a in g.arcs if a.place == place and not a.into]
         if g.port(place) and g.ports[g.port(place)][0] == "in" and writers:
             fail(f"{place} is an input of {g.name}; {writers[0]} writes it")
-
-        if any(not apart(a, b) for i, a in enumerate(writers) for b in writers[i + 1:]):
-            fail(f"{place} is written by {sorted(writers)}: a place is written once on each path")
+    if found := unordered(g):
+        fail(f"{found[0]} is written by {found[1]} and {found[2]}, which the wiring leaves unordered: "
+             f"a path between them, or two sides of one test, orders them")
     for n, (d, _) in g.ports.items():
         if d not in ("in", "counter") and not any(g.port(a.place) == n and not a.into for a in g.arcs):
             fail(f"nothing gives its output {n}")
@@ -673,29 +668,130 @@ def loop_bundle(g: Graph, sigs: dict[str, Signature], fail) -> None:
         fail(f"the counter {g.counter} is no guard's: the take alone steps it, and the loop ends at {g.end}")
 
 
-def depends(g: Graph) -> dict[str, set[str]]:
-    """t -> the transitions that write a place t reads or its guard reads.
-    An inout of the network is read as its in value and written as its out
-    value: its writers come after its readers. A Record the network holds
-    whole (`placed: objects`) is one value: a transition that reads any of
-    it comes after every transition that writes any of it."""
-    guard = guards(g)
-    writers = written_by(g)
-    out: dict[str, set[str]] = {t: set() for t in g.transitions}
-    for a in g.arcs:
-        if a.into and not g.threaded(a.place) and a.place in g.locals:   # a whole place: the writes of its entries
-            out[a.transition] |= {w for p, ws in writers.items() if p.startswith(a.place + ".") for w in ws}
-        if a.into and not g.threaded(a.place):
-            out[a.transition] |= sources(g, a.place, writers) - {a.transition}
-        elif a.into:
-            for w in writers.get(a.place, set()) - {a.transition}:
-                out[w].add(a.transition)
+def overlap(g: Graph, p: str, q: str, read: bool = True) -> bool:
+    """Two places that share a value: one place; a whole place and an
+    entry of it (`table` and `table[slot].x`). A read of a Record the
+    network holds whole (not a stream) sees any of its entries: it is one
+    value. Two writes of different entries do not meet."""
+    if p == q:
+        return True
+    root = re.match(r"\w+", p)[0]
+    if root != re.match(r"\w+", q)[0] or not (root in g.locals or g.port(p)):
+        return False
+    if read and root in g.locals and g.locals[root] not in g.streams:
+        return True
+    return any(b.startswith((a + ".", a + "[")) for a, b in ((p, q), (q, p)))
+
+
+def reads_of(g: Graph) -> list[tuple[str, str, bool]]:
+    """(transition, place, by its test) for each value a transition reads:
+    its inputs, and the place its test reads (once, before its side runs)
+    and the place each test it runs under compares with."""
+    guard, chain = guards(g), chains(g)
+    out = [(a.transition, a.place, False) for a in g.arcs if a.into and not a.guard]
     for t in g.transitions:
         if guard[t]:
-            for place in [guard[t][0]] + [p for test in chains(g)[t] if (p := operand(g, test[1]))]:
-                if not g.threaded(place):         # a test of an inout reads its in value
-                    out[t] |= sources(g, place, writers)
-    return shared_words(g, out, writers)
+            compared = [p for test in chain[t] if (p := operand(g, test[1]))]
+            out += [(t, p, True) for p in [guard[t][0]] + compared]
+    return out
+
+
+def depends(g: Graph) -> dict[str, set[str]]:
+    """t -> the transitions t comes after. A place holds a value until a
+    transition gives it a new one, and several transitions may give one
+    place values (CONTEXT.md 88-93, 192-198). A reader reads the value of
+    the latest writer before it; the order is the wiring's:
+
+    - a writer, an arc into the place, and a reader, an arc out of it, are
+      a wire: the reader comes after the writer, unless another path puts
+      the reader first, so it reads the value before the writer changes it;
+    - a transition that takes a place and gives its result back to it (an
+      inout wired to one place) comes after the place's earlier writers,
+      not after itself. Two that each take and give one place have no wire
+      between them there: another path orders them, or `check` refuses them;
+    - a transition that gives an inout of the network without taking it
+      gives the network's output: it comes after the readers of that place,
+      who read the network's input;
+    - a loop bundle's counter is read as the pass's value and given back
+      for the next pass: its take comes after its readers.
+
+    The wires of a place with one writer are laid first; the others in
+    turn, each unless a path already orders its two ends. Where the turn
+    they are taken in decides an order, the wiring leaves it open
+    (GraphError). Places that share words are ordered last (shared_words)."""
+    if "depends" in g.__dict__:
+        return {t: set(ds) for t, ds in g.__dict__["depends"].items()}
+    chain = chains(g)
+    writes = [(a.transition, a.place) for a in g.arcs if not a.into]
+    reads = reads_of(g)
+    base: dict[str, set[str]] = {t: set() for t in g.transitions}
+    pairs = []
+    for r, p, tested in reads:
+        if p == g.counter:
+            for w, q in writes:
+                if q == p and w != r:
+                    base[w].add(r)
+            continue
+        gives = any(overlap(g, p, q) for w, q in writes if w == r)
+        for w, q in writes:
+            if w == r or not overlap(g, p, q) or apart(g, chain, r, w):
+                continue
+            if tested and any(gd[0] == p for gd in chain[w]):
+                continue                                   # it writes under the test, after the test reads
+            takes = any(overlap(g, q, x) for u, x, _ in reads if u == w)
+            if gives and takes:
+                continue                                   # no wire between them here: another path, or check refuses
+            if q == p and g.threaded(q) and not takes:    # the network's output, given once its input is read
+                pairs.append((0, r, w))
+            else:
+                alone = not g.threaded(q) and all(u == w or apart(g, chain, u, w) for u, x in writes
+                                              if overlap(g, q, x, read=False))
+                pairs.append((0 if alone else 1, w, r))
+
+    def settle(cands):
+        out = {t: set(ds) for t, ds in base.items()}
+        for _, first, then in cands:
+            if then not in earlier(out, first) and first not in earlier(out, then):
+                out[then].add(first)
+        return out
+    tiers = [sorted(x for x in set(pairs) if x[0] == k) for k in (0, 1)]
+    out = settle(tiers[0] + tiers[1])
+    other = settle(tiers[0][::-1] + tiers[1][::-1])
+    for _, first, then in tiers[0] + tiers[1]:
+        if (first in earlier(out, then)) != (first in earlier(other, then)):
+            raise GraphError(f"{g.where}: {g.name}: the wiring leaves open whether {then} comes after {first}, "
+                             f"which share a place")
+    out = shared_words(g, out, written_by(g))
+    g.__dict__["depends"] = out
+    return {t: set(ds) for t, ds in out.items()}
+
+
+def earlier(out: dict[str, set[str]], t: str) -> set[str]:
+    """The transitions t comes after, directly or not."""
+    seen, todo = set(), [t]
+    while todo:
+        for d in out[todo.pop()] - seen:
+            seen.add(d)
+            todo.append(d)
+    return seen
+
+
+def apart(g: Graph, chain, a: str, b: str) -> bool:
+    """Two transitions that never both run: on two sides of one test."""
+    return any(exclusive(g, x, y) for x, y in zip(chain[a], chain[b]))
+
+
+def unordered(g: Graph) -> tuple[str, str, str] | None:
+    """Two transitions that write one place, or places that share a value,
+    and that the wiring leaves unordered: (the place, one, the other)."""
+    out, chain = depends(g), chains(g)
+    writes = sorted({(a.transition, a.place) for a in g.arcs if not a.into})
+    for i, (a, p) in enumerate(writes):
+        for b, q in writes[i + 1:]:
+            if a != b and overlap(g, p, q, read=False) and not apart(g, chain, a, b) \
+                    and a not in earlier(out, b) and b not in earlier(out, a):
+                return p, a, b
+    return None
 
 
 def shared_words(g: Graph, out: dict[str, set[str]], writers: dict[str, set[str]]) -> dict[str, set[str]]:
