@@ -802,6 +802,7 @@ class Lowering:
     wired: bool = False        # this Network's inputs and outputs are wired by the run that runs it
     resumes: dict[str, list[str]] = field(default_factory=dict)   # transition -> the statements laid in its stead
     in_place: set[tuple[str, str]] = field(default_factory=set)   # (source, target) of a copy within one word: no code
+    counts: dict[tuple[str, str], str] = field(default_factory=dict)   # (transition, counter) -> the field it counts
 
 
 def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering) -> list:
@@ -845,9 +846,13 @@ def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
         written = {wire[o]["out"] for o in s.outputs}
         lines: list[str] = []
         if s.bundle and proc in low.inline:          # a whole Record is in its own words: no wire
+            for n in s.inputs:              # a counter the loop counts in place: a fresh value, copied in
+                if (t, n) in low.counts:
+                    lines += copy(s.types[n], wire[n]["in"], low.counts[t, n])
+                    wire[n] = {"in": low.counts[t, n]}
             args = [f"  {n}: {wire[n].get('out', wire[n].get('in'))}" for n in dict.fromkeys(s.inputs + s.outputs)
                     if s.types[n] not in g.wholes]
-            out.append((guard[t], before.get(t, []) + [f"run {proc}{g.args.get(t, '')}"] + args, written))
+            out.append((guard[t], before.get(t, []) + lines + [f"run {proc}{g.args.get(t, '')}"] + args, written))
             continue
         if s.bundle:
             for n, ends in wire.items():

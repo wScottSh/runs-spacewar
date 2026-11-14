@@ -10,10 +10,10 @@ network explosion(slot)
 
 places
   explosion_work.still_x
-  explosion_work.moved_x
+  explosion_place.x
   explosion_work.position_x
   explosion_work.still_y
-  explosion_work.moved_y
+  explosion_place.y
   explosion_work.position_y
   cloud: explosion_cloud
   widened: explosion_cloud
@@ -43,18 +43,18 @@ arcs
   table[slot].dx -> move_x.velocity
   table[slot].x -> move_x.place
   move_x.velocity -> table[slot].dx
-  move_x.place -> explosion_work.moved_x
+  move_x.place -> explosion_place.x
   move_x.position -> explosion_work.position_x
-  explosion_work.moved_x -> give_x.source
+  explosion_place.x -> give_x.source
   give_x.target -> table[slot].x
   still_y.value -> explosion_work.still_y
   explosion_work.still_y -> move_y.acceleration
   table[slot].dy -> move_y.velocity
   table[slot].y -> move_y.place
   move_y.velocity -> table[slot].dy
-  move_y.place -> explosion_work.moved_y
+  move_y.place -> explosion_place.y
   move_y.position -> explosion_work.position_y
-  explosion_work.moved_y -> give_y.source
+  explosion_place.y -> give_y.source
   give_y.target -> table[slot].y
   spread.spread -> cloud.spread
   table[slot].cycles -> size.cycles
@@ -67,8 +67,8 @@ arcs
   seed -> dots.seed
   dots.seed -> seed
   widened -> dots.cloud
-  explosion_work.moved_x -> dots.x
-  explosion_work.moved_y -> dots.y
+  explosion_place.x -> dots.x
+  explosion_place.y -> dots.y
   start.first_low -> dots.low
   points -> dots.points
   dots.points -> points

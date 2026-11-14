@@ -10,12 +10,9 @@ At each firing of a network file, the Records it starts from are handed to
 the source's own lowering of that network file, its inputs set from the
 wiring of the run; then every field the file's arcs write is compared.
 
-Every field that differs is listed. --at-most N passes while no more
-than N differ: the fields the lowering still keeps in a slot of a
-collection, in an input or output of a network file laid out inline, or
-in a counter a loop laid out inline counts in place; N only goes down.
+Every field that differs is listed, and any one fails the check.
 
-Usage: [GAMES [FRAMES]] [--at-most N] (default 4 games of 20 frames)."""
+Usage: [GAMES [FRAMES]] (default 4 games of 20 frames)."""
 from __future__ import annotations
 
 import random
@@ -35,8 +32,6 @@ def written(g) -> list[tuple[str, str]]:
 
 def main() -> int:
     args = sys.argv[1:]
-    most = int(args.pop(args.index("--at-most") + 1)) if "--at-most" in args else 0
-    args = [a for a in args if a != "--at-most"]
     games = int(args[0]) if args else 4
     frames = int(args[1]) if len(args) > 1 else 20
     plain = runs.program(runs.source())
@@ -81,7 +76,7 @@ def main() -> int:
     total = sum(map(len, fields.values()))
     print(f"check_fields: {total} fields the arcs of {len(fields)} network files write, {compared} of {fired} "
           f"firings compared, {len(wrong)} differ" + ("" if wrong else ": each holds what its arcs write"))
-    return 1 if len(wrong) > most or "the game" in wrong or not compared else 0
+    return 1 if wrong or not compared else 0
 
 
 if __name__ == "__main__":

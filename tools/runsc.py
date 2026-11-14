@@ -781,6 +781,7 @@ class Bindings:
         self.bases: dict[str, Path] = {}        # collection field -> the unit laying out a word of its address
         self.shared: dict[str, str] = {}        # field -> the field whose word it lives in
         self.memory: dict[str, str] = {}        # of those, a field the lowering keeps in another's word
+        self.slots: dict[str, tuple] = {}       # a field the lowering keeps in a slot's word -> that slot
         self.compiled: list[tuple] = []         # (Function, its statements as run) of every routine compiled
         self.inverse_skips: dict[str, str] = {} # sign-tested field -> the block its failure jumps to
         self.inverse_skipped: dict[str, set] = {}  # such a field -> where the test it names stands
@@ -874,7 +875,9 @@ class Bindings:
         self.registers |= {name for name, r in self.prog.records.items() if r.count is None and not r.stream
                            and not any(self.has_word(f"{name}.{f}") for f in r.fields)}
         for f, w in REGISTER_WORDS.items():
-            if "." not in w or w in self.io_fields or self.in_register(w):
+            if m := re.fullmatch(r"(\w+\.\w+)\[(\w+)\]", w):   # a slot's word: the current slot's
+                self.slots[f] = ("index", as_field(m[1]), ("name", m[2]))
+            elif "." not in w or w in self.io_fields or self.in_register(w):
                 REGISTER_LOCALS[f] = local(w) if "." in w else w
             elif self.shared.get(f, f) != self.shared.get(w, w):
                 self.shared[f] = self.memory[f] = self.shared.get(w, w)    # in the memory word another field names
@@ -981,18 +984,24 @@ class Bindings:
         if isinstance(tree, tuple):
             if (d := dotted_of(tree) if tree[:1] == ("field",) else None) in self.memory:
                 return as_field(self.memory[d])
+            if d in self.slots:
+                return self.slots[d]
             return tuple(self.in_words(x) for x in tree)
         if isinstance(tree, dict):
             return {k: self.in_words(v) for k, v in tree.items()}
         return tree
+
+    def lent(self) -> set[str]:
+        """The words the lowering lends another field: each named by the
+        field it is laid out for, a slot's by its text (objects.x[slot])."""
+        return set(self.memory.values()) | {runs.text_of(e) for e in self.slots.values()}
 
     def in_place(self, s) -> bool:
         """A run of a copy into the word its value is already in: no code."""
         r = self.prog.routines.get(s[1]) if s[0] == "run" else None
         if r is None or len(r.body) != 1 or r.body[0][0] != "set":
             return False
-        t, e = dotted_of(r.body[0][1]), dotted_of(r.body[0][2])
-        return bool(t and e and t != e and REGISTER_WORDS.get(t, t) == REGISTER_WORDS.get(e, e))
+        return in_place_set(r.body[0])
 
     def block_by_default(self):
         """A bound routine that names no convention is a BLOCK when no code
@@ -1431,7 +1440,8 @@ class Bindings:
         into the call and out of it."""
         if dotted in self.cell_of and unit is not None and self.bound[self.cell_of[dotted]].unit != unit:
             return dotted.split(".")[0] in self.registers and dotted not in self.placed and dotted not in self.pool
-        return (dotted.split(".")[0] in self.registers or dotted in REGISTER_LOCALS) and not self.stored(dotted)
+        return (dotted.split(".")[0] in self.registers or dotted in REGISTER_LOCALS) and not self.stored(dotted) \
+            and dotted not in self.slots
 
 
 class Unit:
@@ -4186,7 +4196,7 @@ class Function:
         it follows just stored: Minskytron's step_a ends with dac xa, and
         plot_a plots xa from AC (lio ya; dpy-i); the torpedo plots the x
         that diff stored (dac i mx1; dispt i, i my1)."""
-        body = self.unit.prog.routines[name].body if name in self.unit.prog.routines else []
+        body = self.binds.in_words(self.unit.prog.routines[name].body) if name in self.unit.prog.routines else []
         if body and body[-1][0] == "set" and body[-1][1][0] in ("field", "index") \
                 and dotted_of(body[-1][2]) == result:
             return body[-1][1][:3]
@@ -4536,10 +4546,21 @@ class UnionFind:
 PASSED = "@passed"
 
 
+def word_named(e) -> str | None:
+    """The word a field or a slot's field is kept in: its own, or the one
+    the lowering lends it (REGISTER_WORDS)."""
+    if e[0] == "index" and e[1][0] == "field" and e[2][0] == "name":
+        return runs.text_of(e)
+    d = dotted_of(e) if e[0] == "field" else None
+    return d and REGISTER_WORDS.get(d, d)
+
+
 def in_place_set(s) -> bool:
     """A copy of a field into another the PDP-1 keeps in the same word: no code."""
-    t, e = (dotted_of(s[1]), dotted_of(s[2])) if s[0] == "set" else (None, None)
-    return bool(t and e and t != e and REGISTER_WORDS.get(t, t) == REGISTER_WORDS.get(e, e))
+    if s[0] != "set" or s[1] == s[2]:
+        return False
+    t, e = word_named(s[1]), word_named(s[2])
+    return bool(t and t == e)
 
 
 def field_writes(r: runs.Routine) -> set[str]:
@@ -4584,11 +4605,13 @@ class SharedWords:
                 self.words.union([b.entry, *b.cells])
         for f, other in binds.shared.items():
             self.words.union([f, other])
+        for f, e in binds.slots.items():
+            self.words.union([f, runs.text_of(e)])
         self.shared = self.words.groups()       # root -> the fields that share its word
         self.exits: dict[str, dict] = {}        # a bound routine -> what each shared word holds where it ends
         self.settled = False                    # every entry and exit followed to its fixed point
         self.writes: dict[tuple, tuple] = {}    # routines run -> (the Records, the fields) what they fire writes
-        lent = set(binds.memory.values())
+        lent = binds.lent()
         # a lent word between firings: its own field at power on, and what every firing leaves there
         self.at_rest = {root: frozenset(names & lent) for root, names in self.shared.items() if names & lent}
         # a source line -> the Processors with a statement there: every copy of a Processor with
@@ -4672,7 +4695,7 @@ class Occupancy:
         self.entry = entry
         self.calls: list[tuple[str, dict]] = []    # (routine run, the binding's words as it starts)
         self.ends: list[dict] = []                  # the binding's words where the routine ends
-        self.lent = set(fn.binds.memory.values())   # a word lent within a firing: the field it is laid out for
+        self.lent = fn.binds.lent()                 # a word lent within a firing: the field it is laid out for
         self.loops: list[tuple[list, list]] = []   # (states at its breaks, states at its continues)
         self.labels: dict[str, list] = {}
         self.seen_labels: set[str] = set()
@@ -4743,7 +4766,7 @@ class Occupancy:
             names = state.get(g, frozenset())
             own = {x for x in self.members[g] if "." in x and x.split(".")[0] in written}
             if self.members[g] & self.lent:     # a lent word: followed field by field
-                own &= fields
+                own = {x for x in own if x.split("[")[0] in fields}
                 if own:                         # what the routines run leave there
                     out[g] = self.left(g, routines)
                     continue
@@ -4788,6 +4811,8 @@ class Occupancy:
             if (d := dotted_of(e)) is not None:
                 self.read(d, state, where)
         elif op == "index":
+            if (t := word_named(e)) in self.group:      # a slot's word lent within a firing
+                self.read(t, state, where)
             self.reads(e[2], state, where)
         elif op in ("call", "tuple"):
             for x in (e[2] if op == "call" else e[1]):
@@ -4797,7 +4822,7 @@ class Occupancy:
                 self.reads(x, state, where)
 
     def write(self, target, state: dict, copied=None):
-        name = target[1] if target[0] == "name" else dotted_of(target)
+        name = target[1] if target[0] == "name" else word_named(target) if target[0] == "index" else dotted_of(target)
         g = self.group.get(name)
         if g is None:
             return
@@ -4855,8 +4880,9 @@ class Occupancy:
                 for t in targets:
                     if t[0] != "index":
                         self.write(t, state)
-            elif s[1][0] != "index":
-                source = s[2][1] if s[2][0] == "name" else dotted_of(s[2]) if s[2][0] == "field" else None
+            else:
+                source = s[2][1] if s[2][0] == "name" else dotted_of(s[2]) if s[2][0] == "field" else \
+                    word_named(s[2]) if s[2][0] == "index" else None
                 self.write(s[1], state, copied=source)
             return state
         if op == "if":
@@ -5625,8 +5651,10 @@ def register_fields(g: graph.Graph, at: dict[str, str], prog: runs.Program, wire
     held = prog.kept_in
     for p, w in at.items():
         f = g.field(p)
-        if g.port(p) or w == f or wired and w in g.ports or w in prog.records or "[" in w:
+        if g.port(p) or w == f or w in prog.records:
             continue
+        if wired and w in g.ports:          # in the word its run wires the input or output to
+            w = prog.__dict__["inlined_words"][g.name, w]
         out[p] = f
         if held.setdefault(f, w) != w:
             raise BindError(f"{g.where}: {f} is kept in two registers, {held[f]} and {w}")
@@ -5682,14 +5710,25 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
             named = {at[p]: p for p in g.ports if p not in g.records}   # a whole Record keeps its own name
             at = {p: named.get(w, w) for p, w in at.items()}
         words, at = at, register_fields(g, at, prog, wired, io)
+        counts = {}
+        for t, b in g.transitions.items():  # a counter an inline loop counts in place: its call Record's field
+            n = sigs[b].counter if b in inlined and sigs[b].counter not in sigs[b].outputs else None
+            if n and f"{b}_call" in prog.records and n in prog.records[f"{b}_call"].fields:
+                src = next(a.place for a in g.arcs if a.transition == t and a.io == n and a.into)
+                counts[t, n] = f"{b}_call.{n}"
+                w = prog.__dict__["inlined_words"][g.name, words[src]] if wired and words[src] in g.ports else words[src]
+                if prog.kept_in.setdefault(counts[t, n], w) != w:
+                    raise BindError(f"{g.where}: {b} counts {n} in {prog.kept_in[counts[t, n]]} and {w}")
         owns = sorted({w for w in at.values() if "." not in w and w not in prog.records and not (wired and w in g.ports)})
         skip = {decl["skips"][0]} if "skips" in decl else set()
 # a copy into the word its value is already in is no code: on an else, it may go before the test
         ends = {t: {a.io: a.place for a in g.arcs if a.transition == t and a.io} for t, proc in g.transitions.items()
                 if proc in copier.values()}
         in_place = {(at[e["source"]], at[e["target"]]) for e in ends.values() if words[e["source"]] == words[e["target"]]}
+        in_place |= {(at[next(a.place for a in g.arcs if a.transition == t and a.io == n and a.into)], f)
+                     for (t, n), f in counts.items()}
         return graph.lower(whole, sigs, order + goes_on, graph.Lowering(at, word, copier, owns, skip, inlined, wired,
-                                                                        resumes, in_place))
+                                                                        resumes, in_place, counts))
     raise BindError(tried[0] if tried else f"{g.where}: {g.name}: no word for a value")
 
 

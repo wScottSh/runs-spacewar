@@ -1,0 +1,5 @@
+# Where an exploding object drifts to this frame: the game moves it, and
+# the drawing centers the cloud there.
+interface record explosion_place
+  x: word = 0
+  y: word = 0
