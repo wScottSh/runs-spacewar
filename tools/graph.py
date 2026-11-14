@@ -617,18 +617,22 @@ def partition(g: Graph, place: str, gs: set[str], typ: str | None, enums: dict[s
 
 
 def streams(g: Graph, fail) -> None:
-    """A stream's values run in one chain: each is taken by one transition on
-    each path, which gives the next (an emitter takes the stream so far and
-    gives it with its points after), so the lowering appends to the stream
-    in the chain's order."""
-    chain = chains(g)
+    """A stream's values run in one chain: an emitter takes the stream so
+    far and gives it with its points after, so the lowering appends in the
+    chain's order. Two transitions that take one stream place are ordered
+    by the wiring, or on two sides of one test, and the earlier gives its
+    points back to that place, where the later takes them."""
+    chain, out = chains(g), depends(g)
     for p in g.places:
         if g.whole(p) not in g.streams:
             continue
-        takers = [a.transition for a in g.arcs if a.place == p and a.into and a.io]
+        takers = sorted({a.transition for a in g.arcs if a.place == p and a.into and a.io})
         for i, a in enumerate(takers):
             for b in takers[i + 1:]:
-                if not any(exclusive(g, x, y) for x, y in zip(chain[a], chain[b])):
+                if apart(g, chain, a, b):
+                    continue
+                first = a if a in earlier(out, b) else b if b in earlier(out, a) else None
+                if first is None or not any(w.transition == first and w.place == p and not w.into for w in g.arcs):
                     fail(f"the stream value {p} is taken by {a} and {b}: a stream runs in one chain")
 
 
@@ -746,7 +750,7 @@ def depends(g: Graph) -> dict[str, set[str]]:
             else:
                 alone = not g.threaded(q) and all(u == w or apart(g, chain, u, w) for u, x in writes
                                               if overlap(g, q, x, read=False))
-                pairs.append((0 if alone else 1, w, r))
+                pairs.append((0 if alone else 1 if q == p else 2, w, r))
 
     def settle(cands):
         out = {t: set(ds) for t, ds in base.items()}
@@ -754,10 +758,10 @@ def depends(g: Graph) -> dict[str, set[str]]:
             if then not in earlier(out, first) and first not in earlier(out, then):
                 out[then].add(first)
         return out
-    tiers = [sorted(x for x in set(pairs) if x[0] == k) for k in (0, 1)]
-    out = settle(tiers[0] + tiers[1])
-    other = settle(tiers[0][::-1] + tiers[1][::-1])
-    for _, first, then in tiers[0] + tiers[1]:
+    tiers = [sorted(x for x in set(pairs) if x[0] == k) for k in (0, 1, 2)]
+    out = settle([x for tier in tiers for x in tier])
+    other = settle([x for tier in tiers for x in tier[::-1]])
+    for _, first, then in sorted(set(pairs)):
         if (first in earlier(out, then)) != (first in earlier(other, then)):
             raise GraphError(f"{g.where}: {g.name}: the wiring leaves open whether {then} comes after {first}, "
                              f"which share a place")

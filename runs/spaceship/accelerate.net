@@ -30,16 +30,12 @@ places
   accelerate_work.thrust_x
   accelerate_work.acceleration_x
   accelerate_work.position_x
-  moved: objects
   spaceship.nose_step_x
   spaceship.nose_step_y
   spaceship.torpedo_x
   spaceship.torpedo_y
   ship_nose.x
   ship_nose.y
-  aimed: pen
-  drawn: pen
-  marked: display
   walked: display
 
 transitions
@@ -76,9 +72,9 @@ arcs
   push_y.acceleration -> accelerate_work.acceleration_y
   accelerate_work.acceleration_y -> move_y.acceleration
   table[slot].dy -> move_y.velocity
-  move_y.velocity -> moved[slot].dy
+  move_y.velocity -> table[slot].dy
   table[slot].y -> move_y.place
-  move_y.place -> moved[slot].y
+  move_y.place -> table[slot].y
   move_y.position -> accelerate_work.position_y
   heading.sine -> aim_x.sine
   aim_x.direction -> accelerate_work.direction_x
@@ -90,12 +86,12 @@ arcs
   push_x.acceleration -> accelerate_work.acceleration_x
   accelerate_work.acceleration_x -> move_x.acceleration
   table[slot].dx -> move_x.velocity
-  move_x.velocity -> moved[slot].dx
+  move_x.velocity -> table[slot].dx
   table[slot].x -> move_x.place
-  move_x.place -> moved[slot].x
+  move_x.place -> table[slot].x
   move_x.position -> accelerate_work.position_x
-  moved[slot].x -> nose.x
-  moved[slot].y -> nose.y
+  table[slot].x -> nose.x
+  table[slot].y -> nose.y
   heading.sine -> nose.sine
   heading.cosine -> nose.cosine
   nose.step_x -> spaceship.nose_step_x
@@ -108,34 +104,34 @@ arcs
   ship_nose.y -> aim.nose_y
   heading.sine -> aim.sine
   heading.cosine -> aim.cosine
-  aim.x -> aimed.x
-  aim.y -> aimed.y
-  aim.down_x -> aimed.down_x
-  aim.down_y -> aimed.down_y
-  aim.out_x -> aimed.out_x
-  aim.out_y -> aimed.out_y
-  aim.out_down_x -> aimed.out_down_x
-  aim.out_down_y -> aimed.out_down_y
-  aim.in_down_x -> aimed.in_down_x
-  aim.in_down_y -> aimed.in_down_y
+  aim.x -> brush.x
+  aim.y -> brush.y
+  aim.down_x -> brush.down_x
+  aim.down_y -> brush.down_y
+  aim.out_x -> brush.out_x
+  aim.out_y -> brush.out_y
+  aim.out_down_x -> brush.out_down_x
+  aim.out_down_y -> brush.out_down_y
+  aim.in_down_x -> brush.in_down_x
+  aim.in_down_y -> brush.in_down_y
   points -> center.points
-  center.points -> marked
+  center.points -> points
   ship_nose.x -> walk
   ship_nose.y -> walk
-  aimed -> walk.brush
-  walk.brush -> drawn
-  marked -> walk.points
+  brush -> walk.brush
+  walk.brush -> brush
+  points -> walk.points
   walk.points -> walked
   switches -> after.switches
   seed -> after.seed
   after.seed -> seed
-  moved -> after.table
+  table -> after.table
   after.table -> table
   fleet -> after.fleet
   after.fleet -> fleet
   crew -> after.crew
   after.crew -> crew
-  drawn -> after.brush
+  brush -> after.brush
   after.brush -> brush
   walked -> after.points
   after.points -> points
