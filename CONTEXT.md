@@ -20,6 +20,14 @@ _Avoid_: spec, documentation (unqualified)
 Rewriting the original program into RUNS while the game stays exactly the same: the reference every later Port and Variant starts from (`../.github/CONTEXT.md`, Conversion). Its rules are pure and separate from the presentation, and the whole original presentation is still there: compiled for the PDP-1 it is the original game; run headless its rules run alone on any machine.
 _Avoid_: port, variant, re-vibe
 
+**Edition**:
+The RUNS source read against the Oracle image, which is the original (`../.github/CONTEXT.md`, Original, Edition). It carries everything the original does by default. A departure is an Exclusion, stated with its exit point, its evidence and who decided it, never a silence. The check: the rules run alone match the original everywhere except the listed exclusions.
+_Avoid_: "conversion with fixes"
+
+**Exclusion list**:
+The edition's stated departures from the original, each with its exit point, evidence and who decided it (`../.github/CONTEXT.md`, Exclusion list). Spacewar's is empty: `docs/exclusions.md` gives the evidence.
+_Avoid_: exceptions, waivers
+
 **RUNS source**:
 The game written in RUNS: Records, Processors and Networks. It is the game. It executes in the Evaluator and compiles to the Image.
 _Avoid_: RUNS Conversion, Realization, translation, RUNS text
@@ -70,7 +78,7 @@ Code whose effects nothing in the game can observe: the screen, the controls, th
 _Avoid_: rendering, I/O (unqualified)
 
 **Glitch**:
-Gameplay that emerges from the rules, which the designer did not foresee. A glitch is not a rule. The conversion states the rules completely, including what the PDP-1 supplied deterministically (its arithmetic, memory past an array, data run as code), and glitches emerge from them; it neither recreates nor removes one. A behavior is sorted by where its cause sits, never by intent (`../.github/CONTEXT.md`, Glitch).
+Gameplay that emerges from the rules, which the designer did not foresee. A glitch is not a rule. The conversion states the rules completely, including what the PDP-1 does the same way every time (its arithmetic, memory past an array, code the program runs), and glitches emerge from them; it neither recreates nor removes one. A behavior is sorted by following its data across the PDP-1's edge, never by intent: what comes in from a device or from core the program never set is an input, a value that only flows out to the scope is presentation, and everything else is the rules (`../.github/CONTEXT.md`, Glitch).
 _Avoid_: bug (when it means the original's behavior); "recreate" or "purge" a glitch; intended or unintended as a test
 
 **House rule**:
