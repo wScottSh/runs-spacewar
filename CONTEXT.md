@@ -34,10 +34,10 @@ _Avoid_: function, subroutine (except for the original's `jda` routines)
 
 **Input, output**:
 One value a Routine takes in, gives out, or both, with the kind of value it is: the source's `in name: kind`, `out name: kind` and `inout name: kind` lines. At each use the Network wires it to one field of a Record, a single slot of that field by default, or the whole field when the Routine indexes it itself. The rule is one input or output, one field, so every wire is written in the Network. Today 21 network inputs and outputs take a whole Record (`inout table: objects`); the user calls a bundle whose inputs are one game's Records a problem, and how to fix it is open. Routines with the same inputs and outputs can be swapped. The code still calls them ports (`expand_ports`, `prog.ports`).
-_Avoid_: Port (EGS keeps the word for the same game on other hardware, `../.github/CONTEXT.md` 330-356), parameter, argument, pin, binding (say the Network wires a field to an input or output)
+_Avoid_: Port (EGS keeps the word for the same game on other hardware, `../.github/CONTEXT.md`, Port), parameter, argument, pin, binding (say the Network wires a field to an input or output)
 
 **Port**:
-The same game, its Rules region untouched, run on other hardware by swapping its Realization Processors (`../.github/CONTEXT.md` 330-356). Swapping out the PDP-1 presentation is a Port; the Declarations, which never run, are left behind with it (Declarations, below).
+The same game, its Rules region untouched, run on other hardware by swapping its Realization Processors (`../.github/CONTEXT.md`, Port). Swapping out the PDP-1 presentation is a Port; the Declarations, which never run, are left behind with it (Declarations, below).
 _Avoid_: port for a Routine's input or output; port for this conversion (it is a Conversion)
 
 **Network**:
@@ -66,7 +66,7 @@ _Avoid_: driver
 A field with no initial value. It is unknown until the game sets it or the world gives it, and reading it while unknown is an error. The console's switches and the words core held at power-on are Unknown fields.
 
 **Presentation**:
-Code whose effects nothing in the game can observe: the screen, the controls, the pacing. What a piece of code is decides by what its effects reach, not by what it was written for. Its Records are marked `presentation`: the Realization region, as `game` marks the Rules region and `interface` a boundary Record. That every Record carries one of these kinds is this project's rule, after the enduring-games pattern, not a RUNS primitive (`../.github/CONTEXT.md` 131-135, 158-160).
+Code whose effects nothing in the game can observe: the screen, the controls, the pacing. What a piece of code is decides by what its effects reach, not by what it was written for. Its Records are marked `presentation`: the Realization region, as `game` marks the Rules region and `interface` a boundary Record. That every Record carries one of these kinds is this project's rule, after the enduring-games pattern, not a RUNS primitive (`../.github/CONTEXT.md`, Processor).
 _Avoid_: rendering, I/O (unqualified)
 
 **Glitch**:
@@ -74,8 +74,8 @@ Behavior the original has that its authors did not intend. It is part of the gam
 _Avoid_: bug (when it means the original's behavior)
 
 **House rule**:
-A deliberate change to the game: an edit to one Processor or one Network line. EGS calls the resulting game a Variant (`../.github/CONTEXT.md` 405-411).
-_Avoid_: mod; fork for the result (`../.github/CONTEXT.md` 427-429)
+A deliberate change to the game: an edit to one Processor or one Network line. EGS calls the resulting game a Variant (`../.github/CONTEXT.md`, Variant).
+_Avoid_: mod; fork for the result (`../.github/CONTEXT.md`, Variant)
 
 **Bound**:
 What stops a loop. Each loop of a Network is a loop bundle (a network file with a `counter` line): each pass takes one token of the counter, and the loop ends when it reaches its end or a guard stops it. Every loop must be bounded by something; whether loops must live in bundles is open with the user. The only unbounded loop is the game itself, tick after tick.
@@ -84,15 +84,15 @@ What stops a loop. Each loop of a Network is a loop bundle (a network file with 
 
 **SIMH**:
 The reference PDP-1 simulator, running the Oracle image. Its CPU semantics are frozen: we observe how it computes and never alter it.
-_Avoid_: Substrate (EGS keeps the word for the RUNS source itself, `../.github/CONTEXT.md` 79-86; the ADRs still call SIMH the Substrate), emulator (unqualified), VM
+_Avoid_: Substrate (EGS keeps the word for the RUNS source itself, `../.github/CONTEXT.md`, Neutral Substrate; the ADRs still call SIMH the Substrate), emulator (unqualified), VM
 
 **Assembler**:
 `macro1`, the canonical PDP-1 Macro assembler. It turns Ground Truth into the Oracle image and the listing whose symbols name where each routine and word lives.
 _Avoid_: compiler
 
 **Evaluator**:
-The program that parses the RUNS source, checks it statically, then runs it: a runtime in the sense of `../.github/CONTEXT.md` 478-480, not a hand-compilation.
-_Avoid_: interpreter, emulator, reference implementation (`../.github/CONTEXT.md` 483-491 keeps that for a blessed body)
+The program that parses the RUNS source, checks it statically, then runs it: a runtime in the sense of `../.github/CONTEXT.md`, Flagged ambiguities, not a hand-compilation.
+_Avoid_: interpreter, emulator, reference implementation (`../.github/CONTEXT.md`, Flagged ambiguities keeps that for a blessed body)
 
 **Compiler**:
 `runsc`. It turns the RUNS source and the Declarations into the Compiled image, by way of the lift's C dialect (`docs/c-lift/README.md`).
@@ -165,7 +165,7 @@ These come from the earlier verification method. They appear in ADRs 0001–0016
 
 - **Oracle** (as a suite), **Portable Oracle**, **Trace**, **Pinned inputs**, **Coverage** (as the definition of done): the JS Oracle harness and its coverage gate, removed.
 - **RUNS Conversion**: the RUNS source, back when it could not execute.
-- **Realization**, **Exact Realization**, **Variant**: a playable recreation built from the Conversion. The RUNS source plays now. A deliberate change is a House rule. Realization and Variant now carry their EGS senses (`../.github/CONTEXT.md` 136-142, 405-411); only the old sense is retired.
+- **Realization**, **Exact Realization**, **Variant**: a playable recreation built from the Conversion. The RUNS source plays now. A deliberate change is a House rule. Realization and Variant now carry their EGS senses (`../.github/CONTEXT.md`, Processor and Variant); only the old sense is retired.
 
 ## Example dialogue
 
