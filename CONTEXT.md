@@ -41,7 +41,7 @@ One rule, stateless, one `.runs-prim` file. It names no Records: its whole contr
 _Avoid_: function, subroutine (except for the original's `jda` routines)
 
 **Input, output**:
-One value a Routine takes in, gives out, or both, with the kind of value it is: the source's `in name: kind`, `out name: kind` and `inout name: kind` lines. At each use the Network wires it to one field of a Record, a single slot of that field by default, or the whole field when the Routine indexes it itself. The rule is one input or output, one field, so every wire is written in the Network. Today 21 network inputs and outputs take a whole Record (`inout table: objects`); the user calls a bundle whose inputs are one game's Records a problem, and how to fix it is open. Routines with the same inputs and outputs can be swapped. The code still calls them ports (`expand_ports`, `prog.ports`).
+One value a Routine takes in, gives out, or both, with the kind of value it is: the source's `in name: kind`, `out name: kind` and `inout name: kind` lines. At each use the Network wires it to one field of a Record, a single slot of that field by default, or the whole field when the Routine indexes it itself. The rule is one input or output, one field, so every wire is written in the Network. 21 network inputs and outputs take the whole object table (`inout table: objects`); the user calls a bundle whose inputs are one game's Records a problem, and how to fix it is open. Routines with the same inputs and outputs can be swapped. The code still calls them ports (`expand_ports`, `prog.ports`).
 _Avoid_: Port (EGS keeps the word for the same game on other hardware, `../.github/CONTEXT.md`, Port), parameter, argument, pin, binding (say the Network wires a field to an input or output)
 
 **Port**:
@@ -107,7 +107,7 @@ _Avoid_: interpreter, emulator, reference implementation (`../.github/CONTEXT.md
 _Avoid_: assembler, transpiler
 
 **Declarations**:
-The half of one platform's package that never runs (`pdp1/*.toml` for the PDP-1): where that machine keeps each value and how it calls each routine, tape order, devices. They record the original programmer's arbitrary choices, never game logic, and they may name game Records because they never run. A port leaves them behind with that platform's presentation. They only shrink (`tools/check_declarations.py`).
+The half of one platform's package that never runs (`pdp1/*.toml` for the PDP-1): where that machine keeps each value and how it calls each routine, tape order, devices. They record the original programmer's arbitrary choices, never game logic, and they may name game Records because they never run. A Port leaves them behind with that platform's presentation. They only shrink (`tools/check_declarations.py`).
 _Avoid_: binding (retired: it read as a layer to solve what is hard to write in RUNS), mapping, layout (layout play reads belongs to the RUNS source)
 
 **Image**:
@@ -117,7 +117,7 @@ _Avoid_: binary (unqualified), tape, ROM
 ### Verification
 
 **Oracle**:
-The original binary. The RUNS source, compiled with the Declarations, rebuilds the Oracle image byte for byte (same sha256). Comparing play proves only the inputs tested; the identical image proves every input, presentation included (`../.github/CONTEXT.md`, Conversion). The Checks and the Mutation check are how the work gets there and stays there, not the oracle.
+The original binary. The RUNS source, compiled with the Declarations, rebuilds the Oracle image byte for byte (same sha256). Comparing play proves only the inputs tested; the identical image proves every input, presentation included (`../.github/CONTEXT.md`, Conversion). The user, 2026-11-15: "The only way for an oracle to prove that it is exactly the same is that when you compile it, it becomes the exact same binary again." The Checks and the Mutation check are how the work gets there and stays there: evidence, not the oracle. ADR-0014's "no finite suite proves equivalence" is about Checks, not the image.
 
 **Check**:
 A comparison of one Routine fired in the Evaluator with Ground Truth running in SIMH, on the same Records.
@@ -165,7 +165,6 @@ A spaceship's shape (the needle and the wedge). At each new game the outline com
 - **"Source"** can mean Ground Truth, the Translator's notes in `source/`, or the RUNS source. Always qualify it.
 - **"Gate"**: ADR-0011 and ADR-0017 mean the Gate as defined here. `INTENT.md`'s "full gate" means the full Mutation check, which runs by hand.
 - **"Tunables"** names both the Record of numbers and the Processors the original executes with `xct`.
-- **Checks are evidence; the image is the proof.** A passing Check proves the inputs it ran. The identical image is what the user names as the proof (2026-11-15: "The only way for an oracle to prove that it is exactly the same is that when you compile it, it becomes the exact same binary again"). ADR-0014's "no finite suite proves equivalence" is about Checks, not the image.
 
 ## Retired terms
 

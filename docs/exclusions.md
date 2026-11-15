@@ -1,6 +1,6 @@
 # Spacewar's exclusion list
 
-The original is the binary: `build/oracle.rim`, sha256 `8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf`, assembled from `source/spacewar3.1_complete.txt`. The RUNS source in `runs/` is its edition. The edition carries everything the binary does, and any departure is an exclusion stated here, with its exit point, its evidence, and who decided it (`../.github/CONTEXT.md`, Original, Edition, Exclusion, Exclusion list; `../runs-spec/README.md`, The binary is the original; the RUNS source is its edition).
+The original is the binary, identified by its sha256, `8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf`. The repo keeps no binary: it keeps the source (`source/spacewar3.1_complete.txt`), the toolchain and the hash, and `tools/oracle.sh` rebuilds the binary (`build/oracle.rim`) for the hash to verify. The RUNS source in `runs/` is its edition. The edition carries everything the binary does, and any departure is an exclusion stated here, with its exit point, its evidence, and who decided it (`../.github/CONTEXT.md`, Original, Edition, Exclusion, Exclusion list; `../runs-spec/README.md`, The binary is the original; the RUNS source is its edition).
 
 ## Exclusions
 
@@ -24,4 +24,4 @@ The owner, approving the edition stance on 2026-11-15, which gives Spacewar's li
 
 ## Not yet checked
 
-The edition's check, the rules run alone against the binary with differences allowed only at listed exclusions, has no tool yet (`todo.md`). Today `tools/check_frame.py 300 alone` compares the game with the presentation removed against the whole program, and binary identity covers the rest.
+The edition's check, the rules run alone against the binary with differences allowed only at listed exclusions, has no tool yet (`todo.md`). `tools/check_frame.py 300 alone` compares the game with the presentation removed against the whole program, and binary identity covers the rest.
