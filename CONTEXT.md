@@ -30,10 +30,10 @@ _Avoid_: function, subroutine (except for the original's `jda` routines)
 
 **Input, output**:
 One value a Routine takes in, gives out, or both, with the kind of value it is: the source's `in name: kind`, `out name: kind` and `inout name: kind` lines. At each use the Network wires it to one field of a Record, a single slot of that field by default, or the whole field when the Routine indexes it itself. Never a whole Record: one input or output, one field, so every wire is written in the Network. Routines with the same inputs and outputs can be swapped. The code still calls them ports (`expand_ports`, `prog.ports`).
-_Avoid_: Port (EGS keeps the word for the same game on other hardware, `../.github/CONTEXT.md` 313-339), parameter, argument, pin, binding (say the Network wires a field to an input or output)
+_Avoid_: Port (EGS keeps the word for the same game on other hardware, `../.github/CONTEXT.md` 330-356), parameter, argument, pin, binding (say the Network wires a field to an input or output)
 
 **Port**:
-The same game, its Rules region untouched, run on other hardware by swapping its Realization Processors (`../.github/CONTEXT.md` 313-339). Swapping out the PDP-1 presentation is a Port; the Declarations, which never run, are left behind with it (Declarations, below).
+The same game, its Rules region untouched, run on other hardware by swapping its Realization Processors (`../.github/CONTEXT.md` 330-356). Swapping out the PDP-1 presentation is a Port; the Declarations, which never run, are left behind with it (Declarations, below).
 _Avoid_: port for a Routine's input or output; port for this conversion (it is a reorganization of the original, not a re-vibe or a rewrite)
 
 **Network**:
@@ -70,11 +70,11 @@ Behavior the original has that its authors did not intend. It is part of the gam
 _Avoid_: bug (when it means the original's behavior)
 
 **House rule**:
-A deliberate change to the game: an edit to one Processor or one Network line. EGS calls the resulting game a Variant (`../.github/CONTEXT.md` 388-394).
-_Avoid_: mod; fork for the result (`../.github/CONTEXT.md` 410-412)
+A deliberate change to the game: an edit to one Processor or one Network line. EGS calls the resulting game a Variant (`../.github/CONTEXT.md` 405-411).
+_Avoid_: mod; fork for the result (`../.github/CONTEXT.md` 427-429)
 
 **Bound**:
-The most times a loop or a `jump` may run, stated in the RUNS source. It is RUNS's check on the conversion, not a rule of the game, and it compiles to nothing. The vision bounds a loop by a count fixed before it starts, with no `break` or `continue` (`../.github/CONTEXT.md` 344-347), and keeps the only unbounded loop in the tick feedback through `state:` Records (204-206). Today's `loop at most N:` exits early with `break`, a gap.
+The most times a loop or a `jump` may run, stated in the RUNS source. It is RUNS's check on the conversion, not a rule of the game, and it compiles to nothing. The vision bounds a loop by a count fixed before it starts, with no `break` or `continue` (`../.github/CONTEXT.md` 361-364), and keeps the only unbounded loop in the tick feedback through `state:` Records (204-206). Today's `loop at most N:` exits early with `break`, a gap.
 
 ### Toolchain
 
@@ -87,8 +87,8 @@ _Avoid_: Substrate (EGS keeps the word for the RUNS source itself, `../.github/C
 _Avoid_: compiler
 
 **Evaluator**:
-The program that parses the RUNS source, checks it statically, then runs it: a runtime in the sense of `../.github/CONTEXT.md` 461-463, not a hand-compilation.
-_Avoid_: interpreter, emulator, reference implementation (`../.github/CONTEXT.md` 466-474 keeps that for a blessed body)
+The program that parses the RUNS source, checks it statically, then runs it: a runtime in the sense of `../.github/CONTEXT.md` 478-480, not a hand-compilation.
+_Avoid_: interpreter, emulator, reference implementation (`../.github/CONTEXT.md` 483-491 keeps that for a blessed body)
 
 **Compiler**:
 `runsc`. It turns the RUNS source and the Declarations into the Compiled image, by way of the lift's C dialect (`docs/c-lift/README.md`).
@@ -158,7 +158,7 @@ These come from the earlier verification method. They appear in ADRs 0001–0016
 
 - **Oracle** (as a suite), **Portable Oracle**, **Trace**, **Pinned inputs**, **Coverage** (as the definition of done): the JS Oracle harness and its coverage gate, removed.
 - **RUNS Conversion**: the RUNS source, back when it could not execute.
-- **Realization**, **Exact Realization**, **Variant**: a playable recreation built from the Conversion. The RUNS source plays now. A deliberate change is a House rule. Realization and Variant now carry their EGS senses (`../.github/CONTEXT.md` 136-142, 388-394); only the old sense is retired.
+- **Realization**, **Exact Realization**, **Variant**: a playable recreation built from the Conversion. The RUNS source plays now. A deliberate change is a House rule. Realization and Variant now carry their EGS senses (`../.github/CONTEXT.md` 136-142, 405-411); only the old sense is retired.
 
 ## Example dialogue
 
