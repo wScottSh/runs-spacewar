@@ -78,7 +78,7 @@ A deliberate change to the game: an edit to one Processor or one Network line. E
 _Avoid_: mod; fork for the result (`../.github/CONTEXT.md`, Variant)
 
 **Bound**:
-What stops a loop. Each loop of a Network is a loop bundle (a network file with a `counter` line): each pass takes one token of the counter, and the loop ends when it reaches its end or a guard stops it. Every loop must be bounded by something; whether loops must live in bundles is open with the user. The only unbounded loop is the game itself, tick after tick.
+What stops a loop: a counter. Each loop in the source is written as a loop bundle (a network file with a `counter` line): each pass takes one token of the counter, and the loop ends when it reaches its end or a guard stops it. Every loop must be bounded by something; it is a rule for the whole graph, and a loop need not live in a bundle (user, 2026-11-14); the loader reads only the bundle form so far. The only unbounded loop is the game itself, tick after tick.
 
 ### Toolchain
 
