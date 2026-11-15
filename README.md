@@ -1,12 +1,12 @@
 # Spacewar! 3.1 in RUNS
 
-Spacewar! 3.1 (MIT, 1962) written in RUNS, verbatim: the exact game over every sequence of inputs from power-on, glitches included. RUNS is specified in [runs-spec](https://github.com/enduring-game-standard/runs-spec).
+Spacewar! 3.1 (MIT, 1962) converted to RUNS: the reference for the game, the same game over every sequence of inputs from power-on, glitches included, with its rules separate from its presentation. The RUNS source compiles back to the original tape image byte for byte; that identical image is the oracle. RUNS is specified in [runs-spec](https://github.com/enduring-game-standard/runs-spec).
 
 `INTENT.md` says what RUNS is for and what this conversion settled. `docs/decisions.tsv` logs each decision with its evidence. `docs/adr/` holds the architecture decisions, including the earlier verification method's; ADR-0017 says which still hold. `CONTEXT.md` is the glossary.
 
 ## Layout
 
-- `runs/` is the game. Records and Networks are in `*.runs`, Processors in `*.runs-prim`.
+- `runs/` is the game: Records in `*.runs`, one Processor per `*.runs-prim` file, one Network per `*.net` file of places, transitions and arcs.
 - `pdp1/` holds the PDP-1 declarations, the half of the PDP-1 package that never runs: how the PDP-1 stores and calls what the RUNS source states. They hold only choices that play cannot observe. `pdp1/README.md` states the contract.
 - `tools/runs.py` is the Evaluator. It parses RUNS, checks it, and runs it.
 - `tools/runsc.py` compiles the RUNS source and the declarations back to the original tape image, byte for byte. It emits the lift's C dialect, and `tools/pdp1cc` compiles that.

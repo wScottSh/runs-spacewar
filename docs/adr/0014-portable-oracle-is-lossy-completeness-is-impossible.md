@@ -1,5 +1,7 @@
 # The Portable Oracle is a lossy projection with a fault-model residual — completeness is impossible, not deferred
 
+**Amended 2026-11-15.** The impossibility holds for Checks and Vectors. The user names the identical binary as the oracle that proves the conversion ("The only way for an oracle to prove that it is exactly the same is that when you compile it, it becomes the exact same binary again"; `../.github/CONTEXT.md`, Conversion). This ADR doesn't apply to the image.
+
 Status: amended by ADR-0017 (only the impossibility holds; the Portable Oracle's projection rules went with ADR-0015). Previously: accepted (closes, permanently, the recurring "can we make a perfect/complete Oracle?" question; the consequence of ADR-0012's fault-model clause applied to the Realization-facing decode)
 
 This ADR exists to **end a conversation that has recurred at least three times.** The answer to "can the Oracle — or the Portable Oracle — be made perfect/complete?" is not "not yet" and not "it's hard." It is **impossible**, on three independent theoretical results *plus this project's own prior doctrine*. If you are reading this because you are tempted to build a *completeness witness* for the Portable Oracle, or to "just implement the complete oracle" — **stop, and read this first. It already answers you.**

@@ -192,7 +192,9 @@ The hardest compile sites after it: the outline (logic kept as instructions in a
 
 ## Round 13 (autonomous): bring every doc in line with the EGS vision
 
-The user, 2026-11-11: the org's `.github/CONTEXT.md` is correct, and every doc that strays from it gets fixed, unattended. It supersedes Round 12's "The riskiest part: the Network's form (settled)": the vision's Network is the explicit bipartite wiring of Records to Processors, a graph whose order is derived from the wiring, never authored (EGS CONTEXT.md 162-227). This also reverses decisions row 240 ("asking was deferring to an org document that is wrong for exact conversions"): the vision's answer to two Processors writing one Record is a threaded chain of values (EGS CONTEXT.md 194-196), not an authored order.
+The user, 2026-11-11: the org's `.github/CONTEXT.md` is correct, and every doc that strays from it gets fixed, unattended. This round set aside Round 12's "The riskiest part: the Network's form (settled)": it read the Network's order as computed from the wiring rather than written down, and reversed decisions row 240 ("asking was deferring to an org document that is wrong for exact conversions") by reading two Processors writing one Record as a threaded chain of values (EGS CONTEXT.md 194-196).
+
+Superseded 2026-11-14/15 by the user: the order lives in the Network, and its wires and guards write it down ("Where else would the order come from? … That is literally writing it down"); only a Processor changes a Record, and it may put the value back in the same place. Round 12's reading of the order stands; the threaded reading here does not.
 
 Playbook (autonomous run), verbatim:
 - [x] 1. State the exit condition as a checkable predicate before the first iteration (tests green, repro fixed, all N PRs merged, pixel-diff zero).
@@ -210,7 +212,7 @@ Predicate: every Markdown doc of runs-spec, runs-spacewar, and the RUNS statemen
 - [x] Vocabulary greps, check_examples, gate (check_all passed in 359s; image identical to the original, 8744e9c9; purity 0 new; declarations 331/331)
 - [x] Map re-charted: destination and notes to the vision, open designs as fog or tickets
 - [ ] Open (for the user): the designs the vision needs that nobody has decided, on map 45's Not yet specified: the Network as a literal graph and its file, threading the shared Records, loops inside a tick, guards as a partition, one file per Processor, the source's keywords against the vision's, a check that measures the vision
-- [ ] Open: `CLAUDE.md` says a `run` passes only which slot, the user's standing order; the input/output syntax (#52) passes wires instead. The user settles which stands.
+- [x] Moot: the source has no `run`; network files wire values by arcs and pass which slot as `routine(slot)`.
 
 ## Open with the user (raised 2026-11-14; none decided)
 
@@ -220,5 +222,17 @@ The user found three rules applied without their explicit decision. Each stays a
    Was: The user's model: a Record is a writable number; a Processor pulls it out, changes it, and may drop it back in the same field. Built: that holds from tick to tick, but within one tick only one Processor may write a given field (CONTEXT.md 90-92), which is why scratch Records such as `accelerate_work` exist. Not decided: whether two steps in one tick may write the same field. Also open: what "within one tick" means to the user, who said a tick is the unit and nothing happens between ticks.
 2. **Loops only in bundles.** The user approved the amendment on 2026-11-12 ("looks good", CONTEXT.md fa5e7a5) but now says boundedness is a rule for the whole graph, not for bundles. The bundle part was the assistant's addition, made to simplify the tools; the counter is what bounds a loop. Proposed: "every loop within a tick runs through a counter that only counts down", with bundling optional.
 3. **Granularity was never presented.** The user asked on 2026-11-11 to decompose "as granular as possible" into shared primitives, with bundles as network files. Built: 152 Processor files (118 with 3 lines of logic or fewer; `copy` used 82 times) cut at the grain of a few PDP-1 instructions, and 58 network files; `draw_outline` is still 68 lines. Not discussed: what the smallest piece is, sharing across games, and naming for a package registry. Talk before splitting further.
+4. **The order of the process.** The user calls the bottom-up path from C to the net the wrong order: each deep module should become one large Processor that gives the tick's shape, then be refactored down into game-logic groupings. A better, automatable process is open (2026-11-15).
+5. **The compiler.** The user has said no compiler change (2026-11-11 06:42: "if there are any changes to the compiler, we've done it wrong"), a general PDP-1 compiler (2026-11-11 10:01), and PDP-1 specifics are the compiler's job (2026-11-14). Not reconciled. `CLAUDE.md` states the coordinator's reading (one general compiler per machine, no game's logic or timing in it), pending the user.
+6. **MAPS** notation and any MAPS-RUNS relation are unsettled and out of scope for now (2026-11-15: "I want to approach maps later").
+7. **What done means beyond purity 0** has not been stated by the user.
+
+## Pending doc and comment work (audit 2026-11-15)
+
+- [ ] Impurities the purity report does not count, a gap in the meter: 83 `copy` transitions in network files and the `handoff` Record (register carries), PDP-1 machine detail in the RUNS source by the rule-or-machine test (`../runs-spec/CONVERSION_PROCESS.md`, Rule or machine). Also the 29 `*_work.runs` scratch Records. Make `check_purity.py` count them; don't hide them.
+- [ ] `runs/` header comments: 28 `*_work.runs` headers say "each written once", and `runs/outlines/copy_side.runs-prim:1` says "a fresh place", the write-once rule the user overturned on 2026-11-14. Reword with the commit that reworks those Records (it triggers the suite).
+- [ ] `INTENT.md`, the paragraph on what `tools/runs.py` checks, and `pdp1/README.md`'s line on `runs.check`: both still describe `reads:`/`writes:` checks. Restate them from `tools/runs.py` and `tools/graph.py` as they are.
+- [ ] `INTENT.md`, "How the original's routines map", the machine table in "What the conversion showed", and "Verified": they describe the source before network files (`run`, `wait`, `reads:`/`writes:`, `loop at most`, `inertia_x`/`inertia_y`). Restate them against the network files.
+- [ ] Loop bundles: which counters hold for every input, and how the gate judges a changed counter, restated for loop bundles (the old `loop at most N` table is gone from `INTENT.md`).
 
 - Tool comments still say "order derived, never authored" or "states no order" (`tools/check_vision.py` 26, `tools/runsc.py` 4984, `tools/check_names.py` 1): reword to "the wires and guards state the order" with the next commit that touches those tools. Vision citations in tool comments (`tools/check_vision.py`, `tools/graph.py`, `tools/folds.py`) still use the line numbers from before CONTEXT.md gained **Conversion** (313-328, 2026-11-14): add 17 to any at or past 313 with the next commit that touches those tools.

@@ -1,5 +1,7 @@
 # Syntax for inputs, outputs and their wiring
 
+**Superseded.** The `run`-and-header-line wiring below was replaced on 2026-11-11 by network files with arcs (user: "yes, build the two-level arcs version"); see `../runs-spec/NETWORK_TOPOLOGY.md`, Network files. The `in`/`out`/`inout` lines on Processors still stand. `owns` scratch is gone; the user has since questioned interim scratch Records (2026-11-14). Kept as the record of #52.
+
 Decided with the user, 2026-11-11, in "Syntax for Ports and their wiring in the RUNS
 text" (#52). The spec's wording and a runnable example land with "Ports in the Evaluator
 and runsc" (#53), when the Evaluator reads this syntax.

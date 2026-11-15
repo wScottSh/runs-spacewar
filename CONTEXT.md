@@ -1,6 +1,6 @@
 # Spacewar! 3.1 in RUNS
 
-Spacewar! 3.1 (1962 PDP-1 assembly) written in RUNS, verbatim: the same game over every sequence of inputs from power-on, glitches included. Nothing is asserted about the game that was not checked against the original running as itself.
+Spacewar! 3.1 (1962 PDP-1 assembly) converted to RUNS, exactly: the same game over every sequence of inputs from power-on, glitches included. Nothing is asserted about the game that was not checked against the original running as itself.
 
 ## Language
 
@@ -16,28 +16,32 @@ _Avoid_: spec, documentation (unqualified)
 
 ### The conversion
 
+**Conversion**:
+Rewriting the original program into RUNS while the game stays exactly the same: the reference every later Port and Variant starts from (`../.github/CONTEXT.md`, Conversion). Its rules are pure and separate from the presentation, and the whole original presentation is still there: compiled for the PDP-1 it is the original game; run headless its rules run alone on any machine.
+_Avoid_: port, variant, re-vibe
+
 **RUNS source**:
 The game written in RUNS: Records, Processors and Networks. It is the game. It executes in the Evaluator and compiles to the Image.
 _Avoid_: RUNS Conversion, Realization, translation, RUNS text
 
 **Record**:
-Anything the game remembers, one value or a fixed-size collection. All game state is Records, globals included. The vision writes a Record once and never overwrites it (`../.github/CONTEXT.md` 90-92); today's source updates Records in place, a gap.
+Anything the game remembers, one value or a fixed-size collection. All game state is Records, globals included. Only a Processor changes a Record: it takes the value out, computes, and may put the result back in the same place (`../.github/CONTEXT.md`, Record). A Record holds data only, never logic.
 _Avoid_: global, variable, state (unqualified)
 
 **Processor**:
-One rule, stateless. In the vision it names no Records: its whole contract is its inputs and outputs, and the Network wires Records to them at each use (`../.github/CONTEXT.md` 166-169). Today every Processor in `runs/` still names the Records it reads and writes (`reads:`, `writes:`), and none has an input or output line yet, a gap.
+One rule, stateless, one `.runs-prim` file. It names no Records: its whole contract is its inputs and outputs, and the Network wires a Record field to each at each use (`../.github/CONTEXT.md`, Network).
 _Avoid_: function, subroutine (except for the original's `jda` routines)
 
 **Input, output**:
-One value a Routine takes in, gives out, or both, with the kind of value it is: the source's `in name: kind`, `out name: kind` and `inout name: kind` lines. At each use the Network wires it to one field of a Record, a single slot of that field by default, or the whole field when the Routine indexes it itself. Never a whole Record: one input or output, one field, so every wire is written in the Network. Routines with the same inputs and outputs can be swapped. The code still calls them ports (`expand_ports`, `prog.ports`).
+One value a Routine takes in, gives out, or both, with the kind of value it is: the source's `in name: kind`, `out name: kind` and `inout name: kind` lines. At each use the Network wires it to one field of a Record, a single slot of that field by default, or the whole field when the Routine indexes it itself. The rule is one input or output, one field, so every wire is written in the Network. Today 21 network inputs and outputs take a whole Record (`inout table: objects`); the user calls a bundle whose inputs are one game's Records a problem, and how to fix it is open. Routines with the same inputs and outputs can be swapped. The code still calls them ports (`expand_ports`, `prog.ports`).
 _Avoid_: Port (EGS keeps the word for the same game on other hardware, `../.github/CONTEXT.md` 330-356), parameter, argument, pin, binding (say the Network wires a field to an input or output)
 
 **Port**:
 The same game, its Rules region untouched, run on other hardware by swapping its Realization Processors (`../.github/CONTEXT.md` 330-356). Swapping out the PDP-1 presentation is a Port; the Declarations, which never run, are left behind with it (Declarations, below).
-_Avoid_: port for a Routine's input or output; port for this conversion (it is a reorganization of the original, not a re-vibe or a rewrite)
+_Avoid_: port for a Routine's input or output; port for this conversion (it is a Conversion)
 
 **Network**:
-The game's skeleton. It is the explicit bipartite wiring of Records to Processors, a colored Petri net whose wires and guards state the order of execution (`../.github/CONTEXT.md` 162-170, 188-199). The Network as written today is structured code: it fires Processors and other Networks in the original's order, wires Records to their inputs and outputs, chooses with guards, iterates with bounds, and writes nothing. It falls short of the graph. Only the Top Networks name the game's Records; a Network below them has inputs and outputs of its own and passes them down. A Network may also own Records that only it touches, each written before it is read in every firing (scratch, never memory). Only the Network that walks the slots holds slot numbers; a slot the game computes lives in a Record.
+The game's skeleton, written as network files (`runs/**/*.net`): places, transitions and the arcs between them, a colored Petri net (`../.github/CONTEXT.md`, Network). The arcs and their guards write down the order; nothing else holds it. A guard tests a value a Record holds and is part of its arc. Only the Network that walks the slots holds slot numbers; a slot the game computes lives in a Record.
 _Avoid_: scheduler, main loop (when it means the Network, not the original's code)
 
 **Routine**:
@@ -45,17 +49,17 @@ A Processor or a Network.
 _Avoid_: calc routine (that is a game term, below)
 
 **Top Network**:
-A Network nothing fires. Its contract is the game's boundary with presentation: the boundary Records. Spacewar has three: two Start Networks and the frame. The vision names inbound boundary Records `requires:` and outbound ones `produces:` (`../.github/CONTEXT.md` 272-275); today's source names them `reads:` and `writes:`, and uses `requires:` for a precondition, a gap.
+A Network nothing fires. Its `requires:` and `produces:` lines name the boundary Records, what the world writes before a tick and reads after (`../.github/CONTEXT.md`, Boundary Record). Spacewar has three: `tick`, which the Host fires once a tick, and two Start Networks. `requires:` also still states a precondition in two files (`requires: slot < 2`), a second meaning of one keyword.
 
 **Start Network**:
 The Top Network the Host fires once when the operator starts the machine, chosen by the start address (4 or 5).
 
-**Frame**:
-One firing of the frame Top Network: one pass of the original's main loop, from `ml0` to its jump back. The Frame seam, where a check compares state, is its start. The vision's tick (`../.github/CONTEXT.md` 162-163, 197-199) is the nearest EGS term. Whether a Frame is one tick is open: the Host serves a `wait` inside a firing of the frame (`runs/frame.runs`), and the vision's runtime touches boundary Records only before and after a tick (273-274).
-_Avoid_: tick (unqualified), step
+**Tick**:
+One firing of `tick` (`runs/game/tick.net`): a frame of play, one pass of the original's main loop from `ml0` to its jump back, or, after the halt that shows the scores, the operator's answer (`pause.phase` says which). The Frame seam, where a check compares state, is the start of a frame. Nothing computes between ticks.
+_Avoid_: step
 
 **Host**:
-Whatever fires the Top Networks and serves a `wait`. It shows what leaves the game and supplies what comes in. It plays the part the vision gives the Runtime, which writes what comes in before a tick and reads what leaves after (`../.github/CONTEXT.md` 282-286); a `wait` inside a firing is the difference, and it is open.
+Whatever fires the Top Networks. It writes the inbound boundary Records before a tick and reads the outbound ones after (`../.github/CONTEXT.md`, Runtime).
 _Avoid_: driver
 
 **Unknown field**:
@@ -74,7 +78,7 @@ A deliberate change to the game: an edit to one Processor or one Network line. E
 _Avoid_: mod; fork for the result (`../.github/CONTEXT.md` 427-429)
 
 **Bound**:
-The most times a loop or a `jump` may run, stated in the RUNS source. It is RUNS's check on the conversion, not a rule of the game, and it compiles to nothing. The vision bounds a loop by a count fixed before it starts, with no `break` or `continue` (`../.github/CONTEXT.md` 361-364), and keeps the only unbounded loop in the tick feedback through `state:` Records (204-206). Today's `loop at most N:` exits early with `break`, a gap.
+What stops a loop. Each loop of a Network is a loop bundle (a network file with a `counter` line): each pass takes one token of the counter, and the loop ends when it reaches its end or a guard stops it. Every loop must be bounded by something; whether loops must live in bundles is open with the user. The only unbounded loop is the game itself, tick after tick.
 
 ### Toolchain
 
@@ -103,6 +107,9 @@ The tape image (`.rim`) the PDP-1 loads. The **Oracle image** is the Assembler's
 _Avoid_: binary (unqualified), tape, ROM
 
 ### Verification
+
+**Oracle**:
+The original binary. The RUNS source, compiled with the Declarations, rebuilds the Oracle image byte for byte (same sha256). Comparing play proves only the inputs tested; the identical image proves every input, presentation included (`../.github/CONTEXT.md`, Conversion). The Checks and the Mutation check are how the work gets there and stays there, not the oracle.
 
 **Check**:
 A comparison of one Routine fired in the Evaluator with Ground Truth running in SIMH, on the same Records.
@@ -146,11 +153,11 @@ A spaceship's shape (the needle and the wedge). At each new game the outline com
 
 ## Flagged ambiguities
 
-- **"Oracle"** now means three things: the Oracle image, the oracle listing, and the `oracle/` directory of Vectors. It no longer means a test suite (ADR-0017). Qualify it every time.
+- **"Oracle"** means the original binary (the Oracle image). The oracle listing and the `oracle/` Vectors are named so, never "the oracle".
 - **"Source"** can mean Ground Truth, the Translator's notes in `source/`, or the RUNS source. Always qualify it.
 - **"Gate"**: ADR-0011 and ADR-0017 mean the Gate as defined here. `INTENT.md`'s "full gate" means the full Mutation check, which runs by hand.
 - **"Tunables"** names both the Record of numbers and the Processors the original executes with `xct`.
-- **Verified ≠ proven equivalent (ADR-0014).** A passing Gate is evidence. No finite set of Checks proves the RUNS source is the original over unbounded play, and Bounds and Same-game judgments are not proofs. Do not reopen this as a backlog item.
+- **Checks are evidence; the image is the proof.** A passing Check proves the inputs it ran. The identical image is what the user names as the proof (2026-11-15: "The only way for an oracle to prove that it is exactly the same is that when you compile it, it becomes the exact same binary again"). ADR-0014's "no finite suite proves equivalence" is about Checks, not the image.
 
 ## Retired terms
 
@@ -167,4 +174,4 @@ These come from the earlier verification method. They appear in ADRs 0001–0016
 > **Dev:** I read the Translator's gravity page and it matches what that says.
 > **Expert:** That's the Translator, not Ground Truth. It can be wrong. Done means the Evaluator fired your spaceship and SIMH ran the original on the same Records, and every word and point matched. Then the Gate: the Compiled image still hashes to the Oracle image, and the Mutation check passes.
 > **Dev:** It matches. So the conversion is proven right?
-> **Expert:** It's verified, which is evidence. Proof that it's the same game over all play is impossible (ADR-0014).
+> **Expert:** Only if the image compiled from it is still byte-for-byte the original. That is the oracle; the Checks show where to look when it isn't.

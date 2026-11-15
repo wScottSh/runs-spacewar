@@ -1,5 +1,7 @@
 # The oracle is a characterization suite, not a reimplementation
 
+**Amended 2026-11-15.** The oracle is the original binary (user, 2026-11-15); the checks against SIMH are evidence on the way to it.
+
 Status: amended by ADR-0017 (the checks are the suite; the RUNS text, not a Realization, is what they check). Previously: accepted
 
 We verify the RUNS realization against an **Oracle**: a suite of tests whose expected
