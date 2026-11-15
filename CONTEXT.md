@@ -1,6 +1,6 @@
 # Spacewar! 3.1 in RUNS
 
-Spacewar! 3.1 (1962 PDP-1 assembly) converted to RUNS, exactly: the same game over every sequence of inputs from power-on, glitches included. Nothing is asserted about the game that was not checked against the original running as itself.
+Spacewar! 3.1 (1962 PDP-1 assembly) converted to RUNS, exactly: the same game over every sequence of inputs from power-on, with its rules stated completely so its glitches emerge as they did on the PDP-1. Nothing is asserted about the game that was not checked against the original running as itself.
 
 ## Language
 
@@ -70,8 +70,8 @@ Code whose effects nothing in the game can observe: the screen, the controls, th
 _Avoid_: rendering, I/O (unqualified)
 
 **Glitch**:
-Behavior the original has that its authors did not intend. It is part of the game, and the conversion keeps it. By what it reads, a glitch is a logic, a layout or a machine glitch.
-_Avoid_: bug (when it means the original's behavior)
+Gameplay that emerges from the rules, which the designer did not foresee. A glitch is not a rule. The conversion states the rules completely, including what the PDP-1 supplied deterministically (its arithmetic, memory past an array, data run as code), and glitches emerge from them; it neither recreates nor removes one. A behavior is sorted by where its cause sits, never by intent (`../.github/CONTEXT.md`, Glitch).
+_Avoid_: bug (when it means the original's behavior); "recreate" or "purge" a glitch; intended or unintended as a test
 
 **House rule**:
 A deliberate change to the game: an edit to one Processor or one Network line. EGS calls the resulting game a Variant (`../.github/CONTEXT.md`, Variant).
