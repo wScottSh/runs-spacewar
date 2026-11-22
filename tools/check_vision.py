@@ -1,5 +1,5 @@
 """The vision report: how far the RUNS source stands from the EGS vision
-(../.github/CONTEXT.md), file by file. It reports and gates nothing: it
+(../.github/GLOSSARY.md), file by file. It reports and gates nothing: it
 always exits 0 once the source loads, and check_all.sh does not run it.
 
 It reads the loaded Program (runs.load, then runs.check without sides, as
@@ -17,36 +17,36 @@ from pathlib import Path
 import runs
 
 HEADER = """\
-# The distances from the vision, counted per file (CONTEXT.md is ../.github/CONTEXT.md).
+# The distances from the vision, counted per file (GLOSSARY.md is ../.github/GLOSSARY.md).
 #
-# names_records     Processors that name Records (CONTEXT.md 166-169: a Processor knows nothing
+# names_records     Processors that name Records (GLOSSARY.md 166-169: a Processor knows nothing
 #                   of the Records it is wired to). A Processor counts when it names any Record:
 #                   in `reads:`, `writes:`, `requires:`, or its body.
-# control_flow      Networks written as control flow rather than wiring (CONTEXT.md 162-199:
+# control_flow      Networks written as control flow rather than wiring (GLOSSARY.md 162-199:
 #                   the explicit wiring of Records to Processors; order derived, never authored).
 #                   A Network counts when its body holds anything but runs that wire each input
 #                   and output to a Field: a run that passes a slot or nothing, `if`, `match`,
 #                   `loop`, `for`, `break`, `stop`, `wait`, `unreachable`.
-# mid_exit          Loops with a mid-body exit (CONTEXT.md 204-206, 344-347: the count is fixed
+# mid_exit          Loops with a mid-body exit (GLOSSARY.md 204-206, 344-347: the count is fixed
 #                   before the loop; no break, continue or early return). Each `loop` or `for`, in
 #                   a Processor or a Network, counts once when its body holds a `break` or
 #                   `continue` that leaves it (not one that leaves a loop inside it), or any
 #                   `return` or `stop`.
-# open_guards       Guard sets that do not cover every case (CONTEXT.md 351-358: exactly one
+# open_guards       Guard sets that do not cover every case (GLOSSARY.md 351-358: exactly one
 #                   guard true, always; an open-typed value needs an explicit else). Each `if` in
 #                   a Network with no `else`. A `match` never counts: runs.check refuses one
 #                   without an arm for each member of its enum. A Processor's `if` is not a guard
-#                   (CONTEXT.md 359-370) and does not count.
+#                   (GLOSSARY.md 359-370) and does not count.
 # extra_processors  Files holding more than one Processor: each file's Processors beyond its
 #                   first. A file holds more than one when its count is above 0.
 #
 # A Record a Processor changes in place is no distance: only a Processor changes a Record, and it
-# may put its result back in the same place (CONTEXT.md 88-93); tools/graph.py refuses two
+# may put its result back in the same place (GLOSSARY.md 88-93); tools/graph.py refuses two
 # transitions that write one place unless the wiring orders them.
 #
 # A network file is wiring with guards, so it counts nothing under control_flow, mid_exit
 # and open_guards; tools/graph.py refuses one whose guards on a place are not one test and
-# its else. A loop bundle's cycle (CONTEXT.md 196-206) is legal and counts nothing: tools/graph.py
+# its else. A loop bundle's cycle (GLOSSARY.md 196-206) is legal and counts nothing: tools/graph.py
 # refuses any cycle that does not run through one counter a count_down takes a token from
 # each pass. A `for` or `loop` in a Network written as structured code counts under
 # control_flow.

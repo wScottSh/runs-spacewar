@@ -10,7 +10,7 @@
 Prototype for "How a Network is written as a literal graph" (#56). It answers the
 user's correction: the higher network file wires only whole bundles, and each
 bundle has its own network file. A bundle is used from outside exactly as a
-Processor is (`../../../../../.github/CONTEXT.md` 229-236, Sub-Network). It has inputs and outputs at its
+Processor is (`../../../../../.github/GLOSSARY.md` 229-236, Sub-Network). It has inputs and outputs at its
 boundary, and its own Records are invisible outside.
 
 Format: the arc list (`../arcs/`). Nothing here is in `runs/`, `pdp1/` or `tools/`.

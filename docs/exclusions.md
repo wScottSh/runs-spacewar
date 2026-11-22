@@ -1,6 +1,6 @@
 # Spacewar's exclusion list
 
-The original is the binary, identified by its sha256, `8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf`. The repo keeps no binary: it keeps the source (`source/spacewar3.1_complete.txt`), the toolchain and the hash, and `tools/oracle.sh` rebuilds the binary (`build/oracle.rim`) for the hash to verify. The RUNS source in `runs/` is its edition. The edition carries everything the binary does, and any departure is an exclusion stated here, with its exit point, its evidence, and who decided it (`../.github/CONTEXT.md`, Original, Edition, Exclusion, Exclusion list; `../runs-spec/README.md`, The binary is the original; the RUNS source is its edition).
+The original is the binary, identified by its sha256, `8744e9c9c8540cc5075c5cbb91c56745a4305fdf8e7afca43bea2e9e04ca4bdf`. The repo keeps no binary: it keeps the source (`source/spacewar3.1_complete.txt`), the toolchain and the hash, and `tools/oracle.sh` rebuilds the binary (`build/oracle.rim`) for the hash to verify. The RUNS source in `runs/` is its edition. The edition carries everything the binary does, and any departure is an exclusion stated here, with its exit point, its evidence, and who decided it (`../.github/GLOSSARY.md`, Original, Edition, Exclusion, Exclusion list; `../runs-spec/README.md`, The binary is the original; the RUNS source is its edition).
 
 ## Exclusions
 

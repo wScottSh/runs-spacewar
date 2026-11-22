@@ -4,7 +4,7 @@ This repo converts Spacewar! 3.1 into **pure** RUNS. The conversion reorganizes 
 
 What the conversion is for: the reference for the game, not a Port or a Variant; the binary as the original and the only oracle that proves every input, with the RUNS source as its edition, which carries everything and states any departure as an exclusion with evidence (`docs/exclusions.md`: none); a process meant to repeat for every game; and stateless, named bundles that other games can take.
 
-Before you design anything, read `../.github/CONTEXT.md` (Conversion), `../runs-spec/README.md` (What the work is for), and the first two sections of `INTENT.md` (the model and the reasons). `../.github/CONTEXT.md` is the EGS vocabulary and governs where a doc here disagrees, unless the user has said otherwise more recently: then the user's newer word governs both, and CONTEXT.md gets fixed. A question the user hasn't decided stays open, even where CONTEXT.md reads as settled (`todo.md`, Open with the user).
+Before you design anything, read `../.github/GLOSSARY.md` (Conversion), `../runs-spec/README.md` (What the work is for), and the first two sections of `INTENT.md` (the model and the reasons). `../.github/GLOSSARY.md` is the EGS vocabulary and governs where a doc here disagrees, unless the user has said otherwise more recently: then the user's newer word governs both, and GLOSSARY.md gets fixed. A question the user hasn't decided stays open, even where GLOSSARY.md reads as settled (`todo.md`, Open with the user).
 
 Open with the user, and built only after the user decides:
 
@@ -14,13 +14,13 @@ Open with the user, and built only after the user decides:
 ## Pure
 
 - A **Record** holds data and nothing else: named fields with values. A Record that holds instructions the game runs (`insn`, `jump`) holds logic and is impure.
-- Only a Processor changes a Record (`../.github/CONTEXT.md`, Record): it takes the value out, computes, and may put the result back in the same place. The wires and guards order any two Processors that touch one place. A changed value goes back in its own Record; a new Record is never needed just because a value changed (user, 2026-11-14).
-- A **Processor** holds no state and names no Records. It is one file (`.runs-prim`) that takes values on its inputs (`in`, `inout`) and gives values on its outputs (`out`, `inout`); the Network wires a Record field to each (`../.github/CONTEXT.md`, Network).
-- Every Record has a **kind**: `game` (the Rules region), `interface` (a boundary Record) or `presentation` (the Realization region). A Processor touches game and interface Records, or presentation and interface Records. Removing every presentation Processor leaves the game's Records the same at every step. The split is the enduring-games pattern, a convention and not a RUNS primitive (`../.github/CONTEXT.md`, Processor); this project enforces it as its own rule.
+- Only a Processor changes a Record (`../.github/GLOSSARY.md`, Record): it takes the value out, computes, and may put the result back in the same place. The wires and guards order any two Processors that touch one place. A changed value goes back in its own Record; a new Record is never needed just because a value changed (user, 2026-11-14).
+- A **Processor** holds no state and names no Records. It is one file (`.runs-prim`) that takes values on its inputs (`in`, `inout`) and gives values on its outputs (`out`, `inout`); the Network wires a Record field to each (`../.github/GLOSSARY.md`, Network).
+- Every Record has a **kind**: `game` (the Rules region), `interface` (a boundary Record) or `presentation` (the Realization region). A Processor touches game and interface Records, or presentation and interface Records. Removing every presentation Processor leaves the game's Records the same at every step. The split is the enduring-games pattern, a convention and not a RUNS primitive (`../.github/GLOSSARY.md`, Processor); this project enforces it as its own rule.
 - The **Network** is one net: the game's colored Petri net, written as network files (`runs/**/*.net`) of places, transitions and arcs. Records are places, Processors are transitions.
   - The order lives in the Network and nowhere else: the arcs and their guards write down which Processor fires after which, the order the original's steps ran in.
   - Firing is parallel wherever no arc orders two Processors; where two could race on one place, a wire or a guard makes one wait for the other.
-  - A guard is part of an arc and tests only values Records hold; a Processor computes any value it needs into a Record first. The guards on one place form a complete partition, exactly one true, with `when else` for an open-typed value (`../.github/CONTEXT.md`, Phase / Dispatch / Guard).
+  - A guard is part of an arc and tests only values Records hold; a Processor computes any value it needs into a Record first. The guards on one place form a complete partition, exactly one true, with `when else` for an open-typed value (`../.github/GLOSSARY.md`, Phase / Dispatch / Guard).
   - A network may pass which slot to a transition (`name: routine(slot)`).
 
 ## Every commit
@@ -83,4 +83,4 @@ The five default labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready
 
 ### Domain docs
 
-Single-context: `CONTEXT.md` and `docs/adr/` at the root. See `docs/agents/domain.md`.
+Single-context: `GLOSSARY.md` and `docs/adr/` at the root. See `docs/agents/domain.md`.

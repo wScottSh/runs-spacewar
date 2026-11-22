@@ -5,7 +5,7 @@ Spacewar! 3.1 (MIT, 1962) converted to RUNS: the reference for the game, the sam
 The binary is the original, and the RUNS source is its edition.
 
 - `INTENT.md`: what RUNS is for and what this conversion settled.
-- `CONTEXT.md`: the glossary.
+- `GLOSSARY.md`: the glossary.
 - `docs/exclusions.md`: the edition's exclusion list (empty) and its evidence.
 - `docs/decisions.tsv`: each decision with its evidence.
 - `docs/adr/`: the architecture decisions, including the earlier verification method's. ADR-0017 says which still hold.

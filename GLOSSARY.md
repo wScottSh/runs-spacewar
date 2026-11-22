@@ -17,15 +17,15 @@ _Avoid_: spec, documentation (unqualified)
 ### The conversion
 
 **Conversion**:
-Rewriting the original program into RUNS while the game stays exactly the same: the reference every later Port and Variant starts from (`../.github/CONTEXT.md`, Conversion). Its rules are pure and separate from the presentation, and the whole original presentation is still there: compiled for the PDP-1 it is the original game; run headless its rules run alone on any machine.
+Rewriting the original program into RUNS while the game stays exactly the same: the reference every later Port and Variant starts from (`../.github/GLOSSARY.md`, Conversion). Its rules are pure and separate from the presentation, and the whole original presentation is still there: compiled for the PDP-1 it is the original game; run headless its rules run alone on any machine.
 _Avoid_: port, variant, re-vibe
 
 **Edition**:
-The RUNS source read against the Oracle image, which is the original (`../.github/CONTEXT.md`, Original, Edition). It carries everything the original does by default. A departure is an Exclusion, stated with its exit point, its evidence and who decided it, never a silence. The check: the rules run alone match the original everywhere except the listed exclusions.
+The RUNS source read against the Oracle image, which is the original (`../.github/GLOSSARY.md`, Original, Edition). It carries everything the original does by default. A departure is an Exclusion, stated with its exit point, its evidence and who decided it, never a silence. The check: the rules run alone match the original everywhere except the listed exclusions.
 _Avoid_: "conversion with fixes"
 
 **Exclusion list**:
-The edition's stated departures from the original, each with its exit point, evidence and who decided it (`../.github/CONTEXT.md`, Exclusion list). Spacewar's is empty: `docs/exclusions.md` gives the evidence.
+The edition's stated departures from the original, each with its exit point, evidence and who decided it (`../.github/GLOSSARY.md`, Exclusion list). Spacewar's is empty: `docs/exclusions.md` gives the evidence.
 _Avoid_: exceptions, waivers
 
 **RUNS source**:
@@ -33,23 +33,23 @@ The game written in RUNS: Records, Processors and Networks. It is the game. It e
 _Avoid_: RUNS Conversion, Realization, translation, RUNS text
 
 **Record**:
-Anything the game remembers, one value or a fixed-size collection. All game state is Records, globals included. Only a Processor changes a Record: it takes the value out, computes, and may put the result back in the same place (`../.github/CONTEXT.md`, Record). A Record holds data only, never logic.
+Anything the game remembers, one value or a fixed-size collection. All game state is Records, globals included. Only a Processor changes a Record: it takes the value out, computes, and may put the result back in the same place (`../.github/GLOSSARY.md`, Record). A Record holds data only, never logic.
 _Avoid_: global, variable, state (unqualified)
 
 **Processor**:
-One rule, stateless, one `.runs-prim` file. It names no Records: its whole contract is its inputs and outputs, and the Network wires a Record field to each at each use (`../.github/CONTEXT.md`, Network).
+One rule, stateless, one `.runs-prim` file. It names no Records: its whole contract is its inputs and outputs, and the Network wires a Record field to each at each use (`../.github/GLOSSARY.md`, Network).
 _Avoid_: function, subroutine (except for the original's `jda` routines)
 
 **Input, output**:
 One value a Routine takes in, gives out, or both, with the kind of value it is: the source's `in name: kind`, `out name: kind` and `inout name: kind` lines. At each use the Network wires it to one field of a Record, a single slot of that field by default, or the whole field when the Routine indexes it itself. The rule is one input or output, one field, so every wire is written in the Network. 21 network inputs and outputs take the whole object table (`inout table: objects`); the user calls a bundle whose inputs are one game's Records a problem, and how to fix it is open. Routines with the same inputs and outputs can be swapped. The code still calls them ports (`expand_ports`, `prog.ports`).
-_Avoid_: Port (EGS keeps the word for the same game on other hardware, `../.github/CONTEXT.md`, Port), parameter, argument, pin, binding (say the Network wires a field to an input or output)
+_Avoid_: Port (EGS keeps the word for the same game on other hardware, `../.github/GLOSSARY.md`, Port), parameter, argument, pin, binding (say the Network wires a field to an input or output)
 
 **Port**:
-The same game, its Rules region untouched, run on other hardware by swapping its Realization Processors (`../.github/CONTEXT.md`, Port). Swapping out the PDP-1 presentation is a Port; the Declarations, which never run, are left behind with it (Declarations, below).
+The same game, its Rules region untouched, run on other hardware by swapping its Realization Processors (`../.github/GLOSSARY.md`, Port). Swapping out the PDP-1 presentation is a Port; the Declarations, which never run, are left behind with it (Declarations, below).
 _Avoid_: port for a Routine's input or output; port for this conversion (it is a Conversion)
 
 **Network**:
-The game's skeleton, written as network files (`runs/**/*.net`): places, transitions and the arcs between them, a colored Petri net (`../.github/CONTEXT.md`, Network). The arcs and their guards write down the order; nothing else holds it. A guard tests a value a Record holds and is part of its arc. Only the Network that walks the slots holds slot numbers; a slot the game computes lives in a Record.
+The game's skeleton, written as network files (`runs/**/*.net`): places, transitions and the arcs between them, a colored Petri net (`../.github/GLOSSARY.md`, Network). The arcs and their guards write down the order; nothing else holds it. A guard tests a value a Record holds and is part of its arc. Only the Network that walks the slots holds slot numbers; a slot the game computes lives in a Record.
 _Avoid_: scheduler, main loop (when it means the Network, not the original's code)
 
 **Routine**:
@@ -57,7 +57,7 @@ A Processor or a Network.
 _Avoid_: calc routine (that is a game term, below)
 
 **Top Network**:
-A Network nothing fires. Its `requires:` and `produces:` lines name the boundary Records, what the world writes before a tick and reads after (`../.github/CONTEXT.md`, Boundary Record). Spacewar has three: `tick`, which the Host fires once a tick, and two Start Networks. `requires:` also still states a precondition in two files (`requires: slot < 2`), a second meaning of one keyword.
+A Network nothing fires. Its `requires:` and `produces:` lines name the boundary Records, what the world writes before a tick and reads after (`../.github/GLOSSARY.md`, Boundary Record). Spacewar has three: `tick`, which the Host fires once a tick, and two Start Networks. `requires:` also still states a precondition in two files (`requires: slot < 2`), a second meaning of one keyword.
 
 **Start Network**:
 The Top Network the Host fires once when the operator starts the machine, chosen by the start address (4 or 5).
@@ -67,23 +67,23 @@ One firing of `tick` (`runs/game/tick.net`): a frame of play, one pass of the or
 _Avoid_: step
 
 **Host**:
-Whatever fires the Top Networks. It writes the inbound boundary Records before a tick and reads the outbound ones after (`../.github/CONTEXT.md`, Runtime).
+Whatever fires the Top Networks. It writes the inbound boundary Records before a tick and reads the outbound ones after (`../.github/GLOSSARY.md`, Runtime).
 _Avoid_: driver
 
 **Unknown field**:
 A field with no initial value. It is unknown until the game sets it or the world gives it, and reading it while unknown is an error. The console's switches and the words core held at power-on are Unknown fields.
 
 **Presentation**:
-Code whose effects nothing in the game can observe: the screen, the controls, the pacing. What a piece of code is decides by what its effects reach, not by what it was written for. Its Records are marked `presentation`: the Realization region, as `game` marks the Rules region and `interface` a boundary Record. That every Record carries one of these kinds is this project's rule, after the enduring-games pattern, not a RUNS primitive (`../.github/CONTEXT.md`, Processor).
+Code whose effects nothing in the game can observe: the screen, the controls, the pacing. What a piece of code is decides by what its effects reach, not by what it was written for. Its Records are marked `presentation`: the Realization region, as `game` marks the Rules region and `interface` a boundary Record. That every Record carries one of these kinds is this project's rule, after the enduring-games pattern, not a RUNS primitive (`../.github/GLOSSARY.md`, Processor).
 _Avoid_: rendering, I/O (unqualified)
 
 **Glitch**:
-Gameplay that emerges from the rules, which the designer did not foresee. A glitch is not a rule. The conversion states the rules completely, including what the PDP-1 does the same way every time (its arithmetic, memory past an array, code the program runs), and glitches emerge from them; it neither recreates nor removes one. A behavior is sorted by following its data across the PDP-1's edge, never by intent: what comes in from a device or from core the program never set is an input, a value that only flows out to the scope is presentation, and everything else is the rules (`../.github/CONTEXT.md`, Glitch).
+Gameplay that emerges from the rules, which the designer did not foresee. A glitch is not a rule. The conversion states the rules completely, including what the PDP-1 does the same way every time (its arithmetic, memory past an array, code the program runs), and glitches emerge from them; it neither recreates nor removes one. A behavior is sorted by following its data across the PDP-1's edge, never by intent: what comes in from a device or from core the program never set is an input, a value that only flows out to the scope is presentation, and everything else is the rules (`../.github/GLOSSARY.md`, Glitch).
 _Avoid_: bug (when it means the original's behavior); "recreate" or "purge" a glitch; intended or unintended as a test
 
 **House rule**:
-A deliberate change to the game: an edit to one Processor or one Network line. EGS calls the resulting game a Variant (`../.github/CONTEXT.md`, Variant).
-_Avoid_: mod; fork for the result (`../.github/CONTEXT.md`, Variant)
+A deliberate change to the game: an edit to one Processor or one Network line. EGS calls the resulting game a Variant (`../.github/GLOSSARY.md`, Variant).
+_Avoid_: mod; fork for the result (`../.github/GLOSSARY.md`, Variant)
 
 **Bound**:
 What stops a loop: a counter. Each loop in the source is written as a loop bundle (a network file with a `counter` line): each pass takes one token of the counter, and the loop ends when it reaches its end or a guard stops it. Every loop must be bounded by something; it is a rule for the whole graph, and a loop need not live in a bundle (user, 2026-11-14); the loader reads only the bundle form so far. The only unbounded loop is the game itself, tick after tick.
@@ -92,15 +92,15 @@ What stops a loop: a counter. Each loop in the source is written as a loop bundl
 
 **SIMH**:
 The reference PDP-1 simulator, running the Oracle image. Its CPU semantics are frozen: we observe how it computes and never alter it.
-_Avoid_: Substrate (EGS keeps the word for the RUNS source itself, `../.github/CONTEXT.md`, Neutral Substrate; the ADRs still call SIMH the Substrate), emulator (unqualified), VM
+_Avoid_: Substrate (EGS keeps the word for the RUNS source itself, `../.github/GLOSSARY.md`, Neutral Substrate; the ADRs still call SIMH the Substrate), emulator (unqualified), VM
 
 **Assembler**:
 `macro1`, the canonical PDP-1 Macro assembler. It turns Ground Truth into the Oracle image and the listing whose symbols name where each routine and word lives.
 _Avoid_: compiler
 
 **Evaluator**:
-The program that parses the RUNS source, checks it statically, then runs it: a runtime in the sense of `../.github/CONTEXT.md`, Flagged ambiguities, not a hand-compilation.
-_Avoid_: interpreter, emulator, reference implementation (`../.github/CONTEXT.md`, Flagged ambiguities keeps that for a blessed body)
+The program that parses the RUNS source, checks it statically, then runs it: a runtime in the sense of `../.github/GLOSSARY.md`, Flagged ambiguities, not a hand-compilation.
+_Avoid_: interpreter, emulator, reference implementation (`../.github/GLOSSARY.md`, Flagged ambiguities keeps that for a blessed body)
 
 **Compiler**:
 `runsc`. It turns the RUNS source and the Declarations into the Compiled image, by way of the lift's C dialect (`docs/c-lift/README.md`).
@@ -117,7 +117,7 @@ _Avoid_: binary (unqualified), tape, ROM
 ### Verification
 
 **Oracle**:
-The original binary. The RUNS source, compiled with the Declarations, rebuilds the Oracle image byte for byte (same sha256). Comparing play proves only the inputs tested; the identical image proves every input, presentation included (`../.github/CONTEXT.md`, Conversion). The user, 2026-11-15: "The only way for an oracle to prove that it is exactly the same is that when you compile it, it becomes the exact same binary again." The Checks and the Mutation check are how the work gets there and stays there: evidence, not the oracle. ADR-0014's "no finite suite proves equivalence" is about Checks, not the image.
+The original binary. The RUNS source, compiled with the Declarations, rebuilds the Oracle image byte for byte (same sha256). Comparing play proves only the inputs tested; the identical image proves every input, presentation included (`../.github/GLOSSARY.md`, Conversion). The user, 2026-11-15: "The only way for an oracle to prove that it is exactly the same is that when you compile it, it becomes the exact same binary again." The Checks and the Mutation check are how the work gets there and stays there: evidence, not the oracle. ADR-0014's "no finite suite proves equivalence" is about Checks, not the image.
 
 **Check**:
 A comparison of one Routine fired in the Evaluator with Ground Truth running in SIMH, on the same Records.
@@ -172,7 +172,7 @@ These come from the earlier verification method. They appear in ADRs 0001–0016
 
 - **Oracle** (as a suite), **Portable Oracle**, **Trace**, **Pinned inputs**, **Coverage** (as the definition of done): the JS Oracle harness and its coverage gate, removed.
 - **RUNS Conversion**: the RUNS source, back when it could not execute.
-- **Realization**, **Exact Realization**, **Variant**: a playable recreation built from the Conversion. The RUNS source plays now. A deliberate change is a House rule. Realization and Variant now carry their EGS senses (`../.github/CONTEXT.md`, Processor and Variant); only the old sense is retired.
+- **Realization**, **Exact Realization**, **Variant**: a playable recreation built from the Conversion. The RUNS source plays now. A deliberate change is a House rule. Realization and Variant now carry their EGS senses (`../.github/GLOSSARY.md`, Processor and Variant); only the old sense is retired.
 
 ## Example dialogue
 

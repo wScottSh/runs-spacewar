@@ -125,7 +125,7 @@ Derived, the same in all three formats:
   fire only on that branch. A Petri net handles this with no extra syntax.
 - **The checks.** Every input and output is wired once. Every place is a Record
   field. A place has two writers only on two branches of one test. Each test has
-  its `else` (CONTEXT.md 354-356).
+  its `else` (GLOSSARY.md 354-356).
 - **Storage, except for the 2 stated entries.** A value an `inout` replaces
   shares its word with the new value (`negate_double`'s `low`, `multiply_steps`'s
   `low`). Every other work value is register scratch owned by the Network, so

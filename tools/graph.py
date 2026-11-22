@@ -20,7 +20,7 @@ a bundle with the same transition line as a Processor.
     multiply_work.signs -> reload_high when < 0
 
 A loop bundle declares one `counter name: type` line, an input set
-before the loop starts (CONTEXT.md 196-206). Its one cycle runs through
+before the loop starts (GLOSSARY.md 196-206). Its one cycle runs through
 the counter: a count_down takes it and gives it back one nearer 0, and
 nothing else touches it. Each pass fires every transition once and
 takes one token; the loop ends when the counter reaches 0, or after a
@@ -74,7 +74,7 @@ under more than one test (the angle reduction's three ways out) is
 lowered to `loop at most <count>:`, each test's other side first and
 ending in a break, with no count.
 
-A loop bundle over slots, a dispatch over a collection (CONTEXT.md 340-348),
+A loop bundle over slots, a dispatch over a collection (GLOSSARY.md 340-348),
 states its slots in place of the counter's type: `counter later: slot + 1
 .. 027`. The counter is the pass's slot, which its transitions pass on
 (`collision(later)`), and the take steps it to the next slot; the loop ends
@@ -95,7 +95,7 @@ emitter takes the stream so far and gives it with its points after
 
 A test has two sides, `when <test>` and `when else`, or is an n-way
 dispatch: `when == m` for distinct members or numbers, then `when else`.
-Exactly one side is true (CONTEXT.md 351-358). On an enum the sides may
+Exactly one side is true (GLOSSARY.md 351-358). On an enum the sides may
 name every member in place of the else, less the members a precondition
 rules out (`assumes: routine != none`, lowered to `requires:`). Any other
 value needs its else. A transition may run on every side of a dispatch
@@ -128,7 +128,7 @@ a Record whole and its entries are one value: a read of an entry sees the
 writer of the whole, and a read of the whole the writers of its entries.
 
 A top Network, one nothing runs, names its boundary with presentation
-(CONTEXT.md 273-276): `requires: console, score` are the Records the
+(GLOSSARY.md 273-276): `requires: console, score` are the Records the
 host writes before it fires, `produces: display, lights` those it reads
 after. They lower to the Network's `reads:` and `writes:`.
 
@@ -593,7 +593,7 @@ def whole_copy(g: Graph, t: str, proc: str, type_of) -> bool:
 
 
 def partition(g: Graph, place: str, gs: set[str], typ: str | None, enums: dict[str, list[str]], fail) -> None:
-    """The guards on one place: exactly one true, always (CONTEXT.md
+    """The guards on one place: exactly one true, always (GLOSSARY.md
     351-358). One test and its else; or an n-way dispatch, `== m` for
     distinct members or numbers and else last. On an enum the else may go
     when the `==` sides name every member the network does not assume
@@ -703,7 +703,7 @@ def reads_of(g: Graph) -> list[tuple[str, str, bool]]:
 def depends(g: Graph) -> dict[str, set[str]]:
     """t -> the transitions t comes after. A place holds a value until a
     transition gives it a new one, and several transitions may give one
-    place values (CONTEXT.md 88-93, 192-198). A reader reads the value of
+    place values (GLOSSARY.md 88-93, 192-198). A reader reads the value of
     the latest writer before it; the order is the wiring's:
 
     - a writer, an arc into the place, and a reader, an arc out of it, are

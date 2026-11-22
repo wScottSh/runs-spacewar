@@ -32,7 +32,7 @@ and still built the image).
 Square root does not build the image today. A third change let a Network loop
 `continue`, as the original jumps back to `sq3` mid-body; that source compiled to the original image, and
 the change was reverted, because a bounded loop has no `break` or `continue`
-(`../../../../.github/CONTEXT.md` 344-347). `sqrt_net.txt` now nests the rest of the body under the opposite
+(`../../../../.github/GLOSSARY.md` 344-347). `sqrt_net.txt` now nests the rest of the body under the opposite
 guards, with `if` only. It builds an image that differs at 00276 (want 600255, got
 600303): the nested test jumps to the end of the loop body, which jumps back, where
 the original jumps straight to the loop head at `sq3`. Matching it needs a layout rule
@@ -57,7 +57,7 @@ the Evaluator, and the image differs at 00366 (`spi i` became `spi`).
   `overflows`).
 - **The sine series and integer divide/multiply** are not split here.
 - **A Network has no `return`.** square_root's loop ends the routine, so `break` ends it.
-  The vision allows no `break` in a bounded loop either (`../../../../.github/CONTEXT.md` 344-347); how a loop
+  The vision allows no `break` in a bounded loop either (`../../../../.github/GLOSSARY.md` 344-347); how a loop
   with a data-dependent exit is expressed is open.
 - **Square root's image differs** at 00276 (above).
 - **A bundle declared `[[inline]]` loses its register inputs and outputs.** Declaring a piece

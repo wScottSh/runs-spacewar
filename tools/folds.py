@@ -2,7 +2,7 @@
 stands for.
 
 The vision's loop in a body is a fold: its count is fixed before it starts,
-and no break, continue or return leaves it (CONTEXT.md 340-347). The
+and no break, continue or return leaves it (GLOSSARY.md 340-347). The
 original's loops leave on a counter or on a value computed inside. RUNS
 writes each as a fold whose steps after the exit do nothing: the count, or
 a guard on a value that stays set once set, turns them off. `lower` turns
