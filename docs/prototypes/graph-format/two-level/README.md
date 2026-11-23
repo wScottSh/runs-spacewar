@@ -8,8 +8,8 @@
 > as the record of the prototype.
 
 Prototype for "How a Network is written as a literal graph" (#56). It answers the
-user's correction: the higher network file wires only whole bundles, and each
-bundle has its own network file. A bundle is used from outside exactly as a
+user's correction: the higher network file wires only whole Bundles, and each
+Bundle has its own network file. A Bundle is used from outside exactly as a
 Processor is (`../../../../../.github/GLOSSARY.md` 229-236, Sub-Network). It has inputs and outputs at its
 boundary, and its own Records are invisible outside.
 
@@ -25,7 +25,7 @@ Processor. The rotate is one Processor (`processors/rotate_right.runs-prim`).
 The other callers are `sine` and `cosine`, which run multiply six times among
 seven Processors.
 
-## multiply's bundle file: `multiply.net`
+## multiply's Bundle file: `multiply.net`
 
 ```
 # multiply (mpy), a bundle. Its inputs and outputs are declared as a
@@ -127,8 +127,8 @@ arcs
 
 | line form | where | why it could not be avoided |
 |---|---|---|
-| `  in <name>: <type>` and `  out <name>: <type>` under `network` | bundle file | The boundary must be stated somewhere, and this is the form a Processor file already uses. The loader reads a Processor's and a bundle's inputs and outputs with one function (`signature`). It could be avoided: an arc end with no Record could be read as an input when it feeds a transition and as an output when a transition writes it. That loses the type (a bare name has no Record to carry one), and a misspelled name would become a new input with no error. The order of the `in` lines does not decide the image: swapped, the program is still identical to the original. |
-| an arc end that is one name: `entry -> magnitude_of_entry.value`, `give_low.target -> low` | bundle file | Inside the bundle, an input or output is a place that belongs to no Record. Naming it `multiply.entry` would invent a Record called `multiply`, and `x.y` already means a transition's input or output when `x` is a transition. |
+| `  in <name>: <type>` and `  out <name>: <type>` under `network` | Bundle file | The boundary must be stated somewhere, and this is the form a Processor file already uses. The loader reads a Processor's and a Bundle's inputs and outputs with one function (`signature`). It could be avoided: an arc end with no Record could be read as an input when it feeds a transition and as an output when a transition writes it. That loses the type (a bare name has no Record to carry one), and a misspelled name would become a new input with no error. The order of the `in` lines does not decide the image: swapped, the program is still identical to the original. |
+| an arc end that is one name: `entry -> magnitude_of_entry.value`, `give_low.target -> low` | Bundle file | Inside the Bundle, an input or output is a place that belongs to no Record. Naming it `multiply.entry` would invent a Record called `multiply`, and `x.y` already means a transition's input or output when `x` is a transition. |
 
 The parent file has no new line form. `multiply: multiply` is the same line as
 `sign_to_bit_0: rotate_right`. The arcs into and out of `multiply` are the same
@@ -136,7 +136,7 @@ form as the arcs into and out of `sign_to_bit_0`.
 
 ## The use site is identical
 
-The parent cannot tell a bundle from a Processor. The loader resolves the name
+The parent cannot tell a Bundle from a Processor. The loader resolves the name
 on the right of a `transitions` line to `processors/<name>.runs-prim` or to
 `<name>.net` beside the parent, and reads `in` and `out` lines from either file
 the same way:
@@ -161,8 +161,8 @@ be wired once.
 
 The network files agree. The RUNS source the loader generates for today's
 compiler does not, because today a `run` passes no values to a Network. So for
-a bundle transition the loader copies each input into the bundle's word before
-`run multiply`. It reads each output from the bundle's word afterward. The
+a Bundle transition the loader copies each input into the Bundle's word before
+`run multiply`. It reads each output from the Bundle's word afterward. The
 stored version, which runsc compiles:
 
 ```
@@ -182,9 +182,9 @@ network integer_multiply
 
 Where multiply's inputs and outputs live on the PDP-1 is not in either network
 file. The loader puts them in the fields of `multiply_call`, named
-`<bundle>_call` after the bundle, as `runs/` does for every jda routine
+`<bundle>_call` after the Bundle, as `runs/` does for every jda routine
 (`square_root_call`, `sine_call`, `integer_multiply_call`). It checks that the
-Record's fields are the bundle's inputs and outputs. That is a naming rule in
+Record's fields are the Bundle's inputs and outputs. That is a naming rule in
 the loader. It adds no entry to `storage.toml` or `pdp1/`. Once renamed this way,
 multiply's graph is the same as `../arcs/multiply.net`'s: the loader prints
 `True` for that comparison.
@@ -203,7 +203,7 @@ multiply's graph is the same as `../arcs/multiply.net`'s: the loader prints
 ## Planted defects
 
 Each defect is a two-line edit of `integer_multiply.net`, loaded with
-`load.py 2000 <copy>/integer_multiply.net` and the bundle file copied beside it.
+`load.py 2000 <copy>/integer_multiply.net` and the Bundle file copied beside it.
 
 1. **Crossed output wires**: `multiply.partial -> integer_multiply_work.low` and
    `multiply.low -> integer_multiply_work.high`. Predicted: imp rotates the
@@ -235,13 +235,13 @@ no first differing address to report.
   gets `in` and `out` lines and bare names, the same two forms as multiply.
 - The parent's generator (`emit_parent`) handles no guard and no `inout` in a
   level that runs a bundle. imp needs neither.
-- `load.py` builds one bundle, multiply, and splices imp in place of today's
+- `load.py` builds one Bundle, multiply, and splices imp in place of today's
   `integer_multiply`. It reuses `graph.py` and `../arcs/load.py` and changes
   neither.
 
 ## Files
 
-- `multiply.net`: multiply's bundle file.
+- `multiply.net`: multiply's Bundle file.
 - `integer_multiply.net`: the parent.
 - `processors/rotate_right.runs-prim`: imp's `rir 1s`, the one Processor imp adds.
 - `records/integer_multiply_call.runs`: imp's words, moved out of `runs/spacewar.runs`

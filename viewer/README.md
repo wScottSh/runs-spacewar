@@ -1,6 +1,6 @@
 # RUNS Network viewer
 
-Draws the Records and Processors of `runs/` from the loader's lowered program: each Record a place with its fields written inside, each Processor a transition, a line ending in a dot for each Record a Processor reads and an arrow for each it writes. It doesn't yet draw the network files' arcs, guards or bundles, so it is not yet a transcription of the source (`todo.md`, Round 12 phase 5). When the Records have kinds, they sit in three columns (game, interface, presentation: the Rules region, the Interface Records, the Realization region), and a Processor that touches both a game Record and a presentation Record is red.
+Draws the Records and Processors of `runs/` from the loader's lowered program: each Record a place with its fields written inside, each Processor a transition, a line ending in a dot for each Record a Processor reads and an arrow for each it writes. It doesn't yet draw the network files' arcs, guards or Bundles, so it is not yet a transcription of the source (`todo.md`, Round 12 phase 5). When the Records have kinds, they sit in three columns (game, interface, presentation: the Rules region, the Interface Records, the Realization region), and a Processor that touches both a game Record and a presentation Record is red.
 
 `tools/runs_net.py` reads the RUNS source through the evaluator's loader and writes the data the viewer draws. Nothing in the drawing is written by hand.
 

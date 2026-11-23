@@ -84,7 +84,7 @@ or after the collision test in `active_object`. Fact 4 decides it.
 ## Proof: every input order reversed
 
 `run.py` runs each graph twice: with the files as written, and with the `in`,
-`inout` and `out` lines of every Processor file and bundle file reversed (the
+`inout` and `out` lines of every Processor file and Bundle file reversed (the
 reversed Processor files are what runsc compiles). Each time with names
 breaking ties forward and backward, and with 5 shuffles of the network file.
 
@@ -118,13 +118,13 @@ of 9227, sine and cosine 2046 of 2046 sampled words (`run.py --n 2000`).
 ## The graphs
 
 - `../two-level/multiply.net`, `../two-level/integer_multiply.net`: as #56 left them.
-- `divide.net`: a bundle of 16 transitions. The two sign fixes and the
+- `divide.net`: a Bundle of 16 transitions. The two sign fixes and the
   dividend's magnitude are Processors with an `if` in the body
   (`magnitude_double`, `sign_like`, `sign_like_in_place`); the graph has one
   test, whether the quotient fits. The cleared IO before the halving is a
   place written by `clear`, so the storage check sees it.
 - `integer_divide.net`: `shift_right_17`, then `divide` as one transition.
-- `sine.net`: a bundle; `multiply` six times as transitions, the constants as
+- `sine.net`: a Bundle; `multiply` six times as transitions, the constants as
   Processors with no inputs (`two_over_pi`, `sine_c7`), the saturation as a test.
 - `cosine.net`: `add_half_pi`, then `sine` as one transition.
 - Square root is not converted: its loop exits mid-body, which another ticket owns.

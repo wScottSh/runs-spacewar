@@ -2,20 +2,20 @@
 
 > **Moved to the real source.** The walk and calc are network files in
 > `runs/frame/` (object_walk, object_slots, active_object, collide_pairs,
-> calc), read by `tools/graph.py`. The fold syntax here became loop bundles
+> calc), read by `tools/graph.py`. The fold syntax here became loop Bundles
 > over slots (`counter slot: 0 .. 026`), and the else sides became copies
 > and n-way tests. `load.py` and the tables below stand as the record of the
 > prototype; `load.py` no longer matches `runs/`.
 
 Prototype for "Threading a Record several Processors write" (#57), part of #54.
 The object table is written by collision and by each calc routine during the
-walk. Here the walk is a set of bundles in the arc-list format (`../two-level/`).
+walk. Here the walk is a set of Bundles in the arc-list format (`../two-level/`).
 Each step takes the table's current value and gives the next, so the order
 of the collisions and the calc routines follows from the chain. The loader
 generates the walk's RUNS source from these files. That source is what
 `runs/` now holds, and runsc compiles it to the original program.
 
-## The bundles
+## The Bundles
 
 | file | what it is |
 |---|---|
@@ -24,7 +24,7 @@ generates the walk's RUNS source from these files. That source is what
 | `active_object.net` | count the object, fold `collide_pair` over the later slots when it can collide, then `calc`, then charge its time |
 | `collide_pair.net` | `collision` on two entries when the later one can collide |
 | `last_object.net` | slot 027: `calc` and its time, no collisions, no count |
-| `calc.net` | the dispatch on the routine word: `torpedo` is a bundle; the other five are legacy routines |
+| `calc.net` | the dispatch on the routine word: `torpedo` is a Bundle; the other five are legacy routines |
 | `torpedo.net` | the torpedo (tcr): 8 Processors with inputs and outputs, and `plot_torpedo` |
 | `storage.toml` | the PDP-1 side: where the root's boundary and the torpedo's AC values live |
 
@@ -37,11 +37,11 @@ The image stayed identical at each step.
 ## What is new against two-level
 
 - **A fold.** `each_slot: object_step(slot) for slot in 0 .. 026` runs the step
-  bundle once a slot. Each inout of the step threads, so one step's out value
+  Bundle once a slot. Each inout of the step threads, so one step's out value
   is the next step's in value. The arcs wire the first in value and the last
   out value: `table -> each_slot.table` and `each_slot.table -> walked`. The
   count is fixed before the fold starts, as the BlooP rule requires.
-- **A bundle with slots.** `network object_step(slot)` takes which slot, as
+- **A Bundle with slots.** `network object_step(slot)` takes which slot, as
   today's `network torpedo(slot)` does. The slot is not an input.
 - **A collection value.** A place may hold a whole table (`walked: objects`),
   and an arc end may name one entry of it (`table[slot].x`). An entry of the
@@ -51,7 +51,7 @@ The image stayed identical at each step.
   output: `table -> exploding` and `exploding -> table` state which values it
   reads and gives in their words.
 
-Inside a bundle, an inout's name read is its in value and written is its out
+Inside a Bundle, an inout's name read is its in value and written is its out
 value. A value read again after it is given goes through a `copy`, as in
 multiply (`give_x`, `give_counter`). Every such copy compiles to nothing.
 
@@ -61,7 +61,7 @@ Every value in the graph is written once: 4 table values in `active_object`
 (`table`, `collided`, `calculated`, and the out value), one a slot in the fold,
 one a pair in the collision fold. On the PDP-1 they are one table. The rule:
 **a fresh value takes its predecessor's word**. The two ends of an inout (a
-Processor's, a bundle's, a fold's) share one word, and so do a copy's source and
+Processor's, a Bundle's, a fold's) share one word, and so do a copy's source and
 target. `Storage` in `load.py` applies the rule. `hazards` then checks that it is
 safe. On every branch, in the derived order, a value is never read after the next
 value has taken its word. When the check passes, the predecessor is dead before
@@ -150,7 +150,7 @@ names_records fell from 149 to 140 (the nine Processors). control_flow rose from
 
 ## What a full conversion of the table needs
 
-- The other five calc routines as bundles: `explosion` (its particle loop has a
+- The other five calc routines as Bundles: `explosion` (its particle loop has a
   mid-body exit), `in_hyperspace`, `breakout`, and both spaceships. Each
   Processor they fire needs inputs and outputs in place of Record names.
 - `plot_torpedo` and every Processor that emits to `display`: a Processor with

@@ -14,7 +14,7 @@ Networks share.
 | `sine_copies` | the series' moves as one `copy`, 6 wirings | | identical to the original |
 | `sine_atoms` | also the coefficients through one `add`, read from a constant Record | | refused: `sine_constants.c1 has no data word` |
 | `inertia_split`, `DECL=pieces` | `accumulate` + `drift`, no scratch: `drift` rereads the velocity | | 1 word longer a use (6 uses +6, 2 uses +2) |
-| `inertia_split`, `DECL=network` | the bundle itself declared `[[inline]]` | | lift C: `undeclared name 'acceleration'` |
+| `inertia_split`, `DECL=network` | the Bundle itself declared `[[inline]]` | | lift C: `undeclared name 'acceleration'` |
 
 ## What made it compile
 
@@ -60,7 +60,7 @@ the Evaluator, and the image differs at 00366 (`spi i` became `spi`).
   The vision allows no `break` in a bounded loop either (`../../../../.github/GLOSSARY.md` 344-347); how a loop
   with a data-dependent exit is expressed is open.
 - **Square root's image differs** at 00276 (above).
-- **A bundle declared `[[inline]]` loses its register inputs and outputs.** Declaring a piece
+- **A Bundle declared `[[inline]]` loses its register inputs and outputs.** Declaring a piece
   (`drift`) instead avoids it.
 
 ## Shared pieces
