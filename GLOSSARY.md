@@ -1,6 +1,6 @@
 # Spacewar! 3.1 in RUNS
 
-Spacewar! 3.1 (1962 PDP-1 assembly) converted to RUNS, exactly: the same game over every sequence of inputs from power-on, with its rules stated completely so its Glitches emerge as they did on the PDP-1. Nothing is asserted about the game that was not checked against the original running as itself.
+Spacewar! 3.1 (1962 PDP-1 assembly) converted to RUNS, exactly: the same game over every sequence of inputs from power-on, with its Game Logic stated completely so its Glitches emerge as they did on the PDP-1. Nothing is asserted about the game that was not checked against the original running as itself.
 
 ## Language
 
@@ -17,7 +17,7 @@ _Avoid_: spec, documentation (unqualified)
 ### The conversion
 
 **Conversion**:
-Rewriting the original program into RUNS while the game stays exactly the same: the reference every later Port and Variant starts from (`../.github/GLOSSARY.md`, Conversion). Its rules are pure and separate from the Presentation, and the whole original Presentation is still there: compiled for the PDP-1 it is the original game; run headless its rules run alone on any machine.
+Rewriting the original program into RUNS while the game stays exactly the same: the reference every later Port and Variant starts from (`../.github/GLOSSARY.md`, Conversion). Its Game Logic is pure and separate from the Presentation, and the whole original Presentation is still there: compiled for the PDP-1 it is the original game; run headless its Game Logic runs alone on any machine.
 _Avoid_: Port, Variant, re-vibe
 
 **RUNS source**:
@@ -29,7 +29,7 @@ Anything the game remembers, one value or a fixed-size collection. All game stat
 _Avoid_: global, variable, state (unqualified)
 
 **Processor**:
-One rule, stateless, one `.runs-prim` file. It names no Records: its whole contract is its inputs and outputs, and the Network wires a Record Field to each at each use (`../.github/GLOSSARY.md`, Network).
+One stateless step, one `.runs-prim` file. It names no Records: its whole contract is its inputs and outputs, and the Network wires a Record Field to each at each use (`../.github/GLOSSARY.md`, Network).
 _Avoid_: function, subroutine (except for the Original's `jda` routines)
 
 **Input, output**:
@@ -37,7 +37,7 @@ One value a Routine takes in, gives out, or both, with the kind of value it is: 
 _Avoid_: port (EGS keeps the word for the same game on other hardware, `../.github/GLOSSARY.md`, Port), parameter, argument, pin, binding (say the Network wires a Field to an input or output)
 
 **Port**:
-The same game, its Rules region untouched, run on other hardware by swapping its Realization Processors (`../.github/GLOSSARY.md`, Port). Swapping out the PDP-1 Presentation is a Port; the Declarations, which never run, are left behind with it (Declarations, below).
+The same game, its Game Logic untouched, run on other hardware by swapping its Presentation (`../.github/GLOSSARY.md`, Port). Swapping out the PDP-1 Presentation is a Port; the Declarations, which never run, are left behind with it (Declarations, below).
 _Avoid_: port for a Routine's input or output; Port for this conversion (it is a Conversion)
 
 **Network**:
@@ -66,16 +66,16 @@ _Avoid_: driver
 A Field with no initial value. It is unknown until the game sets it or the world gives it, and reading it while unknown is an error. The console's switches and the words core held at power-on are Unknown Fields.
 
 **Presentation**:
-Code whose effects nothing in the game can observe: the screen, the controls, the pacing. What a piece of code is decides by what its effects reach, not by what it was written for. Its Records are marked `presentation`: the Realization region, as `game` marks the Rules region and `interface` a boundary Record. That every Record carries one of these kinds is this project's rule, after the enduring-games pattern, not a RUNS primitive (`../.github/GLOSSARY.md`, Processor).
+Everything in the game that is not Game Logic or an Interface Record: the code that reads the controls and drives the scope and the pacing. Its Records have the Kind `presentation`, as `game` marks the Game Logic and `interface` an Interface Record. Kinds are a convention, not a RUNS primitive (`../.github/GLOSSARY.md`, Presentation and Kind).
 _Avoid_: rendering, I/O (unqualified)
 
 **Glitch**:
-Gameplay that emerges from the rules, which the designer did not foresee. A Glitch is not a rule. The conversion states the rules completely, including what the PDP-1 does the same way every time (its arithmetic, memory past an array, code the program runs), and Glitches emerge from them; it neither recreates nor removes one. A behavior is sorted by following its data across the PDP-1's edge, never by intent: what comes in from a device or from core the program never set is an input, a value that only flows out to the scope is Presentation, and everything else is the rules (`../.github/GLOSSARY.md`, Glitch).
+Gameplay that emerges from the Game Logic, which the designer did not foresee. A Glitch is not Game Logic of its own. The Conversion states the Game Logic completely, including how the program's own operations behave on the PDP-1 (its arithmetic, memory past an array, code the program writes for itself), and Glitches emerge from it; it neither recreates nor removes one. A behavior is sorted by following its data across the PDP-1's edge, never by intent: what comes in from a device or from core the program never set is an input, a value that only flows out to the scope is Presentation, and everything else is Game Logic (`../.github/GLOSSARY.md`, Glitch).
 _Avoid_: bug (when it means the original's behavior); "recreate" or "purge" a Glitch; intended or unintended as a test
 
-**House rule**:
-A deliberate change to the game: an edit to one Processor or one Network line. EGS calls the resulting game a Variant (`../.github/GLOSSARY.md`, Variant).
-_Avoid_: mod; fork for the result (`../.github/GLOSSARY.md`, Variant)
+**Variant**:
+A deliberate change to the Game Logic: an edit to one Processor or one Network line, and the game that results (`../.github/GLOSSARY.md`, Variant).
+_Avoid_: house rule; mod; fork for the result (`../.github/GLOSSARY.md`, Variant)
 
 **Bound**:
 What stops a loop: a counter. Each loop in the source is written as a loop bundle (a Network file with a `counter` line): each pass takes one token of the counter, and the loop ends when it reaches its end or a Guard stops it. Every loop must be bounded by something; it is a rule for the whole graph, and a loop need not live in a bundle (user, 2026-11-14); the loader reads only the bundle form so far. The only unbounded loop is the game itself, tick after tick.
@@ -140,7 +140,7 @@ The Record of every moving thing: two spaceships, then 22 torpedoes. Each entry 
 An index into the Object table. Slots 0 and 1 are the spaceships.
 
 **Calc routine**:
-The rule that moves one object for a frame: spaceship, torpedo, explosion, in hyperspace, breakout. Each entry's routine word names it, and the name fixes whether the object collides.
+The routine that moves one object for a frame: spaceship, torpedo, explosion, in hyperspace, breakout. Each entry's routine word names it, and the name fixes whether the object collides.
 
 **Control word**:
 A spaceship's input for a frame, read from the test word switches or the control boxes, as the start address chose.
@@ -164,7 +164,7 @@ These come from the earlier verification method. They appear in ADRs 0001–0016
 
 - **Oracle** (as a suite), **Portable Oracle**, **Trace**, **Pinned inputs**, **Coverage** (as the definition of done): the JS Oracle harness and its coverage gate, removed.
 - **RUNS Conversion**: the RUNS source, back when it could not execute.
-- **Realization**, **Exact Realization**, **Variant**: a playable recreation built from the Conversion. The RUNS source plays now. A deliberate change is a House rule. Realization and Variant now carry their EGS senses (`../.github/GLOSSARY.md`, Processor and Variant); only the old sense is retired.
+- **Realization**, **Exact Realization**, **Variant**: a playable recreation built from the Conversion. The RUNS source plays now. A deliberate change is a Variant. Realization and Variant now carry their EGS senses (`../.github/GLOSSARY.md`, Processor and Variant); only the old sense is retired.
 
 ## Example dialogue
 
