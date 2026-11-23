@@ -2,7 +2,7 @@
 
 This repo converts Spacewar! 3.1 into **pure** RUNS. The conversion reorganizes the existing program (the PDP-1 assembly, and the C lift that builds the same image); it is never a re-vibe and never a rewrite of behavior. The RUNS source, compiled with the PDP-1 declarations, builds the original image at every commit.
 
-What the conversion is for: the reference for the game, not a Port or a Variant; the binary as the original and the only oracle that proves every input, with the RUNS source as its edition, which carries everything and states any departure as an exclusion with evidence (`docs/exclusions.md`: none); a process meant to repeat for every game; and stateless, named bundles that other games can take.
+What the conversion is for: the reference for the game, not a Port or a Variant; the binary as the original and the only oracle that proves every input, with the RUNS source carrying everything the program does, and code the program never contained left to the machine; a process meant to repeat for every game; and stateless, named bundles that other games can take.
 
 Before you design anything, read `../.github/GLOSSARY.md` (Conversion), `../runs-spec/README.md` (What the work is for), and the first two sections of `INTENT.md` (the model and the reasons). `../.github/GLOSSARY.md` is the EGS vocabulary and governs where a doc here disagrees, unless the user has said otherwise more recently: then the user's newer word governs both, and GLOSSARY.md gets fixed. A question the user hasn't decided stays open, even where GLOSSARY.md reads as settled (`todo.md`, Open with the user).
 
@@ -47,12 +47,12 @@ Checks 1-4 catch a change that breaks the image or the game, so run them when th
 ## Converting one interaction
 
 1. Read the original for it: `source/spacewar3.1_complete.txt`, the lift in `lift/`, and the current RUNS.
-2. Sort every detail with one question, asked of the rules (what the program does, given the PDP-1's deterministic behavior) and never of intent: does changing it change anything that happens in the game? `../runs-spec/CONVERSION_PROCESS.md`, Rule or machine.
+2. Sort every detail with one question, asked of the rules (what the program does, given the PDP-1's deterministic behavior) and never of intent: does changing it change anything that happens in the game? `../runs-spec/CONVERSION_PROCESS.md`, Game logic or machine: the one test.
    - Yes: a rule, stated in the RUNS source. The arithmetic, limits, the order of two steps where swapping them changes a result, PDP-1 behavior the program reaches (a read past an array whose value play observes).
    - No: the machine, left to the declarations or the compiler. Registers, addresses, scratch words, order that changes nothing.
    - Follow the data across the PDP-1's edge: device reads and core the program never set are inputs; a value that only flows out to the scope is presentation.
    - Glitches emerge from the complete rules. They are no category of their own, and the conversion neither recreates nor removes one.
-   - Leaving out a behavior the binary has is an exclusion: it goes in `docs/exclusions.md` with its exit point, evidence and who decided it.
+   - Leaving out a behavior the program has changes the game logic, which makes a Variant. Code the program never contained is the machine's, and the conversion does not carry it.
 3. Name the rules' data as Records, each with a kind, and the rules as Processors, each pure. Wire them into the Network in the order the original's steps run, one pull-change-put-back per step: a Processor takes a value from a Record, changes it, and puts it back; the next Processor takes it from there. Use the Records the original had and add no interim one. Nothing computes between ticks: whatever the PDP-1 computed between two steps is a step in the Network.
 4. Compile. When the image is identical to the original, run the checks of every commit. Otherwise try the next shape, then a general compiler rule (Where a change goes).
 5. Done when the interaction is pure, the image matches, `check_all.sh` passes, and the purity report stays at 0.

@@ -2,11 +2,10 @@
 
 Spacewar! 3.1 (MIT, 1962) converted to RUNS: the reference for the game, the same game over every sequence of inputs from power-on. Its rules are stated completely, so its glitches emerge as they did on the PDP-1, and the rules are separate from its presentation. The RUNS source compiles back to the original tape image byte for byte; that identical image is the oracle. RUNS is specified in [runs-spec](https://github.com/enduring-game-standard/runs-spec).
 
-The binary is the original, and the RUNS source is its edition.
+The binary is the original, identified by its hash. Code the program never contained is the machine's, not the game's (runs-spec ADR-0002).
 
 - `INTENT.md`: what RUNS is for and what this conversion settled.
 - `GLOSSARY.md`: the glossary.
-- `docs/exclusions.md`: the edition's exclusion list (empty) and its evidence.
 - `docs/decisions.tsv`: each decision with its evidence.
 - `docs/adr/`: the architecture decisions, including the earlier verification method's. ADR-0017 says which still hold.
 

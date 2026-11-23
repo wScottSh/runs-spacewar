@@ -20,14 +20,6 @@ _Avoid_: spec, documentation (unqualified)
 Rewriting the original program into RUNS while the game stays exactly the same: the reference every later Port and Variant starts from (`../.github/GLOSSARY.md`, Conversion). Its rules are pure and separate from the presentation, and the whole original presentation is still there: compiled for the PDP-1 it is the original game; run headless its rules run alone on any machine.
 _Avoid_: port, variant, re-vibe
 
-**Edition**:
-The RUNS source read against the Oracle image, which is the original (`../.github/GLOSSARY.md`, Original, Edition). It carries everything the original does by default. A departure is an Exclusion, stated with its exit point, its evidence and who decided it, never a silence. The check: the rules run alone match the original everywhere except the listed exclusions.
-_Avoid_: "conversion with fixes"
-
-**Exclusion list**:
-The edition's stated departures from the original, each with its exit point, evidence and who decided it (`../.github/GLOSSARY.md`, Exclusion list). Spacewar's is empty: `docs/exclusions.md` gives the evidence.
-_Avoid_: exceptions, waivers
-
 **RUNS source**:
 The game written in RUNS: Records, Processors and Networks. It is the game. It executes in the Evaluator and compiles to the Image.
 _Avoid_: RUNS Conversion, Realization, translation, RUNS text
