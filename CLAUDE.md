@@ -20,7 +20,7 @@ Open with the user, and built only after the user decides:
 - The **Network** is one net: the game's colored Petri net, written as Network files (`runs/**/*.net`) of places, transitions and arcs. Records are places, Processors are transitions.
   - The order lives in the Network and nowhere else: the arcs and their Guards write down which Processor fires after which, the order the original's steps ran in.
   - Firing is parallel wherever no arc orders two Processors; where two could race on one place, a wire or a Guard makes one wait for the other.
-  - A Guard is part of an arc and tests only values Records hold; a Processor computes any value it needs into a Record first. The Guards on one place form a complete partition, exactly one true, with `when else` for an open-typed value (`../.github/GLOSSARY.md`, Phase / Dispatch / Guard).
+  - A Guard is part of an arc and tests only values Records hold; a Processor computes any value it needs into a Record first. The Guards on one place form a complete partition, exactly one true, with `when else` for an open-typed value (`../.github/GLOSSARY.md`, Guard).
   - A Network may pass which slot to a transition (`name: routine(slot)`).
 
 ## Every commit
