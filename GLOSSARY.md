@@ -49,7 +49,7 @@ A Processor or a Network.
 _Avoid_: calc routine (that is a game term, below)
 
 **Top Network**:
-A Network nothing fires. Its `requires:` and `produces:` lines name the boundary Records, what the world writes before a tick and reads after (`../.github/GLOSSARY.md`, Boundary Record). Spacewar has three: `tick`, which the Host fires once a tick, and two Start Networks. `requires:` also still states a Precondition in two files (`requires: slot < 2`), a second meaning of one keyword.
+A Network nothing fires. Its `requires:` and `produces:` lines name the Interface Records, what the world writes before a tick and reads after (`../.github/GLOSSARY.md`, Interface Record). Spacewar has three: `tick`, which the Host fires once a tick, and two Start Networks. `requires:` also still states a Precondition in two files (`requires: slot < 2`), a second meaning of one keyword.
 
 **Start Network**:
 The Top Network the Host fires once when the operator starts the machine, chosen by the start address (4 or 5).
@@ -59,7 +59,7 @@ One firing of `tick` (`runs/game/tick.net`): a frame of play, one pass of the or
 _Avoid_: step
 
 **Host**:
-Whatever fires the Top Networks. It writes the inbound boundary Records before a tick and reads the outbound ones after (`../.github/GLOSSARY.md`, Runtime).
+Whatever fires the Top Networks. It writes the inbound Interface Records before a tick and reads the outbound ones after (`../.github/GLOSSARY.md`, Runtime).
 _Avoid_: driver
 
 **Unknown Field**:
