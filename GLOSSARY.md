@@ -33,7 +33,7 @@ One stateless step, one `.runs-prim` file. It names no Records: its whole contra
 _Avoid_: function, subroutine (except for the Original's `jda` routines)
 
 **Input, output**:
-One value a Routine takes in, gives out, or both, with the kind of value it is: the source's `in name: kind`, `out name: kind` and `inout name: kind` lines. At each use the Network wires it to one Field of a Record, a single slot of that Field by default, or the whole Field when the Routine indexes it itself. The rule is one input or output, one Field, so every wire is written in the Network. 21 Network inputs and outputs take the whole object table (`inout table: objects`); the user calls a Bundle whose inputs are one game's Records a problem, and how to fix it is open. Routines with the same inputs and outputs can be swapped. The code still calls them ports (`expand_ports`, `prog.ports`).
+One value a Routine takes in, gives out, or both, with the kind of value it is: the source's `in name: kind`, `out name: kind` and `inout name: kind` lines. At each use the Network wires it to one Field of a Record, a single slot of that Field by default, or the whole Field when the Routine indexes it itself. The rule is one input or output, one Field, so every wire is written in the Network. 21 Network inputs and outputs take the whole object table (`inout table: objects`); the user calls a bundle whose inputs are one game's Records a problem, and how to fix it is open. Routines with the same inputs and outputs can be swapped. The code still calls them ports (`expand_ports`, `prog.ports`).
 _Avoid_: port (EGS keeps the word for the same game on other hardware, `../.github/GLOSSARY.md`, Game Port), parameter, argument, pin, binding (say the Network wires a Field to an input or output)
 
 **Game Port**:
@@ -78,7 +78,7 @@ A deliberate change to the Game Logic: an edit to one Processor or one Network l
 _Avoid_: house rule; mod; fork for the result (`../.github/GLOSSARY.md`, Variant)
 
 **Bound**:
-What stops a loop: a counter. Each loop in the source is written as a loop Bundle (a Network file with a `counter` line): each pass takes one token of the counter, and the loop ends when it reaches its end or a Guard stops it. Every loop must be bounded by something; it is a rule for the whole graph, and a loop need not live in a Bundle (user, 2026-11-14); the loader reads only the Bundle form so far. The only unbounded loop is the game itself, tick after tick.
+What stops a loop: a counter. Each loop in the source is written as a loop bundle (a Network file with a `counter` line): each pass takes one token of the counter, and the loop ends when it reaches its end or a Guard stops it. Every loop must be bounded by something; it is a rule for the whole graph, and a loop need not live in a bundle (user, 2026-11-14); the loader reads only the bundle form so far. The only unbounded loop is the game itself, tick after tick.
 
 ### Toolchain
 

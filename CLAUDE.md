@@ -2,14 +2,14 @@
 
 This repo converts Spacewar! 3.1 into **pure** RUNS. The conversion reorganizes the existing program (the PDP-1 assembly, and the C lift that builds the same image); it is never a re-vibe and never a rewrite of behavior. The RUNS source, compiled with the PDP-1 Declarations, builds the original image at every commit.
 
-What the conversion is for: the reference for the game, not a Game Port or a Variant; the binary as the Original and the only oracle that proves every input, with the RUNS source carrying everything the program does, and code the program never contained left to the machine; a process meant to repeat for every game; and stateless, named Bundles that other games can take.
+What the conversion is for: the reference for the game, not a Game Port or a Variant; the binary as the Original and the only oracle that proves every input, with the RUNS source carrying everything the program does, and code the program never contained left to the machine; a process meant to repeat for every game; and stateless, named bundles that other games can take.
 
 Before you design anything, read `../.github/GLOSSARY.md` (Conversion), `../runs-spec/README.md` (What the work is for), and the first two sections of `INTENT.md` (the model and the reasons). `../.github/GLOSSARY.md` is the EGS vocabulary and governs where a doc here disagrees, unless the user has said otherwise more recently: then the user's newer word governs both, and GLOSSARY.md gets fixed. A question the user hasn't decided stays open, even where GLOSSARY.md reads as settled (`todo.md`, Open with the user).
 
 Open with the user, and built only after the user decides:
 
 1. **The order of the process.** The user wants each deep module of the C lift to become one large Processor that gives the tick's shape, then be refactored down into game-logic groupings. The bottom-up, routine-by-routine path taken so far was the wrong order; a better, automatable process is undecided.
-2. **Granularity.** The shape of the Bundles (smallest piece, naming, sharing across games) is undecided. Split no further and start no package work until the user decides. A Bundle whose inputs are one game's Records can't be shared: a known problem, not a pattern to copy.
+2. **Granularity.** The shape of the bundles (smallest piece, naming, sharing across games) is undecided. Split no further and start no package work until the user decides. A bundle whose inputs are one game's Records can't be shared: a known problem, not a pattern to copy.
 
 ## Pure
 
