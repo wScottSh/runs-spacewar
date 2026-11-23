@@ -40,7 +40,7 @@ The evaluator in `tools/runs.py` enforces the rules of today's source before any
 
 Games outlive their hardware only if the Presentation can be removed and replaced whole, with no change to the Game Logic. Presentation is the screen, the sound, the controls, the pacing, and the machine underneath. It can be rebuilt for each platform. The game cannot.
 
-The separation is in the Records. Each Record is one of three kinds (`game` a Game Logic Record, `interface` a Interface Record, `presentation` a Presentation one):
+The separation is in the Records. Each Record is one of three kinds (`game` a Game Logic Record, `interface` an Interface Record, `presentation` a Presentation one):
 
 - **Game**: what only the Game Logic uses. Fuel, the random number's state, angular momentum, the collision radius.
 - **Interface**: what the game and the Presentation share. The game writes what there is to show, such as positions, headings, and the random numbers the drawing uses. The world writes what comes in, such as the control word, the sense switches, and the words core held at power-on.
