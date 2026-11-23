@@ -17,8 +17,8 @@ _Avoid_: spec, documentation (unqualified)
 ### The conversion
 
 **Conversion**:
-Rewriting the original program into RUNS while the game stays exactly the same: the reference every later Port and Variant starts from (`../.github/GLOSSARY.md`, Conversion). Its Game Logic is pure and separate from the Presentation, and the whole original Presentation is still there: compiled for the PDP-1 it is the original game; run headless its Game Logic runs alone on any machine.
-_Avoid_: Port, Variant, re-vibe
+Rewriting the original program into RUNS while the game stays exactly the same: the reference every later Game Port and Variant starts from (`../.github/GLOSSARY.md`, Conversion). Its Game Logic is pure and separate from the Presentation, and the whole original Presentation is still there: compiled for the PDP-1 it is the original game; run headless its Game Logic runs alone on any machine.
+_Avoid_: Game Port, Variant, re-vibe
 
 **RUNS source**:
 The game written in RUNS: Records, Processors and Networks. It is the game. It executes in the Evaluator and compiles to the Image.
@@ -34,11 +34,11 @@ _Avoid_: function, subroutine (except for the Original's `jda` routines)
 
 **Input, output**:
 One value a Routine takes in, gives out, or both, with the kind of value it is: the source's `in name: kind`, `out name: kind` and `inout name: kind` lines. At each use the Network wires it to one Field of a Record, a single slot of that Field by default, or the whole Field when the Routine indexes it itself. The rule is one input or output, one Field, so every wire is written in the Network. 21 Network inputs and outputs take the whole object table (`inout table: objects`); the user calls a bundle whose inputs are one game's Records a problem, and how to fix it is open. Routines with the same inputs and outputs can be swapped. The code still calls them ports (`expand_ports`, `prog.ports`).
-_Avoid_: port (EGS keeps the word for the same game on other hardware, `../.github/GLOSSARY.md`, Port), parameter, argument, pin, binding (say the Network wires a Field to an input or output)
+_Avoid_: port (EGS keeps the word for the same game on other hardware, `../.github/GLOSSARY.md`, Game Port), parameter, argument, pin, binding (say the Network wires a Field to an input or output)
 
-**Port**:
-The same game, its Game Logic untouched, run on other hardware by swapping its Presentation (`../.github/GLOSSARY.md`, Port). Swapping out the PDP-1 Presentation is a Port; the Declarations, which never run, are left behind with it (Declarations, below).
-_Avoid_: port for a Routine's input or output; Port for this conversion (it is a Conversion)
+**Game Port**:
+The same game, its Game Logic untouched, run on other hardware by swapping its Presentation (`../.github/GLOSSARY.md`, Game Port). Swapping out the PDP-1 Presentation is a Game Port; the Declarations, which never run, are left behind with it (Declarations, below).
+_Avoid_: port for a Routine's input or output; Game Port for this conversion (it is a Conversion)
 
 **Network**:
 The game's skeleton, written as Network files (`runs/**/*.net`): places, transitions and the arcs between them, a colored Petri net (`../.github/GLOSSARY.md`, Network). The arcs and their Guards write down the order; nothing else holds it. A Guard tests a value a Record holds and is part of its arc. Only the Network that walks the slots holds slot numbers; a slot the game computes lives in a Record.
@@ -99,7 +99,7 @@ _Avoid_: interpreter, emulator, reference implementation (`../.github/GLOSSARY.m
 _Avoid_: assembler, transpiler
 
 **Declarations**:
-The half of one platform's package that never runs (`pdp1/*.toml` for the PDP-1): where that machine keeps each value and how it calls each routine, tape order, devices. They record the original programmer's arbitrary choices, never Game Logic, and they may name game Records because they never run. A Port leaves them behind with that platform's Presentation. They only shrink (`tools/check_declarations.py`).
+The half of one platform's package that never runs (`pdp1/*.toml` for the PDP-1): where that machine keeps each value and how it calls each routine, tape order, devices. They record the original programmer's arbitrary choices, never Game Logic, and they may name game Records because they never run. A Game Port leaves them behind with that platform's Presentation. They only shrink (`tools/check_declarations.py`).
 _Avoid_: binding (retired: it read as a layer to solve what is hard to write in RUNS), mapping, layout (layout play reads belongs to the RUNS source)
 
 **Image**:

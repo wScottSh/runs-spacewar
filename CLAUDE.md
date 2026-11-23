@@ -2,7 +2,7 @@
 
 This repo converts Spacewar! 3.1 into **pure** RUNS. The conversion reorganizes the existing program (the PDP-1 assembly, and the C lift that builds the same image); it is never a re-vibe and never a rewrite of behavior. The RUNS source, compiled with the PDP-1 Declarations, builds the original image at every commit.
 
-What the conversion is for: the reference for the game, not a Port or a Variant; the binary as the Original and the only oracle that proves every input, with the RUNS source carrying everything the program does, and code the program never contained left to the machine; a process meant to repeat for every game; and stateless, named bundles that other games can take.
+What the conversion is for: the reference for the game, not a Game Port or a Variant; the binary as the Original and the only oracle that proves every input, with the RUNS source carrying everything the program does, and code the program never contained left to the machine; a process meant to repeat for every game; and stateless, named bundles that other games can take.
 
 Before you design anything, read `../.github/GLOSSARY.md` (Conversion), `../runs-spec/README.md` (What the work is for), and the first two sections of `INTENT.md` (the model and the reasons). `../.github/GLOSSARY.md` is the EGS vocabulary and governs where a doc here disagrees, unless the user has said otherwise more recently: then the user's newer word governs both, and GLOSSARY.md gets fixed. A question the user hasn't decided stays open, even where GLOSSARY.md reads as settled (`todo.md`, Open with the user).
 
@@ -42,7 +42,7 @@ Checks 1-4 catch a change that breaks the image or the game, so run them when th
 
 ### The PDP-1 Declarations
 
-`pdp1/*.toml` is the half of the PDP-1 platform code that never runs: the 1962 programmer's arbitrary choices about where the game's data lives and how routines are called, nothing the game computes. A Port leaves them behind with the PDP-1 Presentation. Because they never run, they may name game Records, which a Presentation Processor may not. They are no place to solve what is hard to write in the source. `tools/check_declarations.py` counts entries, not lines (every scalar value and every list element of the TOML), and fails any commit that adds one, a name added to an existing list included. Only the user raises the count in `pdp1/DECLARATIONS`, and the decisions row quotes the user. A commit that removes entries lowers it. The code still says `Bindings` and `BindError`; read them as the Declarations. The vocabulary and the rules `runsc` enforces are in `pdp1/README.md`.
+`pdp1/*.toml` is the half of the PDP-1 platform code that never runs: the 1962 programmer's arbitrary choices about where the game's data lives and how routines are called, nothing the game computes. A Game Port leaves them behind with the PDP-1 Presentation. Because they never run, they may name game Records, which a Presentation Processor may not. They are no place to solve what is hard to write in the source. `tools/check_declarations.py` counts entries, not lines (every scalar value and every list element of the TOML), and fails any commit that adds one, a name added to an existing list included. Only the user raises the count in `pdp1/DECLARATIONS`, and the decisions row quotes the user. A commit that removes entries lowers it. The code still says `Bindings` and `BindError`; read them as the Declarations. The vocabulary and the rules `runsc` enforces are in `pdp1/README.md`.
 
 ## Converting one interaction
 

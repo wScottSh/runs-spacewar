@@ -7,8 +7,8 @@ text" (#52). The spec's wording and a runnable example land with "Ports in the E
 and runsc" (#53), when the Evaluator reads this syntax.
 
 The issues and this file's name say Port for a Routine's input or output.
-EGS keeps Port for the same game on other hardware, made by swapping its Realization
-Processors (`../../.github/GLOSSARY.md`, Port). The rest of this file says input and output.
+EGS keeps Game Port for the same game on other hardware, made by swapping its Realization
+Processors (`../../.github/GLOSSARY.md`, Game Port). The rest of this file says input and output.
 
 ## The syntax
 
