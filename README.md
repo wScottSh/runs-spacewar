@@ -1,8 +1,8 @@
 # Spacewar! 3.1 in RUNS
 
-Spacewar! 3.1 (MIT, 1962) converted to RUNS: the reference for the game, the same game over every sequence of inputs from power-on. Its rules are stated completely, so its glitches emerge as they did on the PDP-1, and the rules are separate from its presentation. The RUNS source compiles back to the original tape image byte for byte; that identical image is the oracle. RUNS is specified in [runs-spec](https://github.com/enduring-game-standard/runs-spec).
+Spacewar! 3.1 (MIT, 1962) converted to RUNS: the reference for the game, the same game over every sequence of inputs from power-on. Its rules are stated completely, so its Glitches emerge as they did on the PDP-1, and the rules are separate from its Presentation. The RUNS source compiles back to the original tape image byte for byte; that identical image is the oracle. RUNS is specified in [runs-spec](https://github.com/enduring-game-standard/runs-spec).
 
-The binary is the original, identified by its hash. Code the program never contained is the machine's, not the game's (runs-spec ADR-0002).
+The binary is the Original, identified by its hash. Code the program never contained is the machine's, not the game's (runs-spec ADR-0002).
 
 - `INTENT.md`: what RUNS is for and what this conversion settled.
 - `GLOSSARY.md`: the glossary.
@@ -12,13 +12,13 @@ The binary is the original, identified by its hash. Code the program never conta
 ## Layout
 
 - `runs/` is the game: Records in `*.runs`, one Processor per `*.runs-prim` file, one Network per `*.net` file of places, transitions and arcs.
-- `pdp1/` holds the PDP-1 declarations, the half of the PDP-1 package that never runs: how the PDP-1 stores and calls what the RUNS source states. They hold only choices that play cannot observe. `pdp1/README.md` states the contract.
+- `pdp1/` holds the PDP-1 Declarations, the half of the PDP-1 package that never runs: how the PDP-1 stores and calls what the RUNS source states. They hold only choices that play cannot observe. `pdp1/README.md` states the contract.
 - `tools/runs.py` is the Evaluator. It parses RUNS, checks it, and runs it.
-- `tools/runsc.py` compiles the RUNS source and the declarations back to the original tape image, byte for byte. It emits the lift's C dialect, and `tools/pdp1cc` compiles that.
+- `tools/runsc.py` compiles the RUNS source and the Declarations back to the original tape image, byte for byte. It emits the lift's C dialect, and `tools/pdp1cc` compiles that.
 - `tools/check_*.py` compare each RUNS routine, run by the evaluator, with the original running in the SIMH PDP-1 simulator.
-- `tools/check_compiled.py` changes the RUNS source and the declarations one edit at a time. Each edit must change the image, be refused, or be shown to leave the game the same.
+- `tools/check_compiled.py` changes the RUNS source and the Declarations one edit at a time. Each edit must change the image, be refused, or be shown to leave the game the same.
 - `lift/` is the C lift: Spacewar hand-lifted into a C dialect that `tools/pdp1cc` compiles to the original image. RUNS generates every unit of it, so `lift/` is the reference the checks and notes cite. `docs/c-lift/README.md` describes it, and `tools/check-*-reference.py`, `tests/` and `ref/` are its checks.
-- `oracle/` holds input and output vectors recorded from the original, which some checks read. `source/` is the original listing and Norbert Landsteiner's "Inside Spacewar!" notes.
+- `oracle/` holds input and output vectors recorded from the Original, which some checks read. `source/` is the original listing and Norbert Landsteiner's "Inside Spacewar!" notes.
 
 ## Run the checks
 
