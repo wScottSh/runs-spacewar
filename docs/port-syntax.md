@@ -95,14 +95,14 @@ have inputs and outputs, and Spacewar compiles to the original image from them.
 2. **A Network owns the Records only it touches.** Each is written before it is read
    in every firing, so it is scratch, never memory; one shared copy, as the original
    kept it in one register. Anything read outside the Network is an input or output. The other
-   option, every scratch value declared at the top, changes a bundle's inputs and outputs at every
+   option, every scratch value declared at the top, changes a Sub-Network's inputs and outputs at every
    split inside it, against the map's rule that a split keeps every contract.
    Tested on Doom (`P_ZMovement`'s float block, `P_AproxDistance`) and OoT (Player's
    file statics: `sSavedCurrentMask` is scratch, `sPrevFloorProperty` is state).
 3. **One input or output, one Field; never a whole Record.** The purest: the Network holds every
    wire, and a reader 1000 years on reads what touches what from the source alone,
    with no tool. Folding long wirings is the viewer's job.
-4. **`slot` leaves every Network but the one that walks the slots.** A bundle gets
+4. **`slot` leaves every Network but the one that walks the slots.** A Sub-Network gets
    `objects.x[slot]` already chosen, as the Original's `mx1` pointers gave each
    routine "this object's x". A slot the game computes lives in a Record
    (`launch.slot`), and the Network wires the whole Field beside it. `requires: slot < 2`
