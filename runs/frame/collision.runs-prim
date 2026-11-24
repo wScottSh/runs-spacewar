@@ -11,6 +11,7 @@ processor collision
   in cycles_b: word
   in radius: word
   in radius_half: word
+  in becomes: calc_routine
   inout routine_a: calc_routine
   inout routine_b: calc_routine
   inout counter_a: word
@@ -25,8 +26,8 @@ processor collision
     set dy = dy - radius
     if dy < 0:
       if dy + dx - radius_half < 0:
-        set routine_a = explosion
-        set routine_b = explosion
+        set routine_a = becomes
+        set routine_b = becomes
         let frames = cycles_a + cycles_b
         set frames = (-frames >> 8) + 1
         set counter_a = frames

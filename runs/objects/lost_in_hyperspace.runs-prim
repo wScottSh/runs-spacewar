@@ -1,7 +1,8 @@
 processor lost_in_hyperspace
+  in becomes: calc_routine
   out routine: calc_routine
   out counter: word
   out cycles: word
-  set routine = explosion
+  set routine = becomes
   set counter = -010
   set cycles = 02000

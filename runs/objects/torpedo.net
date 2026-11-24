@@ -5,6 +5,7 @@
 network torpedo(slot)
   inout table: objects
   inout points: display
+  in becomes: calc_routine
 
 places
   torpedo_work.counted
@@ -35,6 +36,7 @@ arcs
   table[slot].counter -> count.counter
   count.counter -> torpedo_work.counted
   torpedo_work.counted -> explode when >= 0
+  becomes -> explode.becomes
   explode.routine -> table[slot].routine
   explode.counter -> table[slot].counter
   torpedo_work.counted -> warp_x when else

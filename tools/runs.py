@@ -29,7 +29,7 @@ operations as the machine computes them."""
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import graph
@@ -836,9 +836,52 @@ def users_first(graphs: dict[str, "graph.Graph"]) -> list["graph.Graph"]:
     return out
 
 
+def pick_members(prog: Program) -> None:
+    """A bundle's input that its runs wire to a member holds a constant
+    the Network picks, not a value: the bundle takes the member in the
+    input's place, the way the original's macros were expanded at each use.
+    Its tests then name the member, and the input is gone. Every run of
+    the bundle picks the same members; a copy per pick is not built."""
+    while True:
+        uses: dict[str, list] = {}
+        for g in prog.graphs.values():
+            for t, proc in g.transitions.items():
+                if proc in prog.graphs:
+                    uses.setdefault(proc, []).append((g, t))
+        for b, runs_of_b in uses.items():
+            picks = [frozenset((a.io, a.place) for a in g.arcs if a.transition == t and a.into and a.io
+                               and a.place not in g.places and prog.member(a.place)) for g, t in runs_of_b]
+            if any(picks):
+                break
+        else:
+            return
+        bg = prog.graphs[b]
+        if len(set(picks)) != 1:
+            raise RunsError(f"{bg.where}: {b}'s runs pick its members differently: a copy per pick is not built")
+        chosen = dict(picks[0])
+        for io, m in chosen.items():
+            if bg.ports.get(io, ("",))[0] != "in":
+                raise RunsError(f"{bg.where}: {b}.{io} is wired to the member {m}: a member is a constant "
+                                f"the Network picks, wired only to an in")
+        for g, t in runs_of_b:
+            g.arcs = [a for a in g.arcs if not (a.transition == t and a.into and a.io in chosen)]
+
+        def taking(a: graph.Arc) -> graph.Arc:
+            if a.place in chosen and a.guard:
+                raise RunsError(f"{a.where}: {b} tests its input {a.place}, a member its user picks")
+            op, _, rest = (a.guard or "").partition(" ")
+            return replace(a, place=chosen.get(a.place, a.place),
+                           guard=f"{op} {chosen[rest]}" if rest in chosen else a.guard)
+        bg.arcs = [taking(a) for a in bg.arcs]
+        for io in chosen:
+            del bg.ports[io]
+            bg.places.remove(io)
+
+
 def lower_graphs(prog: Program, lower) -> None:
     """Each network file checked and lowered to a Network (graph.py). A
     bundle's call Record holds exactly its inputs and outputs."""
+    pick_members(prog)
     sigs = signatures(prog)
     fields = {n: {f: typ for f, (typ, _) in r.fields.items()} for n, r in prog.records.items()}
     copier = {"word": COPIER, **{e: f"{COPIER}_{e}" for e in prog.enums}}

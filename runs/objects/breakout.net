@@ -10,6 +10,7 @@ network breakout(slot)
   inout fleet: ships
   inout seed: random
   inout points: display
+  in becomes: calc_routine
 
 places
   breakout_work.counted
@@ -69,6 +70,7 @@ arcs
   breakout_work.uncertainty -> weigh.uncertainty
   weigh.margin -> breakout_work.margin
   breakout_work.margin -> lost when >= 0
+  becomes -> lost.becomes
   lost.routine -> table[slot].routine
   lost.counter -> table[slot].counter
   lost.cycles -> table[slot].cycles

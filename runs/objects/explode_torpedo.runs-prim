@@ -1,5 +1,6 @@
 processor explode_torpedo
+  in becomes: calc_routine
   out routine: calc_routine
   out counter: word
-  set routine = explosion
+  set routine = becomes
   set counter = -2

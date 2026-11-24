@@ -5731,6 +5731,7 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
     inlined = {b for b in bundles if not declaration(b)}
     tried = []
     for at in st.choices():
+        at = {**graph.picked_members(g), **at}       # a member the Network picks is its own wire
         for t, b in g.transitions.items():
             if b in inlined:
                 for a in g.arcs:
@@ -5738,7 +5739,8 @@ def lower_for_pdp1(prog: runs.Program, g: graph.Graph, sigs: dict, copier: dict[
                         word[b, a.io] = at[a.place]     # a whole Record stays in its own words
         try:
             kept = io | {at[p] for p in g.places if g.field(p) in io}   # a field declared in IO: the word it is in
-            order = network_order(g, sigs, at, word, decl, kept, copier, prog,
+            valued = replace(g, arcs=[a for a in g.arcs if a.place not in graph.picked_members(g)])  # a member holds no word
+            order = network_order(valued, sigs, at, word, decl, kept, copier, prog,
                                   {p: at[p] for p in g.ports if (g.name, p) in prog.__dict__.get("inlined_words", {})})
         except BindError as e:
             tried.append(str(e))

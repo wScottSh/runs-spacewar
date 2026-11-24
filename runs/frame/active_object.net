@@ -32,6 +32,8 @@ arcs
   clock.objects_seen -> count.seen
   count.seen -> clock.objects_seen
   table[slot].routine -> pairs when else                    # spi
+  explosion -> pairs.exploded
+  in_hyperspace -> pairs.away_in_hyperspace
   table -> pairs.table
   pairs.table -> collided
   table[slot].routine -> exploding when == explosion

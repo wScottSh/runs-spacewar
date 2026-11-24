@@ -51,6 +51,7 @@ arcs
   brush -> second.brush
   second.brush -> brush
   table[slot].routine -> flying when == torpedo
+  explosion -> flying.becomes
   table -> flying.table
   flying.table -> table
   points -> flying.points
@@ -70,6 +71,7 @@ arcs
   seed -> away.seed
   away.seed -> seed
   table[slot].routine -> back when == breakout
+  explosion -> back.becomes
   table -> back.table
   back.table -> table
   points -> back.points

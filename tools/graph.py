@@ -528,8 +528,12 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
     wired |= {p for a in g.arcs if (p := operand(g, a.guard))}           # the other place of a test
     if stated := sorted(set(g.places) - wired - set(g.ports)):
         fail(f"the place {stated[0]} is wired to nothing")
+    def picked(a: Arc) -> bool:
+        """A member on the arc: a constant the Network picks, not a place."""
+        return a.into and a.io is not None and a.place not in g.places and any(a.place in ms for ms in enums.values())
+
     for a in g.arcs:
-        if a.place not in g.places:
+        if a.place not in g.places and not picked(a):
             fail(f"{a.place} is not a place of {g.name}", a.where)
         if a.transition not in g.transitions:
             fail(f"no transition {a.transition}", a.where)
@@ -543,6 +547,11 @@ def check(g: Graph, sigs: dict[str, Signature], fields: dict[str, dict[str, str]
             if names != sorted(want):
                 fail(f"{t}: {'inputs' if into else 'outputs'} wired {names}, {p} has {sorted(want)}")
             for a in got:
+                if picked(a):
+                    if a.io in s.inout or a.place not in enums.get(s.types[a.io], []):
+                        fail(f"{t}.{a.io} is {s.types[a.io]}, wired to the member {a.place}: a member is a "
+                             f"constant the Network picks, wired only to an in of its enum", a.where)
+                    continue
                 if type_of(a.place) != s.types[a.io] and not whole_copy(g, t, p, type_of):
                     fail(f"{t}.{a.io} is {s.types[a.io]}, wired to {a.place}, {type_of(a.place)}", a.where)
         for n in s.inout:
@@ -982,9 +991,16 @@ def steps(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering)
     return out
 
 
+def picked_members(g: Graph) -> dict[str, str]:
+    """The members the Network's arcs pick, each its own wire: a checked
+    arc whose end is no place carries a member."""
+    return {a.place: a.place for a in g.arcs if a.into and a.io is not None and a.place not in g.places}
+
+
 def lower(g: Graph, sigs: dict[str, Signature], order: list[str], low: Lowering) -> str:
     """The graph as one Network of today's RUNS: each transition a wired
     run, each side of a test under its `if` or `else`."""
+    low.at = {**low.at, **picked_members(g)}         # a member is never a place: no remap moves it
     take = taker(g)
     fold = None
     nested = bool(take and g.bound and len(chains(g)[take]) > 1)
