@@ -736,6 +736,11 @@ def expand_ports(prog: Program) -> None:
         t = prog.templates[name]
         for p, e in wires.items():
             port = t.ports[p]
+            if e[0] == "name" and e[1] in prog.enums.get(port.type, ()) and e[1] not in prog.records:
+                if port.direction != "in" or port.count is not None:
+                    raise RunsError(f"{where}: run {name}: {p} is {port.direction}, wired to the member "
+                                    f"{e[1]}: a member is a constant the Network picks, wired only to an in")
+                continue                        # a member of the Port's enum: the Network picks the constant
             got = wired_kind(prog, e)
             if got is None:
                 raise RunsError(f"{where}: run {name}: {p} is wired to {text_of(e)}, which is no field")
