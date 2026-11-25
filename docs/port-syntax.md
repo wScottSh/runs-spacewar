@@ -1,14 +1,14 @@
 # Syntax for inputs, outputs and their wiring
 
-**Superseded.** The `run`-and-header-line wiring below was replaced on 2026-11-11 by network files with arcs (user: "yes, build the two-level arcs version"); see `../runs-spec/NETWORK_TOPOLOGY.md`, Network files. The `in`/`out`/`inout` lines on Processors still stand. `owns` scratch is gone; the user has since questioned interim scratch Records (2026-11-14). Kept as the record of #52.
+**Superseded.** The `run`-and-header-line wiring below was replaced on 2026-11-11 by Network files with arcs (user: "yes, build the two-level arcs version"); see `../runs-spec/NETWORK_TOPOLOGY.md`, Network files. The `in`/`out`/`inout` lines on Processors still stand. `owns` scratch is gone; the user has since questioned interim scratch Records (2026-11-14). Kept as the Record of #52.
 
 Decided with the user, 2026-11-11, in "Syntax for Ports and their wiring in the RUNS
 text" (#52). The spec's wording and a runnable example land with "Ports in the Evaluator
 and runsc" (#53), when the Evaluator reads this syntax.
 
 The issues and this file's name say Port for a Routine's input or output.
-EGS keeps Port for the same game on other hardware, made by swapping its Realization
-Processors (`../../.github/GLOSSARY.md`, Port). The rest of this file says input and output.
+EGS keeps Game Port for the same game on other hardware, made by swapping its Realization
+Processors (`../../.github/GLOSSARY.md`, Game Port). The rest of this file says input and output.
 
 ## The syntax
 
@@ -62,7 +62,7 @@ network explosion                                           # mex
   ...
 ```
 
-`owns name: kind` declares one field of scratch, as an input or output line declares one field
+`owns name: kind` declares one Field of scratch, as an input or output line declares one Field
 (#53). The Evaluator keeps one copy of it for the Network, shared by every wiring of
 the Network; no name in the source reaches it from outside. `runsc` compiles it as a
 local of the routine the Network compiles into, declared once, so pdp1cc keeps it in
@@ -73,10 +73,10 @@ as it names a `let` (`io = ["input_bits"]`).
 
 The loader (`runs.load`) expands inputs and outputs (`expand_ports`) before any tool
 sees the program. Each `run` of a routine with inputs and outputs fires a copy of it:
-its source with each replaced by the field the run wires to it, by reference, as the
+its source with each replaced by the Field the run wires to it, by reference, as the
 original's `diff` macro was expanded once an axis. One copy a distinct wiring
 (`inertia_1`, `inertia_2`); a Network's input or output wired on to an inner `run`
-resolves to the field of the Network that runs it. A copy takes the names its wires'
+resolves to the Field of the Network that runs it. A copy takes the names its wires'
 slots use (`slot`) from the routine that runs it. The Program keeps the templates
 (`templates`) and each copy's template and wiring (`copies`); the purity report judges
 the copies by the Records they touch.
@@ -85,7 +85,7 @@ A PDP-1 declaration that names a template declares every copy of it: `[[inline]]
 routine = "inertia"` lays out both axes' copies. A called routine (`[[place]]`, JDA or
 JSP) is one subroutine, so all its runs must share one wiring; more is a BindError that
 names the wirings. Minskytron's `keep` (six wirings, laid out inline) is the second
-PDP-1 program. The arithmetic in `runs/arithmetic/` is network files whose Processors
+PDP-1 program. The arithmetic in `runs/arithmetic/` is Network files whose Processors
 have inputs and outputs, and Spacewar compiles to the original image from them.
 
 ## The rules
@@ -95,19 +95,19 @@ have inputs and outputs, and Spacewar compiles to the original image from them.
 2. **A Network owns the Records only it touches.** Each is written before it is read
    in every firing, so it is scratch, never memory; one shared copy, as the original
    kept it in one register. Anything read outside the Network is an input or output. The other
-   option, every scratch value declared at the top, changes a bundle's inputs and outputs at every
+   option, every scratch value declared at the top, changes a Sub-Network's inputs and outputs at every
    split inside it, against the map's rule that a split keeps every contract.
    Tested on Doom (`P_ZMovement`'s float block, `P_AproxDistance`) and OoT (Player's
    file statics: `sSavedCurrentMask` is scratch, `sPrevFloorProperty` is state).
-3. **One input or output, one field; never a whole Record.** The purest: the Network holds every
+3. **One input or output, one Field; never a whole Record.** The purest: the Network holds every
    wire, and a reader 1000 years on reads what touches what from the source alone,
    with no tool. Folding long wirings is the viewer's job.
-4. **`slot` leaves every Network but the one that walks the slots.** A bundle gets
-   `objects.x[slot]` already chosen, as the original's `mx1` pointers gave each
+4. **`slot` leaves every Network but the one that walks the slots.** A Sub-Network gets
+   `objects.x[slot]` already chosen, as the Original's `mx1` pointers gave each
    routine "this object's x". A slot the game computes lives in a Record
-   (`launch.slot`), and the Network wires the whole field beside it. `requires: slot < 2`
+   (`launch.slot`), and the Network wires the whole Field beside it. `requires: slot < 2`
    moves to the walking Network. A `run` passes only wires.
-5. **Whole field vs one slot:** the kind says it. `in table: word[N]` takes the field
+5. **Whole Field vs one slot:** the kind says it. `in table: word[N]` takes the Field
    without `[slot]`; its index is another input.
 
 ## Found on the way, not this map's
